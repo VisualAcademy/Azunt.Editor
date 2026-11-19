@@ -83,6 +83,15 @@ public static class EditorMarkup
         Button("image-delete", "×Img", "Delete selected image");
         EndGroup();
 
+        Group("Writing tools");
+        Button("find", "Find", "Find and replace", "Ctrl+F");
+        Button("clear-format", "Tx", "Remove formatting from selected text");
+        Button("horizontal-rule", "―", "Insert horizontal line");
+        Button("page-break", "Page", "Insert page break for print and Word");
+        Button("special-chars", "Ω", "Insert special character");
+        Button("fullscreen", "⛶", "Toggle fullscreen", "Esc to exit");
+        EndGroup();
+
         Group("Document");
         Button("undo", "↶", "Undo", "Ctrl+Z");
         Button("redo", "↷", "Redo", "Ctrl+Y");
@@ -101,6 +110,21 @@ public static class EditorMarkup
             .Append("<button type=\"button\" data-link-apply>Apply link</button>")
             .Append("<button type=\"button\" data-link-cancel>Cancel</button></div>");
 
+        w.Append("<div class=\"azunt-editor-find-panel\" data-find-panel hidden role=\"search\" aria-label=\"Find and replace\">")
+            .Append("<label>Find <input type=\"text\" data-find-query maxlength=\"200\" autocomplete=\"off\"></label>")
+            .Append("<label>Replace <input type=\"text\" data-find-replacement maxlength=\"200\" autocomplete=\"off\"></label>")
+            .Append("<button type=\"button\" data-find-next>Find next</button>")
+            .Append("<button type=\"button\" data-find-replace>Replace</button>")
+            .Append("<button type=\"button\" data-find-all>Replace all</button>")
+            .Append("<button type=\"button\" data-find-close>Close</button>")
+            .Append("<span class=\"azunt-editor-find-status\" data-find-status aria-live=\"polite\"></span></div>");
+        w.Append("<div class=\"azunt-editor-chars-panel\" data-chars-panel hidden role=\"group\" aria-label=\"Insert special character\">")
+            .Append("<span class=\"azunt-editor-panel-heading\">Insert character</span>");
+        foreach (var ch in new[] { "©", "®", "™", "€", "£", "¥", "—", "–", "•", "§", "±", "°", "µ", "∞", "≠", "≤", "≥", "α", "β", "→", "←", "✓", "★", "·" })
+            w.Append("<button type=\"button\" data-insert-character=\"").Append(Encode(ch)).Append("\" aria-label=\"Insert ").Append(Encode(ch)).Append("\">")
+                .Append(Encode(ch)).Append("</button>");
+        w.Append("<button type=\"button\" data-chars-close>Close</button></div>");
+
         w.Append("<div class=\"azunt-editor-canvas\" role=\"textbox\" aria-label=\"Document content\" aria-multiline=\"true\" contenteditable=\"")
             .Append(readOnly ? "false" : "true")
             .Append("\" style=\"min-height:").Append(safeHeight).Append("px\"></div>");
@@ -109,7 +133,8 @@ public static class EditorMarkup
         w.Append("<textarea hidden class=\"azunt-editor-value\" data-azunt-value=\"true\" name=\"")
             .Append(Encode(name)).Append("\">").Append(Encode(value)).Append("</textarea>");
         w.Append("<input hidden type=\"file\" accept=\"image/png,image/jpeg,image/gif,image/webp\" multiple data-azunt-images=\"true\" aria-label=\"Select images\" />");
-        w.Append("<p class=\"azunt-editor-message\" role=\"status\" aria-live=\"polite\"></p>");
+        w.Append("<div class=\"azunt-editor-footer\"><p class=\"azunt-editor-message\" role=\"status\" aria-live=\"polite\"></p>")
+            .Append("<span class=\"azunt-editor-stats\" data-editor-stats aria-live=\"off\">0 words · 0 characters</span></div>");
         w.Append("</div>");
         return w.ToString();
 
@@ -143,6 +168,12 @@ public static class EditorMarkup
                 "image" => "<rect x=\"3\" y=\"3\" width=\"18\" height=\"18\" rx=\"2\"/><circle cx=\"9\" cy=\"9\" r=\"2\"/><path d=\"m21 16-5-5L5 21\"/>",
                 "undo" => "<path d=\"M3 7v6h6M21 17a8 8 0 0 0-14-6l-4 2\"/>",
                 "redo" => "<path d=\"M21 7v6h-6M3 17a8 8 0 0 1 14-6l4 2\"/>",
+                "find" => "<circle cx=\"11\" cy=\"11\" r=\"7\"/><path d=\"m16 16 5 5\"/>",
+                "clear-format" => "<path d=\"M4 6h13M10 6l-3 12M6 18h11M4 4l16 16\"/>",
+                "horizontal-rule" => "<path d=\"M3 12h18\"/>",
+                "page-break" => "<path d=\"M4 3v5m16-5v5M4 16v5m16-5v5M2 12h20M10 9l4 3-4 3\"/>",
+                "special-chars" => "<path d=\"M6 20h12M4 17c-5-10 1-14 8-14s13 4 8 14M4 17h6m4 0h6\"/>",
+                "fullscreen" => "<path d=\"M8 3H3v5m13-5h5v5M3 16v5h5m13-5v5h-5\"/>",
                 "source" => "<path d=\"m8 8-4 4 4 4m8-8 4 4-4 4M14 4l-4 16\"/>",
                 "preview" => "<rect x=\"3\" y=\"3\" width=\"18\" height=\"18\" rx=\"2\"/><path d=\"M8 8h8M8 12h8M8 16h5\"/>",
                 "print" => "<path d=\"M6 9V3h12v6M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2M6 15h12v6H6zM18 12h.01\"/>",

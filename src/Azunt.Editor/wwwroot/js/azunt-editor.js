@@ -1,4 +1,4 @@
-/* Azunt.Editor 0.4.0. Self-owned editing engine, no third-party JS. */
+/* Azunt.Editor 0.5.0. Self-owned editing engine, no third-party JS. */
 (function () {
   "use strict";
 
@@ -90,6 +90,8 @@
           }
         }
       }
+      if (tag === "hr" && node.getAttribute("data-azunt-page-break") === "true")
+        clean.setAttribute("data-azunt-page-break", "true");
       if (tag === "a") {
         const href = safeResourceUrl(node.getAttribute("href"), false);
         if (href) {
@@ -190,8 +192,20 @@
     instance.historyIndex = instance.history.length - 1;
   }
 
+  function updateStats(instance) {
+    if (!instance.stats) return;
+    // textContent excludes image Base64 and HTML markup. Do not treat code or
+    // attributes as words, and do not persist view-only counters into HTML.
+    const text = instance.sourceMode
+      ? (() => { const node = document.createElement("div"); node.innerHTML = sanitizeHtml(instance.source.value); return node.textContent || ""; })()
+      : instance.canvas.innerText || instance.canvas.textContent || "";
+    const count = (text.match(/[\p{L}\p{N}]+(?:['’‐-―-][\p{L}\p{N}]+)*/gu) || []).length;
+    instance.stats.textContent = `${count} word${count === 1 ? "" : "s"} · ${Array.from(text).length} characters`;
+  }
+
   function changed(instance) {
     remember(instance);
+    updateStats(instance);
     queueEmit(instance);
   }
 
@@ -333,6 +347,7 @@
       instance.canvas.hidden = true;
       instance.sourceMode = true;
       instance.source.focus();
+      updateStats(instance);
       message(instance, "HTML source mode. Select </> again to apply permitted markup.");
     } else {
       const clean = sanitizeHtml(instance.source.value);
@@ -509,6 +524,7 @@
     instance.lastRange = null;
     setImageSelection(instance, null);
     instance.activeCell = null;
+    updateStats(instance);
     queueEmit(instance);
   }
 
@@ -595,6 +611,226 @@
     changed(instance);
   }
 
+  // Paste only editor-approved elements; never append untrusted clipboard HTML
+  // directly. Formatting (headings, tables, links) survives without Office CSS.
+  function pasteCleanContent(instance, html, plainText) {
+    const clean = html && html.length <= maxDocumentBytes ? sanitizeHtml(html) : "";
+    if (!clean || !clean.trim()) return insertPlainText(instance, plainText || "");
+    const template = document.createElement("template");
+    template.innerHTML = clean;
+    const fragment = template.content;
+    // A caret marker remains in the DOM after the fragment moves, allowing
+    // insertion in the middle of a paragraph and subsequent typing.
+    const marker = document.createTextNode("");
+    fragment.appendChild(marker);
+    instance.canvas.focus();
+    const range = selectedRange(instance);
+    range.deleteContents();
+    range.insertNode(fragment);
+    selectAfter(marker);
+    changed(instance);
+  }
+
+  function clearFormatting(instance) {
+    const range = selectedRange(instance);
+    if (range.collapsed) return message(instance, "Select the text whose formatting you want to clear.");
+    const text = range.toString();
+    range.deleteContents();
+    const node = document.createTextNode(text);
+    range.insertNode(node);
+    // A plain text node still inherits styles from surrounding <strong>,
+    // <span>, etc. Split each inline formatting ancestor around the selection.
+    const formatted = new Set(["STRONG", "B", "EM", "I", "U", "S", "SUP", "SUB", "SPAN", "A", "CODE"]);
+    let parent = node.parentElement;
+    while (parent && parent !== instance.canvas && formatted.has(parent.tagName)) {
+      const left = parent.cloneNode(false);
+      const right = parent.cloneNode(false);
+      while (parent.firstChild && parent.firstChild !== node) left.appendChild(parent.firstChild);
+      while (node.nextSibling) right.appendChild(node.nextSibling);
+      if (left.childNodes.length) parent.before(left);
+      parent.before(node);
+      if (right.childNodes.length) parent.before(right);
+      const outer = parent.parentElement;
+      parent.remove();
+      parent = outer;
+    }
+    selectAfter(node);
+    changed(instance);
+  }
+
+  function insertSpecial(instance, character) {
+    // Only characters listed in the toolbar can be inserted through this action.
+    if (!instance.characterPanel?.querySelector(`button[data-insert-character="${CSS.escape(character)}"]`)) return;
+    insertAtSelection(instance, document.createTextNode(character));
+    instance.characterPanel.hidden = true;
+  }
+
+  function insertRule(instance, pageBreak) {
+    const rule = document.createElement("hr");
+    if (pageBreak) rule.setAttribute("data-azunt-page-break", "true");
+    const range = selectedRange(instance);
+    const block = nearestBlock(instance, range);
+    if (block && block.parentElement === instance.canvas && ["P", "DIV", "H2", "H3"].includes(block.tagName)) {
+      // Split a root-level paragraph around the caret. A page break is a
+      // separate block, never an invalid <p><hr></p> nested structure.
+      range.deleteContents();
+      const tailRange = document.createRange();
+      tailRange.setStart(range.startContainer, range.startOffset);
+      tailRange.setEnd(block, block.childNodes.length);
+      const right = block.cloneNode(false);
+      right.appendChild(tailRange.extractContents());
+      if (!right.hasChildNodes()) right.appendChild(document.createElement("br"));
+      if (!block.hasChildNodes()) block.appendChild(document.createElement("br"));
+      block.after(rule, right);
+      const caret = document.createRange();
+      caret.selectNodeContents(right);
+      caret.collapse(true);
+      const selection = window.getSelection();
+      selection.removeAllRanges(); selection.addRange(caret);
+      instance.lastRange = caret.cloneRange();
+      changed(instance);
+    } else {
+      // A rule must not be nested in a table cell or a list item. When the
+      // cursor is inside a complex root-level structure, insert after it.
+      let root = range.startContainer.nodeType === Node.ELEMENT_NODE
+        ? range.startContainer : range.startContainer.parentElement;
+      while (root && root.parentElement !== instance.canvas) root = root.parentElement;
+      if (root && ["TABLE", "UL", "OL"].includes(root.tagName)) {
+        const next = document.createElement("p");
+        next.appendChild(document.createElement("br"));
+        root.after(rule, next);
+        const caret = document.createRange(); caret.selectNodeContents(next); caret.collapse(true);
+        const selection = window.getSelection(); selection.removeAllRanges(); selection.addRange(caret);
+        instance.lastRange = caret.cloneRange();
+        changed(instance);
+      } else {
+        insertAtSelection(instance, rule);
+      }
+    }
+    message(instance, pageBreak ? "Page break inserted." : "Horizontal line inserted.");
+  }
+
+  function toggleFullscreen(instance, enable = !instance.element.classList.contains("azunt-editor-fullscreen")) {
+    instance.element.classList.toggle("azunt-editor-fullscreen", enable);
+    const toggle = instance.toolbar.querySelector('[data-command="fullscreen"]');
+    if (toggle) toggle.setAttribute("aria-pressed", String(enable));
+    if (enable) instance.canvas.focus();
+  }
+
+  function findNodes(instance) {
+    const walker = document.createTreeWalker(instance.canvas, NodeFilter.SHOW_TEXT);
+    const nodes = [];
+    while (walker.nextNode()) if (walker.currentNode.textContent) nodes.push(walker.currentNode);
+    return nodes;
+  }
+
+  function findMatches(instance, query) {
+    if (!query) return [];
+    const needle = query.toLocaleLowerCase();
+    const matches = [];
+    for (const node of findNodes(instance)) {
+      const text = node.textContent.toLocaleLowerCase();
+      let pos = 0;
+      while (pos <= text.length - needle.length) {
+        const start = text.indexOf(needle, pos);
+        if (start < 0) break;
+        matches.push({ node, start, end: start + needle.length });
+        pos = start + Math.max(needle.length, 1);
+        if (matches.length > 5000) break;
+      }
+      if (matches.length > 5000) break;
+    }
+    return matches;
+  }
+
+  function selectMatch(instance, match) {
+    const range = document.createRange();
+    range.setStart(match.node, match.start);
+    range.setEnd(match.node, match.end);
+    const selection = window.getSelection();
+    selection.removeAllRanges();
+    selection.addRange(range);
+    instance.lastRange = range.cloneRange();
+    match.node.parentElement?.scrollIntoView({ block: "nearest" });
+  }
+
+  function findNext(instance) {
+    if (instance.sourceMode) return message(instance, "Apply HTML source before searching text.");
+    const query = instance.findQuery?.value || "";
+    if (!query) return message(instance, "Enter a search term.");
+    const matches = findMatches(instance, query);
+    const selection = window.getSelection();
+    const active = selection?.rangeCount ? selection.getRangeAt(0) : null;
+    let chosen = 0;
+    if (active && instance.canvas.contains(active.endContainer)) {
+      const after = matches.findIndex(m => {
+        const range = document.createRange();
+        range.setStart(m.node, m.start);
+        return range.compareBoundaryPoints(Range.START_TO_END, active) > 0;
+      });
+      chosen = after < 0 ? 0 : after;
+    }
+    if (!matches.length) {
+      instance.findStatus.textContent = "No matches";
+      return;
+    }
+    selectMatch(instance, matches[chosen]);
+    instance.findStatus.textContent = `${chosen + 1} of ${matches.length}`;
+  }
+
+  function selectionMatches(instance, query) {
+    const selection = window.getSelection();
+    if (!selection?.rangeCount || !instance.canvas.contains(selection.anchorNode)) return null;
+    const range = selection.getRangeAt(0);
+    if (range.collapsed || range.toString().toLocaleLowerCase() !== query.toLocaleLowerCase()) return null;
+    return range;
+  }
+
+  function replaceMatch(instance) {
+    if (instance.readOnly || instance.sourceMode) return;
+    const query = instance.findQuery?.value || "";
+    if (!query) return;
+    let range = selectionMatches(instance, query);
+    if (!range) { findNext(instance); range = selectionMatches(instance, query); }
+    if (!range) return;
+    const replacement = instance.findReplacement.value;
+    range.deleteContents();
+    const node = document.createTextNode(replacement);
+    range.insertNode(node);
+    selectAfter(node);
+    changed(instance);
+    findNext(instance);
+  }
+
+  function replaceAllMatches(instance) {
+    if (instance.readOnly || instance.sourceMode) return;
+    const query = instance.findQuery?.value || "";
+    if (!query) return;
+    const replacement = instance.findReplacement.value;
+    // Only replace within individual text nodes: preserve surrounding links,
+    // table cells and inline formatting. This intentionally does not cross tags.
+    let count = 0;
+    for (const node of findNodes(instance)) {
+      const source = node.textContent;
+      const lower = source.toLocaleLowerCase();
+      const needle = query.toLocaleLowerCase();
+      let cursor = 0;
+      let result = "";
+      while (cursor < source.length) {
+        const index = lower.indexOf(needle, cursor);
+        if (index < 0) break;
+        result += source.slice(cursor, index) + replacement;
+        cursor = index + needle.length;
+        count++;
+        if (count > 5000) break;
+      }
+      if (cursor) node.textContent = result + source.slice(cursor);
+      if (count > 5000) break;
+    }
+    if (count) { instance.lastRange = null; changed(instance); }
+    instance.findStatus.textContent = `${count} replaced`;
+  }
+
   function printDocument(instance, previewOnly = false) {
     const html = readHtml(instance);
     const paper = allowedPageSizes.has(instance.page.paper) ? instance.page.paper : "A4";
@@ -612,6 +848,7 @@
       `.azunt-print-page img{max-width:100%;height:auto}` +
       `.azunt-print-page table{border-collapse:collapse;width:100%;break-inside:auto}` +
       `.azunt-print-page tr{break-inside:avoid}` +
+      `.azunt-print-page hr[data-azunt-page-break="true"]{break-before:page;page-break-before:always;border:0;margin:0;height:0}` +
       `.azunt-print-page th,.azunt-print-page td{border:1px solid #aaa;padding:6px}` +
       `@media print{#azunt-print-controls{display:none}.azunt-print-page{margin:0;padding:0;max-width:none;min-height:0;box-shadow:none}}`;
     win.document.open();
@@ -661,11 +898,26 @@
   }
 
   function runCommand(instance, command) {
+    if (command === "fullscreen") return toggleFullscreen(instance);
+    if (command === "find") {
+      if (!instance.findPanel) return;
+      instance.findPanel.hidden = false;
+      instance.findQuery.focus();
+      instance.findQuery.select();
+      return;
+    }
     if (command === "preview") return printDocument(instance, true);
     if (command === "print") return printDocument(instance, false);
     if (instance.readOnly) return;
     if (command === "source") return toggleSource(instance);
+    if (command === "special-chars") {
+      if (instance.characterPanel) instance.characterPanel.hidden = !instance.characterPanel.hidden;
+      return;
+    }
     if (instance.sourceMode) return message(instance, "Apply HTML source before using formatting tools.");
+    if (command === "clear-format") return clearFormatting(instance);
+    if (command === "page-break") return insertRule(instance, true);
+    if (command === "horizontal-rule") return insertRule(instance, false);
     if (command === "image-delete") return deleteImage(instance);
     if (command.startsWith("table-") && command !== "table") return modifyTable(instance, command);
     if (command === "link") return openLinkPanel(instance);
@@ -694,7 +946,9 @@
       instance.value === element.querySelector("[data-azunt-value]") &&
       instance.images === element.querySelector("[data-azunt-images]") &&
       instance.source === element.querySelector("[data-azunt-source]") &&
-      instance.linkPanel === element.querySelector("[data-link-panel]");
+      instance.linkPanel === element.querySelector("[data-link-panel]") &&
+      instance.findPanel === element.querySelector("[data-find-panel]") &&
+      instance.characterPanel === element.querySelector("[data-chars-panel]");
   }
 
   function mount(id, dotNetReference) {
@@ -727,6 +981,12 @@
       linkUrl: element.querySelector("[data-link-url]"),
       imageWidth: element.querySelector("[data-image-width]"),
       status: element.querySelector(".azunt-editor-message"),
+      stats: element.querySelector("[data-editor-stats]"),
+      findPanel: element.querySelector("[data-find-panel]"),
+      findQuery: element.querySelector("[data-find-query]"),
+      findReplacement: element.querySelector("[data-find-replacement]"),
+      findStatus: element.querySelector("[data-find-status]"),
+      characterPanel: element.querySelector("[data-chars-panel]"),
       readOnly: element.dataset.readOnly === "true", uploadUrl: element.dataset.uploadUrl || null,
       dotNetReference: dotNetReference || null, emitTimer: null, history: [], historyIndex: 0, lastRange: null,
       revision: previous?.revision || 0, sourceMode: false,
@@ -742,6 +1002,7 @@
     instance.value.value = readHtml(instance);
     instance.history = [instance.value.value];
     instances.set(element.id, instance);
+    updateStats(instance);
 
     const signal = controller.signal;
     instance.toolbar.addEventListener("mousedown", event => {
@@ -769,6 +1030,23 @@
       instance.editingLink = null;
     }, { signal });
     instance.imageWidth.addEventListener("change", () => resizeImage(instance), { signal });
+    if (instance.findPanel) {
+      instance.findPanel.querySelector("[data-find-next]").addEventListener("click", () => findNext(instance), { signal });
+      instance.findPanel.querySelector("[data-find-replace]").addEventListener("click", () => replaceMatch(instance), { signal });
+      instance.findPanel.querySelector("[data-find-all]").addEventListener("click", () => replaceAllMatches(instance), { signal });
+      instance.findPanel.querySelector("[data-find-close]").addEventListener("click", () => { instance.findPanel.hidden = true; }, { signal });
+      instance.findQuery.addEventListener("keydown", event => {
+        if (event.key === "Enter") { event.preventDefault(); findNext(instance); }
+      }, { signal });
+    }
+    if (instance.characterPanel) {
+      instance.characterPanel.addEventListener("mousedown", event => { if (event.target.closest("button[data-insert-character]")) event.preventDefault(); }, { signal });
+      instance.characterPanel.addEventListener("click", event => {
+        const character = event.target.closest("button[data-insert-character]");
+        if (character) insertSpecial(instance, character.dataset.insertCharacter);
+        if (event.target.closest("[data-chars-close]")) instance.characterPanel.hidden = true;
+      }, { signal });
+    }
     instance.canvas.addEventListener("input", () => changed(instance), { signal });
     instance.canvas.addEventListener("blur", () => {
       window.clearTimeout(instance.emitTimer);
@@ -788,11 +1066,21 @@
       event.preventDefault();
       const files = Array.from(event.clipboardData?.files || []).filter(f => supportedTypes.has(f.type));
       if (files.length) void addImages(instance, files);
-      else insertPlainText(instance, event.clipboardData?.getData("text/plain") || "");
+      else pasteCleanContent(instance,
+        event.clipboardData?.getData("text/html") || "",
+        event.clipboardData?.getData("text/plain") || "");
+    }, { signal });
+    document.addEventListener("keydown", event => {
+      if (event.key === "Escape" && instance.element.classList.contains("azunt-editor-fullscreen"))
+        toggleFullscreen(instance, false);
     }, { signal });
     instance.canvas.addEventListener("keydown", event => {
+      if (event.key === "Escape" && instance.element.classList.contains("azunt-editor-fullscreen")) {
+        event.preventDefault(); toggleFullscreen(instance, false); return;
+      }
       if (instance.readOnly || !(event.ctrlKey || event.metaKey)) return;
       const key = event.key.toLowerCase();
+      if (key === "f") { event.preventDefault(); runCommand(instance, "find"); }
       if (key === "z") { event.preventDefault(); undoOrRedo(instance, event.shiftKey ? 1 : -1); }
       if (key === "y") { event.preventDefault(); undoOrRedo(instance, 1); }
       if (["b", "i", "u"].includes(key)) {
@@ -807,6 +1095,7 @@
       // Source edits remain local until switching back; MVC form/Blazor explicit Save
       // still reads sanitized source if submitted while this mode is open.
       instance.value.value = readHtml(instance);
+      updateStats(instance);
       queueEmit(instance);
     }, { signal });
     const form = element.closest("form");
@@ -868,6 +1157,7 @@
     instance.activeCell = null;
     instance.history = [readHtml(instance)];
     instance.historyIndex = 0;
+    updateStats(instance);
     emit(instance);
   }
 
@@ -875,6 +1165,7 @@
     const instance = instances.get(id);
     if (!instance) return;
     instance.controller.abort();
+    instance.element.classList.remove("azunt-editor-fullscreen");
     instance.observer?.disconnect();
     window.clearTimeout(instance.emitTimer);
     instances.delete(id);

@@ -129,7 +129,7 @@ internal sealed class SafeEditorDocument
             foreach (Match match in AttrPattern.Matches(token[nameEnd..]))
             {
                 var key = match.Groups["key"].Value;
-                if (key is not ("src" or "href" or "alt" or "width" or "height" or "style")) continue;
+                if (key is not ("src" or "href" or "alt" or "width" or "height" or "style" or "data-azunt-page-break")) continue;
                 var value = match.Groups["double"].Success ? match.Groups["double"].Value
                     : match.Groups["single"].Success ? match.Groups["single"].Value
                     : match.Groups["bare"].Value;
@@ -191,6 +191,8 @@ internal sealed class SafeEditorDocument
                 if (int.TryParse(node.Attribute(dimension), out var size) && size is >= 1 and <= 2500)
                     output.Append(' ').Append(dimension).Append("=\"").Append(size).Append('"');
         }
+        if (node.Name == "hr" && node.Attribute("data-azunt-page-break") == "true")
+            output.Append(" data-azunt-page-break=\"true\"");
         if (node.Name == "a" && TryLink(node.Attribute("href"), out var href))
             output.Append(" href=\"").Append(HtmlEncoder.Default.Encode(href)).Append("\" rel=\"noopener noreferrer\"");
         var style = SafeStyle(node);

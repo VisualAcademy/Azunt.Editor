@@ -1,11 +1,12 @@
 # Azunt.Editor
 A lightweight rich-text editor for ASP.NET Core MVC, Razor Pages, and Blazor Server.
 
-Version: **0.4.0** · .NET 10
+Version: **0.5.0** · .NET 10
 
 ## Features
-- Grouped toolbar layout
-- Improved PDF, Word and Excel formatting
+- Paste cleanup and find/replace
+- Page breaks, special characters and fullscreen
+- Word and character counts
 
 ## Projects
 - `src/Azunt.Editor` — editor components

@@ -4,8 +4,8 @@ from zipfile import ZipFile
 
 packages = Path('artifacts/packages')
 for package_name, expected in {
-    'Azunt.Editor.0.4.0.nupkg': ('azunt-editor.js', 'azunt-editor.css'),
-    'Azunt.Editor.Export.0.4.0.nupkg': ('azunt-editor-export.js', 'azunt-editor-export.css'),
+    'Azunt.Editor.0.5.0.nupkg': ('azunt-editor.js', 'azunt-editor.css'),
+    'Azunt.Editor.Export.0.5.0.nupkg': ('azunt-editor-export.js', 'azunt-editor-export.css'),
 }.items():
     file = packages / package_name
     assert file.is_file(), f'Missing NuGet package: {file}'

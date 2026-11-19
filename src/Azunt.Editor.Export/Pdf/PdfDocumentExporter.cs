@@ -66,6 +66,7 @@ internal sealed class PdfDocumentExporter : IDisposable
                   p{orphans:2;widows:2}h1,h2,h3,h4{page-break-after:avoid}
                   pre{white-space:pre-wrap;overflow-wrap:anywhere}blockquote{border-left:3px solid #cbd5e1;padding-left:15px;margin-left:0}
                   a{color:#1d4ed8}hr{border:0;border-top:1px solid #cbd5e1}
+                  hr[data-azunt-page-break="true"]{break-before:page;page-break-before:always;border:0;margin:0;height:0}
                 </style></head><body>{{safeHtml}}</body></html>
                 """;
             await page.SetContentAsync(html, new PageSetContentOptions { WaitUntil = WaitUntilState.Load });

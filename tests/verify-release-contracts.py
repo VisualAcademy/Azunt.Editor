@@ -3,7 +3,7 @@ from pathlib import Path
 from xml.etree import ElementTree
 
 root = Path(__file__).resolve().parents[1]
-version = '0.4.0'
+version = '0.5.0'
 for item in ['src/Azunt.Editor/Azunt.Editor.csproj', 'src/Azunt.Editor.Export/Azunt.Editor.Export.csproj',
              'samples/Azunt.Web/Azunt.Web.csproj']:
     doc = ElementTree.parse(root / item)
@@ -13,6 +13,8 @@ for item in ['src/Azunt.Editor/Azunt.Editor.csproj', 'src/Azunt.Editor.Export/Az
 
 markup = (root / 'src/Azunt.Editor/Rendering/EditorMarkup.cs').read_text()
 assert 'data-group-label' in markup and 'static string? Icon' in markup
+for control in ['data-find-panel', 'data-chars-panel', 'data-editor-stats', 'data-command']:
+    assert control in markup, f'Missing editor writing control: {control}' 
 assert 'data-command' in markup and '<svg' in markup
 
 pdf = (root / 'src/Azunt.Editor.Export/Pdf/PdfDocumentExporter.cs').read_text()
@@ -26,4 +28,4 @@ for scope in [root / 'src', root / 'samples']:
     for file in scope.rglob('*'):
         if file.is_file() and file.suffix in ('.cs', '.csproj', '.razor', '.js', '.css'):
             assert file.read_text(encoding='utf-8').strip(), f'Empty source file: {file}'
-print('PASS: Azunt.Editor 0.4 release contracts, sources are application-agnostic')
+print('PASS: Azunt.Editor 0.5 release contracts, sources are application-agnostic')

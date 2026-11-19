@@ -1,4 +1,4 @@
-/* Azunt.Editor 0.4 preview.1 — all toolbar icons/styles self-contained. */
+/* Azunt.Editor 0.5 preview.1 — self-contained editor styles and writing tools. */
 .azunt-editor {
   --azunt-line: #d8dee6;
   --azunt-text: #1e293b;
@@ -145,3 +145,64 @@
 @media print { .azunt-editor-toolbar, .azunt-editor-message, .azunt-editor-link-panel { display: none !important; } .azunt-editor { border: 0; } }
 /* Allow long tool groups to wrap without forcing a narrow host to scroll sideways. */
 .azunt-editor-group { max-width: 100%; min-width: 0; }
+
+/* Azunt.Editor 0.5: small, dependency-free writing panels. */
+.azunt-editor-find-panel,
+.azunt-editor-chars-panel {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 8px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--azunt-line);
+  background: #f1f5f9;
+}
+.azunt-editor-find-panel label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; }
+.azunt-editor-find-panel input {
+  width: min(210px, 62vw); min-height: 32px;
+  padding: 5px 8px; border: 1px solid #cbd5e1; border-radius: 5px;
+  background: white; font: inherit;
+}
+.azunt-editor-find-panel button,
+.azunt-editor-chars-panel button {
+  min-height: 32px; padding: 5px 10px; cursor: pointer;
+  border-radius: 5px; border: 1px solid #cbd5e1;
+  background: white; color: var(--azunt-text);
+}
+.azunt-editor-find-panel button:hover,
+.azunt-editor-chars-panel button:hover { background: #dbeafe; }
+.azunt-editor-find-status { color: var(--azunt-muted); font-size: 12px; }
+.azunt-editor-chars-panel button[data-insert-character] { min-width: 34px; font-size: 16px; }
+.azunt-editor-panel-heading { font-size: 12px; font-weight: 600; padding: 8px; }
+.azunt-editor-footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-right: 12px; }
+.azunt-editor-footer .azunt-editor-message { flex: 1; }
+.azunt-editor-stats { white-space: nowrap; font-size: 12px; color: var(--azunt-muted); }
+.azunt-editor-canvas hr[data-azunt-page-break="true"] {
+  height: 18px; border: 0; border-top: 2px dashed #64748b; margin: 18px 0;
+  position: relative;
+}
+.azunt-editor-canvas hr[data-azunt-page-break="true"]::after {
+  content: "Page break"; position: absolute; top: -12px; left: 50%; transform: translateX(-50%);
+  background: #fff; padding: 0 8px; font: 11px system-ui, sans-serif; color: #64748b;
+}
+.azunt-editor-fullscreen {
+  position: fixed !important; inset: 0; z-index: 2147483000;
+  border: 0; border-radius: 0; display: flex; flex-direction: column;
+  width: 100vw; height: 100dvh; max-width: none !important;
+}
+.azunt-editor-fullscreen .azunt-editor-toolbar { flex-shrink: 0; }
+.azunt-editor-fullscreen .azunt-editor-canvas,
+.azunt-editor-fullscreen .azunt-editor-source { flex: 1; overflow: auto; min-height: 0 !important; }
+.azunt-editor-fullscreen .azunt-editor-footer { flex-shrink: 0; }
+@media (max-width: 600px) {
+  .azunt-editor-footer { flex-wrap: wrap; padding-bottom: 4px; }
+  .azunt-editor-stats { padding: 2px 10px; }
+}
+@media print {
+  .azunt-editor-find-panel, .azunt-editor-chars-panel, .azunt-editor-footer { display: none !important; }
+  .azunt-editor-canvas hr[data-azunt-page-break="true"] {
+    break-before: page !important; page-break-before: always !important;
+    border: 0 !important; height: 0; margin: 0;
+  }
+  .azunt-editor-canvas hr[data-azunt-page-break="true"]::after { content: none; }
+}

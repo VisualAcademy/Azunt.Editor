@@ -21,6 +21,12 @@
     <button type="button" data-command="source">Source</button>
     <button type="button" data-command="preview">Preview</button>
     <button type="button" data-command="print">Print</button>
+    <button type="button" data-command="find">Find</button>
+    <button type="button" data-command="clear-format">Remove formatting</button>
+    <button type="button" data-command="horizontal-rule">Horizontal line</button>
+    <button type="button" data-command="page-break">Page break</button>
+    <button type="button" data-command="special-chars">Special</button>
+    <button type="button" data-command="fullscreen">Fullscreen</button>
     <select data-select="fontFamily"><option value="">Font</option><option value="Georgia">Georgia</option></select>
     <select data-select="fontSize"><option value="">Size</option><option value="24">24</option></select>
     <input type="color" data-select="color" value="#1e293b">
@@ -33,11 +39,22 @@
   <div class="azunt-editor-link-panel" data-link-panel hidden>
     <input data-link-text><input data-link-url><button data-link-apply>Apply</button><button data-link-cancel>Cancel</button>
   </div>
+  <div class="azunt-editor-find-panel" data-find-panel hidden>
+    <input type="text" data-find-query><input type="text" data-find-replacement>
+    <button data-find-next>Find next</button><button data-find-replace>Replace</button>
+    <button data-find-all>Replace all</button><button data-find-close>Close</button>
+    <span data-find-status></span>
+  </div>
+  <div class="azunt-editor-chars-panel" data-chars-panel hidden>
+    <button type="button" data-insert-character="©">©</button>
+    <button type="button" data-insert-character="✓">✓</button>
+    <button type="button" data-chars-close>Close</button>
+  </div>
   <div class="azunt-editor-canvas" contenteditable="true"></div>
   <textarea data-azunt-source hidden></textarea>
   <textarea data-azunt-value hidden name="Html"><p>Initial</p></textarea>
   <input data-azunt-images type="file" hidden multiple>
-  <p class="azunt-editor-message"></p>
+  <p class="azunt-editor-message"></p><span data-editor-stats></span>
 </div>
 <script src="../src/Azunt.Editor/wwwroot/js/azunt-editor.js"></script>
 </body></html>

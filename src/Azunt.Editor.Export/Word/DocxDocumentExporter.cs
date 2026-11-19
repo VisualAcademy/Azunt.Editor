@@ -49,6 +49,18 @@ internal static class DocxDocumentExporter
 
     private static void AppendBlock(SafeEditorDocument.Node node, W.Body body, MainDocumentPart part, ref uint drawingId)
     {
+        if (node.Name == "hr")
+        {
+            // A semantic editor page break becomes a real Word page break.
+            // Ordinary horizontal rules remain visible text separators.
+            var paragraph = new W.Paragraph();
+            if (node.Attribute("data-azunt-page-break") == "true")
+                paragraph.Append(new W.Run(new W.Break { Type = W.BreakValues.Page }));
+            else
+                paragraph.Append(new W.Run(new W.Text("────────────────────")));
+            body.Append(paragraph);
+            return;
+        }
         if (node.Name == "table")
         {
             body.Append(BuildTable(node, part, ref drawingId));

@@ -14,6 +14,7 @@ var samplePng = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8
 var html = "<h2>Export test</h2><p><strong>Bold</strong> and <a href=\"https://example.com\">a link</a></p>" +
     "<table><tr><th>Asset</th><th>Status</th></tr><tr><td>EGM-001</td><td>=1+1</td></tr></table>" +
     $"<p><img src=\"data:image/png;base64,{samplePng}\" width=\"80\" alt=\"test\"></p>" +
+    "<hr data-azunt-page-break=\"true\"><p>Second page</p>" +
     "<script>alert('bad')</script><p onclick=\"alert('bad')\">Safe</p>";
 
 var word = await exporter.ExportAsync(html, EditorExportFormat.Docx);
@@ -22,6 +23,8 @@ using (var zip = new ZipArchive(new MemoryStream(word.Content), ZipArchiveMode.R
 {
     var xml = Read(zip, "word/document.xml");
     Require(xml.Contains("Export test"), "DOCX heading");
+    Require(xml.Contains("w:type=\"page\""),
+        "DOCX contains an actual page break");
     Require(xml.Contains("EGM-001"), "DOCX table text");
     Require(xml.Contains("cantSplit"), "DOCX prevents table row splitting");
     Require(xml.Contains("tblHeader"), "DOCX repeats semantic header rows");
@@ -58,6 +61,11 @@ Require(!cleaned.Contains("onclick") && !cleaned.Contains("<script") && !cleaned
 Require(!cleaned.Contains("https://example.org/pixel") && !cleaned.Contains("javascript:"),
     "Disallowed images and link schemes must be removed");
 Require(cleaned.Contains("Unsafe link"), "Link text must be preserved safely");
+var cleanPageBreak = EditorHtmlSanitizer.Sanitize("<p>First</p><hr data-azunt-page-break='true'><p>Second</p>");
+Require(cleanPageBreak.Contains("<hr data-azunt-page-break=\"true\">"),
+    "Allowed editor page break must survive server sanitization");
+Require(!EditorHtmlSanitizer.Sanitize("<p data-azunt-page-break='true'>Text</p>").Contains("data-azunt-page-break"),
+    "Page break attribute is not allowed on ordinary paragraphs");
 Require(EditorHtmlSanitizer.Sanitize("<a href='/reports/123'>Local</a>").Contains("href=\"/reports/123\""),
     "Safe root-relative links are retained after persistence");
 Require(EditorHtmlSanitizer.Sanitize("<a href='https://example.org/'>External</a>").Contains("https://example.org/"),

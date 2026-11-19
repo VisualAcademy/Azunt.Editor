@@ -3,10 +3,12 @@
 @inject Microsoft.AspNetCore.Hosting.IWebHostEnvironment HostEnvironment
 @{
     var storedImages = HostEnvironment.IsDevelopment() && Model.HttpContext.Request.Query["images"] == "stored";
+    var saveImagesOnSubmit = HostEnvironment.IsDevelopment() &&
+        (Model.HttpContext.Request.Query["images"] == "save");
     var imageUploadUrl = storedImages ? "/editor/demo-images" : null;
 }
-<p class="document-meta">Image mode: @(storedImages ? "local files" : "inline Base64") ·
-    <a href="?images=stored">Stored images</a> · <a href="?">Inline images</a></p>
+<p class="document-meta">Image mode: @(storedImages ? "upload on insert" : saveImagesOnSubmit ? "store on save" : "inline Base64") ·
+    <a href="?">Inline</a> · <a href="?images=stored">Upload on insert</a> · <a href="?images=save">Store on Save</a></p>
 <h1>Azunt.Editor — Razor Pages</h1>
 <p>Submit the form to test Razor Pages model binding and session-scoped persistence.</p>
 <form method="post">

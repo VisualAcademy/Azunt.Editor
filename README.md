@@ -1,44 +1,46 @@
 # Azunt.Editor
+
 A lightweight rich-text editor for ASP.NET Core MVC, Razor Pages, and Blazor Server.
 
-Version: **0.5.5** · .NET 10
-
-## Features
-- Image drag-and-drop
-- Alternative text for images
-- Refined image insertion and touch resizing
-- Optional host-managed image uploads and local-file demo storage
+Version: **0.5.6** · .NET 10
 
 ## Projects
-- `src/Azunt.Editor` — editor components
-- `src/Azunt.Editor.Export` — PDF, Word and Excel export
-- `samples/Azunt.Web` — example application
+- `src/Azunt.Editor` — shared editor components, JavaScript, and CSS
+- `src/Azunt.Editor.Export` — PDF, Word, and Excel export
+- `samples/Azunt.Web` — MVC, Razor Pages, and Blazor Server examples
 - `tests` — smoke and browser tests
 
-## Run
+## Build
 ```powershell
 dotnet restore Azunt.Editor.sln
 dotnet build Azunt.Editor.sln -c Release
 dotnet run --project samples/Azunt.Web
 ```
 
-## Image storage
-The default editor keeps images inline (Base64). This behavior has not changed.
+## Images
 
-For a local development demo, run Azunt.Web and visit
-`/editor/blazor?images=stored`, `/editor/mvc?images=stored`, or
-`/editor/razor-pages?images=stored`. Uploaded files are saved under
-`Azunt.Web/App_Data/editor-images`, outside `wwwroot`.
+The default editing mode uses inline Base64. The host may also store images
+when inserted or convert them into short image URLs when the document is saved.
 
-The sample upload and image routes are **Development-only and loopback-only**.
-Production hosts should implement `IEditorImageStore` and `IEditorImageReader`
-with authenticated endpoints, authorization, quotas, and shared storage when
-running across multiple servers. `IEditorImageResolver` allows the export module
-to embed authorized stored images without downloading untrusted URLs.
+| Demo mode | Blazor URL | Behavior |
+| --- | --- | --- |
+| Inline | `/editor/blazor` | Keep Base64 in HTML |
+| Stored | `/editor/blazor?images=stored` | Upload images when inserted |
+| Save | `/editor/blazor?images=save` | Convert Base64 to stored URLs on Save |
 
-Do not delete images immediately when a user removes them in the editor.
-Documents, drafts, and undo history may still reference them. Clean up only
-once the host has verified that an image is unused.
+The same `images` query parameter works on `/editor/mvc` and
+`/editor/razor-pages`. File-based demo storage is available only on local
+Development environments. Documents are stored in the demo session/component;
+the application must implement permanent document storage.
+
+Image files are stored outside `wwwroot` in `samples/Azunt.Web/App_Data/editor-images`.
+The local demo serves immutable image IDs with browser-private caching. In a
+production application, the host must implement authentication, document
+ownership checks, storage, and an appropriate cache policy. Azure Blob Storage
+can be used behind authenticated host URLs; do not embed private SAS tokens in
+saved HTML.
+
+For integration details, see [image persistence](docs/image-persistence.md).
 
 ## License
 MIT. See [LICENSE](LICENSE).

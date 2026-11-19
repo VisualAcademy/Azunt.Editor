@@ -1,4 +1,4 @@
-/* Azunt.Editor 0.5.5. Self-owned editing engine, no third-party JS. */
+/* Azunt.Editor shared editing engine, no third-party JavaScript dependencies. */
 (function () {
   "use strict";
 

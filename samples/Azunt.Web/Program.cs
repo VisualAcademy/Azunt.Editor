@@ -21,6 +21,7 @@ builder.Services.AddSingleton(_ => new FileSystemEditorImageStore(
     Path.Combine(builder.Environment.ContentRootPath, "App_Data", "editor-images"),
     "/editor/demo-images"));
 builder.Services.AddSingleton<IEditorImageResolver, DemoImageResolver>();
+builder.Services.AddSingleton<Azunt.Editor.Export.Html.EditorInlineImagePersistence>();
 builder.Services.AddAzuntEditorExport(options =>
 {
     options.BrowserChannel = builder.Configuration["Azunt:Pdf:BrowserChannel"];
@@ -104,9 +105,16 @@ if (app.Environment.IsDevelopment())
         if (!store.IsManagedUrl(url)) return Results.NotFound();
         var image = await store.ReadAsync(url, cancellationToken);
         if (image is null) return Results.NotFound();
-        context.Response.Headers.CacheControl = "private, no-store";
+        // Local demo only: file IDs are random and images are never overwritten.
+        // Browser-private caching avoids repeatedly transferring the same image.
+        // Production hosts must apply their own authorization and cache policy.
+        var etag = "\"" + id + "\"";
+        context.Response.Headers.CacheControl = "private, max-age=86400, immutable";
+        context.Response.Headers["ETag"] = etag;
         context.Response.Headers["X-Content-Type-Options"] = "nosniff";
         context.Response.Headers["Content-Security-Policy"] = "default-src 'none'";
+        if (context.Request.Headers["If-None-Match"].ToString() == etag)
+            return Results.StatusCode(StatusCodes.Status304NotModified);
         return Results.File(image.Content, image.ContentType);
     });
 }

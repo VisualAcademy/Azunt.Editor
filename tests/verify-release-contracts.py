@@ -3,7 +3,7 @@ from pathlib import Path
 from xml.etree import ElementTree
 
 root = Path(__file__).resolve().parents[1]
-version = '0.5.5'
+version = '0.5.6'
 for item in ['src/Azunt.Editor/Azunt.Editor.csproj', 'src/Azunt.Editor.Export/Azunt.Editor.Export.csproj',
              'samples/Azunt.Web/Azunt.Web.csproj']:
     doc = ElementTree.parse(root / item)
@@ -37,4 +37,4 @@ assert 'function setImageAlt' in editor_js
 assert 'function isSupportedDrop' in editor_js
 word_alt = (root / 'src/Azunt.Editor.Export/Word/DocxDocumentExporter.cs').read_text()
 assert 'Description = altText' in word_alt
-print('PASS: Azunt.Editor 0.5.5 release contracts, sources are application-agnostic')
+print('PASS: Azunt.Editor 0.5.6 release contracts, sources are application-agnostic')

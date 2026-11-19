@@ -1,4 +1,5 @@
 using Azunt.Editor.Storage;
+using Azunt.Web.Images;
 using Azunt.Web.Models;
 using Azunt.Editor.Export.Models;
 using Azunt.Editor.Export.Html;
@@ -7,7 +8,8 @@ using Microsoft.AspNetCore.Mvc;
 namespace Azunt.Web.Controllers;
 
 [Route("editor/mvc")]
-public sealed class EditorMvcController(IEditorExportService exporter, ILogger<EditorMvcController> logger, FileSystemEditorImageStore imageStore) : Controller
+public sealed class EditorMvcController(IEditorExportService exporter, ILogger<EditorMvcController> logger, FileSystemEditorImageStore imageStore,
+    EditorInlineImagePersistence imagePersistence, IWebHostEnvironment environment) : Controller
 {
     private const string SessionKey = "azunt.demo.mvc";
     private const int MaxHtmlLength = 12_000_000;
@@ -31,10 +33,30 @@ public sealed class EditorMvcController(IEditorExportService exporter, ILogger<E
             ModelState.AddModelError(nameof(vm.Html), "Document exceeds the demo size limit.");
             return View(vm);
         }
-        try { vm.Html = EditorHtmlSanitizer.Sanitize(vm.Html, imageStore.IsManagedUrl); }
+        var saveImagesOnSubmit = environment.IsDevelopment() &&
+            string.Equals(Request.Query["images"].ToString(), "save", StringComparison.OrdinalIgnoreCase) &&
+            string.IsNullOrWhiteSpace(exportFormat);
+        try
+        {
+            if (saveImagesOnSubmit)
+            {
+                var result = await DemoImageSaveService.PersistAsync(
+                    imagePersistence, imageStore, vm.Html, cancellationToken);
+                vm.Html = result.Html;
+                vm.Notice = $"Saved {result.SavedImageCount} image file(s). HTML remains in this browser session.";
+            }
+            else
+                vm.Html = EditorHtmlSanitizer.Sanitize(vm.Html, imageStore.IsManagedUrl);
+        }
         catch (ArgumentException)
         {
-            ModelState.AddModelError(nameof(vm.Html), "Document contains unsupported or excessively complex HTML.");
+            ModelState.AddModelError(nameof(vm.Html), "Document or image is unsupported or exceeds the demo limits.");
+            return View(vm);
+        }
+        catch (Exception ex) when (ex is IOException or InvalidOperationException)
+        {
+            logger.LogError(ex, "MVC final-save image persistence failed.");
+            ModelState.AddModelError(nameof(vm.Html), "Image save failed. Check the application logs.");
             return View(vm);
         }
         if (!string.IsNullOrWhiteSpace(exportFormat))
@@ -58,7 +80,7 @@ public sealed class EditorMvcController(IEditorExportService exporter, ILogger<E
             }
         }
         HttpContext.Session.SetString(SessionKey, vm.Html);
-        vm.Notice = "Saved in this browser session. The HTML below is displayed as escaped source.";
+        vm.Notice ??= "Saved in this browser session. The HTML below is displayed as escaped source.";
         return View(vm);
     }
 }

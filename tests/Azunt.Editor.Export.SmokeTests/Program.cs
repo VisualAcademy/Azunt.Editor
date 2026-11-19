@@ -141,6 +141,52 @@ using (var storedProvider = new ServiceCollection()
     }
 }
 
+// Final-save conversion: inline editing becomes short host-managed references.
+var persistence = new EditorInlineImagePersistence();
+var managedUrl = "/editor/demo-images/" + new string('b', 32);
+var savedCalls = 0;
+var savedImage = await persistence.PersistAsync(
+    $"<p>Figure</p><p><img src='data:image/png;base64,{samplePng}' alt='One' width='120'></p>" +
+    $"<p><img src='data:image/png;base64,{samplePng}' alt='Two'></p>",
+    async (stream, fileName, contentType, token) =>
+    {
+        savedCalls++;
+        Require(contentType == "image/png" && fileName.EndsWith(".png"), "Image save metadata");
+        using var buffer = new MemoryStream();
+        await stream.CopyToAsync(buffer, token);
+        Require(buffer.ToArray().SequenceEqual(Convert.FromBase64String(samplePng)), "Image payload preserved");
+        return managedUrl;
+    }, url => url == managedUrl);
+Require(savedCalls == 1 && savedImage.SavedImageCount == 1 && savedImage.ImageCount == 2,
+    "Duplicate inline images are saved once per document");
+Require(savedImage.Html.Contains(managedUrl) && !savedImage.Html.Contains("base64"),
+    "Saved HTML uses short managed URLs");
+Require(savedImage.Html.Contains("alt=\"One\"") && savedImage.Html.Contains("width=\"120\""),
+    "Saved HTML keeps image attributes");
+var repeated = await persistence.PersistAsync(savedImage.Html,
+    (stream, fileName, contentType, token) => throw new Exception("Unexpected upload"),
+    url => url == managedUrl);
+Require(repeated.SavedImageCount == 0 && repeated.Html == savedImage.Html,
+    "Saving a managed document again does not re-upload images");
+var rejected = false;
+try
+{
+    await persistence.PersistAsync("<img src='https://untrusted.example/pixel.png'>",
+        (stream, name, contentType, token) => throw new Exception("Must not call storage"),
+        _ => false);
+}
+catch (ArgumentException) { rejected = true; }
+Require(rejected, "Remote image references are rejected before writes");
+rejected = false;
+try
+{
+    await persistence.PersistAsync($"<img src='data:image/png;base64,{samplePng}'>",
+        (stream, name, contentType, token) => Task.FromResult("https://other.example/image"),
+        url => url == managedUrl);
+}
+catch (InvalidOperationException) { rejected = true; }
+Require(rejected, "Storage must return a validated root-relative URL");
+
 if (Environment.GetEnvironmentVariable("AZUNT_TEST_PDF") == "1")
 {
     var pdf = await exporter.ExportAsync(html, EditorExportFormat.Pdf,

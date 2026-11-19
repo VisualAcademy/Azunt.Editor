@@ -1832,7 +1832,8 @@
     instance.originalGroups = instance.classicGroups
       ? Array.from(instance.classicGroups.querySelectorAll(":scope > .az-azunt-editor-group")) : [];
     instance.openMenu = null;
-    instance.blazorCommands = new Map();
+    // Blazor commands can already be registered before a toolbar is initialized,
+    // e.g. while the editor is in View mode. Do not reset them here.
     refreshQuickCommands(instance);
     // Apply the same thresholds before the first observer notification.
     const width = instance.element.getBoundingClientRect().width;
@@ -1921,7 +1922,8 @@
       mode: element.dataset.editorMode === "view" ? "view" : "edit",
       readOnly: element.dataset.editorMode === "view" || element.dataset.readOnly === "true",
       uploadUrl: element.dataset.uploadUrl || null,
-      dotNetReference: dotNetReference || null, emitTimer: null, messageTimer: null, messageVersion: 0,
+      dotNetReference: dotNetReference || null, blazorCommands: new Map(previousBlazorCommands || []),
+      emitTimer: null, messageTimer: null, messageVersion: 0,
       history: [], historyIndex: 0, lastRange: null,
       revision: previous?.revision || 0, sourceMode: false,
       selectedImage: null, activeCell: null, editingLink: null,
@@ -1951,11 +1953,8 @@
     instance.canvas.setAttribute("role", "textbox");
     instance.canvas.setAttribute("aria-label", "Document content");
     instance.canvas.setAttribute("aria-multiline", "true");
+    // initAdaptiveToolbar() also renders commands retained across Edit/View changes.
     initAdaptiveToolbar(instance);
-    if (previousBlazorCommands?.size) {
-      instance.blazorCommands = new Map(previousBlazorCommands);
-      refreshQuickCommands(instance);
-    }
     updateStats(instance);
 
     const signal = controller.signal;

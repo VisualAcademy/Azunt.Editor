@@ -97,6 +97,18 @@ async def main():
             assert ['OnCustomCommand','downloadPdf'] in await page.evaluate('window.blazorCalls')
             assert await page.locator('#browser-test [data-quick-custom] [data-custom-command="downloadPdf"]').count() == 1
 
+            # Regression: Edit -> View -> Edit must not drop Blazor export commands.
+            await page.evaluate('''() => {
+              AzuntEditor.setMode('browser-test', 'View');
+              AzuntEditor.setMode('browser-test', 'Edit');
+            }''')
+            await page.locator('[data-azunt-menu="export"]').click()
+            pdf = page.locator('#browser-test [data-menu-panel] [data-custom-command="downloadPdf"]')
+            assert await pdf.count() == 1, 'Blazor command lost after Edit/View/Edit'
+            await pdf.click()
+            assert (await page.evaluate('window.blazorCalls'))[-1:] == [['OnCustomCommand','downloadPdf']]
+            await page.keyboard.press('Escape')
+
             # Read-only editors disable mutating host actions but permit exports.
             await page.evaluate('''() => {
               AzuntEditor.unmount('browser-test');

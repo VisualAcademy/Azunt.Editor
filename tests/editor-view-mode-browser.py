@@ -25,6 +25,19 @@ async def main():
             await page.set_content(html)
             await page.add_style_tag(content=CSS)
             await page.add_script_tag(content=JS)
+            # Blazor may register export commands while the component starts in View.
+            await page.evaluate('''() => {
+                window.exportCalls = [];
+                AzuntEditor.mount('browser-test', {invokeMethodAsync: (method, id) => {
+                    window.exportCalls.push([method, id]);
+                    return Promise.resolve();
+                }});
+                AzuntEditor.setCommands('browser-test', [
+                    {id: 'downloadPdf', label: 'Download PDF', group: 'Export'},
+                    {id: 'downloadWord', label: 'Download Word', group: 'Export'},
+                    {id: 'downloadExcel', label: 'Download Excel', group: 'Export'}
+                ]);
+            }''')
             canvas = page.locator('#browser-test .az-azunt-editor-canvas')
             toolbar = page.locator('#browser-test .az-azunt-editor-toolbar')
             assert await toolbar.is_hidden(), 'View mode must hide the whole toolbar'
@@ -44,6 +57,15 @@ async def main():
             assert await canvas.get_attribute('role') == 'textbox'
             assert not await page.locator('#browser-test [data-azunt-value]').is_disabled()
             assert await page.evaluate('AzuntEditor.getHtml("browser-test")') == before
+            # Export commands must survive the initial View -> Edit mount.
+            export_menu = page.locator('#browser-test [data-azunt-menu="export"]')
+            await export_menu.click()
+            assert await page.locator('#browser-test [data-menu-panel] [data-custom-command]').all_inner_texts() == [
+                'Download PDF', 'Download Word', 'Download Excel'
+            ]
+            await page.locator('#browser-test [data-menu-panel] [data-custom-command="downloadPdf"]').click()
+            assert ['OnCustomCommand', 'downloadPdf'] in await page.evaluate('window.exportCalls')
+            await page.keyboard.press('Escape')
             await page.evaluate('''() => {
                 const canvas = document.querySelector('#browser-test .az-azunt-editor-canvas');
                 canvas.innerHTML = '<p>First</p>';
@@ -56,6 +78,10 @@ async def main():
             assert await page.evaluate('AzuntEditor.getHtml("browser-test")') == '<p>Second</p>'
             await page.evaluate('AzuntEditor.setMode("browser-test", "Edit")')
             assert await canvas.get_attribute('contenteditable') == 'true'
+            # A second View -> Edit roundtrip must retain the same commands.
+            await export_menu.click()
+            assert await page.locator('#browser-test [data-menu-panel] [data-custom-command]').count() == 3
+            await page.keyboard.press('Escape')
             await page.locator('#browser-test [data-quick-command="undo"]').click()
             assert await page.evaluate('AzuntEditor.getHtml("browser-test")') == '<p>First</p>', 'Undo history must survive mode changes'
 

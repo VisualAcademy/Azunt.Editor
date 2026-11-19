@@ -1440,13 +1440,7 @@
     if (!node && instance.toolbar.contains(document.activeElement) &&
         instance.lastRange && instance.canvas.contains(instance.lastRange.startContainer))
       node = instance.lastRange.startContainer;
-    if (!node) {
-      instance.toolbar.querySelectorAll("button[aria-pressed]").forEach(button =>
-        button.setAttribute("aria-pressed", "false"));
-      if (instance.formatIndicator) instance.formatIndicator.textContent = "Paragraph";
-      return;
-    }
-    if (node.nodeType !== Node.ELEMENT_NODE) node = node.parentElement;
+    if (node && node.nodeType !== Node.ELEMENT_NODE) node = node.parentElement;
     const ancestors = [];
     for (let current = node; current && current !== instance.canvas; current = current.parentElement)
       ancestors.push(current);
@@ -1461,19 +1455,105 @@
       bold: isBold, italic: isItalic, underline: isUnderline, strike: isStrike,
       sup: tags.has("SUP"), sub: tags.has("SUB"), ul: tags.has("UL"), ol: tags.has("OL")
     };
-    // Classic and Compact contain separate commands, but both reflect one caret.
+    // A selection in one editor never affects the visible state of another editor.
     instance.toolbar.querySelectorAll("button[data-command],button[data-quick-command]").forEach(button => {
       const command = button.dataset.command || button.dataset.quickCommand;
-      if (toggleCommands.has(command)) button.setAttribute("aria-pressed", String(Boolean(active[command])));
+      if (toggleCommands.has(command)) button.setAttribute("aria-pressed", String(Boolean(node && active[command])));
     });
-    const block = ancestors.find(element => /^(H[1-6]|P|LI|BLOCKQUOTE|DIV)$/.test(element.tagName));
+
+    // Inspect only explicit inline formatting. A computed fallback would incorrectly
+    // label unformatted text with the host page's default font and foreground color.
+    const inlineValue = property => ancestors.map(el => el.style?.[property] || "").find(Boolean) || "";
+    const family = inlineValue("fontFamily").replace(/["']/g, "").trim();
+    const font = Array.from(allowedFonts).find(value => value.toLowerCase() === family.toLowerCase()) || "";
+    const size = /^(\d{1,2})px$/i.exec(inlineValue("fontSize"))?.[1] || "";
+    const textColor = cleanColor(inlineValue("color"));
+    const highlightColor = cleanColor(inlineValue("backgroundColor"));
+    const selectValues = { fontFamily: font, fontSize: size };
+    for (const [field, value] of Object.entries(selectValues)) {
+      const control = instance.toolbar.querySelector(`[data-select="${field}"]`);
+      if (control) control.value = Array.from(control.options).some(option => option.value === value) ? value : "";
+    }
+    const pickerValues = { color: textColor, backgroundColor: highlightColor };
+    for (const [field, value] of Object.entries(pickerValues)) {
+      const control = instance.toolbar.querySelector(`[data-select="${field}"]`);
+      if (!control) continue;
+      if (!control.dataset.defaultColor) control.dataset.defaultColor = control.value;
+      control.value = value || control.dataset.defaultColor;
+      const label = field === "color" ? "Text color" : "Text highlight";
+      control.setAttribute("aria-label", `${label}: ${value || "default"}`);
+      control.title = `${label}: ${value || "default"}`;
+    }
+    const block = ancestors.find(el => /^(H[1-6]|P|LI|BLOCKQUOTE|DIV)$/.test(el.tagName));
     const paragraph = block?.tagName?.startsWith("H") ? `Heading ${block.tagName.slice(1)}` :
       block?.tagName === "BLOCKQUOTE" ? "Block quote" : "Paragraph";
     const styles = ["bold", "italic", "underline", "strike", "sup", "sub"]
-      .filter(key => active[key]).map(key => key[0].toUpperCase() + key.slice(1));
-    if (active.ul) styles.push("Bulleted list");
-    else if (active.ol) styles.push("Numbered list");
+      .filter(key => node && active[key]).map(key => key[0].toUpperCase() + key.slice(1));
+    if (node && active.ul) styles.push("Bulleted list");
+    else if (node && active.ol) styles.push("Numbered list");
+    if (font) styles.push(font);
+    if (size) styles.push(`${size}px`);
+    if (textColor) styles.push(`Text ${textColor}`);
+    if (highlightColor) styles.push(`Highlight ${highlightColor}`);
     if (instance.formatIndicator) instance.formatIndicator.textContent = [paragraph, ...styles].join(" · ");
+  }
+
+  // Fixed overlays keep both menus and contextual tools inside the visible
+  // viewport even when the host has a narrow form or a scrolled document.
+  function visibleViewport() {
+    const view = window.visualViewport;
+    const left = view?.offsetLeft || 0;
+    const top = view?.offsetTop || 0;
+    return { left, top, right: left + (view?.width || window.innerWidth),
+      bottom: top + (view?.height || window.innerHeight) };
+  }
+
+  function positionMenu(instance) {
+    if (!instance.menuPanel || instance.menuPanel.hidden) return;
+    const viewport = visibleViewport();
+    const editor = instance.element.getBoundingClientRect();
+    const contextOpener = instance.menuOpener?.closest("[data-context-tools]");
+    const anchor = contextOpener && instance.menuAnchorRect
+      ? instance.menuAnchorRect : instance.toolbar.getBoundingClientRect();
+    const width = Math.max(1, Math.min(860, editor.width - 16, viewport.right - viewport.left - 16));
+    const left = Math.max(viewport.left + 8,
+      Math.min(contextOpener ? anchor.left : editor.left + 8, viewport.right - 8 - width));
+    const below = viewport.bottom - anchor.bottom - 8;
+    const above = anchor.top - viewport.top - 8;
+    const placeAbove = below < 210 && above > below;
+    const maxHeight = Math.max(1, Math.min(440, placeAbove ? above : below));
+    instance.menuPanel.style.width = `${width}px`;
+    instance.menuPanel.style.left = `${left}px`;
+    instance.menuPanel.style.maxHeight = `${maxHeight}px`;
+    instance.menuPanel.style.top = placeAbove ? "auto" : `${Math.max(viewport.top + 8, anchor.bottom)}px`;
+    instance.menuPanel.style.bottom = placeAbove ? `${Math.max(0, window.innerHeight - anchor.top)}px` : "auto";
+  }
+
+  function positionContextTools(instance, target) {
+    const tools = instance.contextTools;
+    if (!tools || tools.hidden || !target?.isConnected) return;
+    const viewport = visibleViewport();
+    const rect = target.getBoundingClientRect();
+    if (!rect.width || !rect.height || rect.bottom < viewport.top || rect.top > viewport.bottom) {
+      tools.hidden = true;
+      return;
+    }
+    const width = Math.min(tools.offsetWidth, viewport.right - viewport.left - 16);
+    const height = tools.offsetHeight;
+    const left = Math.max(viewport.left + 8, Math.min(rect.left, viewport.right - width - 8));
+    const below = viewport.bottom - rect.bottom - 8;
+    const top = below < height && rect.top - viewport.top >= height + 8
+      ? rect.top - height - 8 : Math.min(rect.bottom + 8, viewport.bottom - height - 8);
+    tools.style.left = `${left}px`;
+    tools.style.top = `${Math.max(viewport.top + 8, top)}px`;
+  }
+
+  function repositionOverlays(instance) {
+    if (!instance.menuPanel?.hidden) positionMenu(instance);
+    if (instance.contextTools && !instance.contextTools.hidden) {
+      const target = selectedImage(instance) || activeTableCell(instance);
+      positionContextTools(instance, target);
+    }
   }
 
   function menuTriggers(instance) {
@@ -1507,6 +1587,7 @@
     instance.menuPanel.replaceChildren();
     instance.menuPanel.hidden = true;
     instance.openMenu = null;
+    instance.menuAnchorRect = null;
     instance.toolbar.querySelectorAll("[data-azunt-menu]").forEach(button => {
       button.setAttribute("aria-expanded", "false");
     });
@@ -1577,6 +1658,8 @@
     const oldOpener = instance.menuOpener;
     closeMenu(instance);
     instance.menuOpener = opener || instance.toolbar.querySelector(`[data-azunt-menu="${key}"]`) || oldOpener;
+    instance.menuAnchorRect = instance.menuOpener?.closest("[data-context-tools]")
+      ? instance.menuOpener.getBoundingClientRect() : null;
     instance.openMenu = key;
     instance.menuPanel.hidden = false;
     for (const label of menuGroups[key]) {
@@ -1594,6 +1677,7 @@
       button.setAttribute("aria-expanded", String(button.dataset.azuntMenu === key));
     });
     if (instance.contextTools) instance.contextTools.hidden = true;
+    positionMenu(instance);
   }
 
   function executeCustomCommand(instance, id) {
@@ -1699,17 +1783,16 @@
       button.textContent = label;
       button.className = "azunt-editor-button";
       button.setAttribute("aria-label", label);
-      if (command.startsWith("@")) button.dataset.operateMenu = command.slice(1);
-      else button.dataset.quickCommand = command;
+      if (command.startsWith("@")) {
+        button.dataset.operateMenu = command.slice(1);
+        button.setAttribute("aria-haspopup", "dialog");
+        if (instance.menuPanel) button.setAttribute("aria-controls", instance.menuPanel.id);
+      } else button.dataset.quickCommand = command;
       tools.appendChild(button);
     }
-    const area = instance.element.getBoundingClientRect();
-    const rect = target.getBoundingClientRect();
-    if (!rect.width || !rect.height) { tools.hidden = true; return; }
-    // Position within the editor instead of behind the toolbar or outside the viewport.
-    tools.style.left = `${Math.max(6, Math.min(area.width - 320, rect.left - area.left))}px`;
-    tools.style.top = `${Math.max(6, rect.bottom - area.top + 8)}px`;
+    // Measure after showing the toolbar so wrapped touch targets are accounted for.
     tools.hidden = false;
+    positionContextTools(instance, target);
   }
 
   function setToolbarMode(id, mode) {
@@ -1729,11 +1812,13 @@
     if (instance.menuPanel) {
       instance.menuPanel.id = panelId;
       instance.menuPanel.tabIndex = -1;
+      instance.menuPanel.setAttribute("role", "dialog");
+      instance.menuPanel.setAttribute("aria-modal", "false");
     }
     const triggers = instance.toolbar.querySelectorAll("[data-compact-menu] button[data-azunt-menu]");
     triggers.forEach((button, index) => {
       button.setAttribute("role", "menuitem");
-      button.setAttribute("aria-haspopup", "true");
+      button.setAttribute("aria-haspopup", "dialog");
       button.setAttribute("aria-controls", panelId);
       button.setAttribute("aria-expanded", "false");
       button.tabIndex = index === 0 ? 0 : -1;
@@ -1741,18 +1826,26 @@
     const more = instance.toolbar.querySelector('[data-azunt-menu="more"]');
     if (more) {
       more.setAttribute("aria-controls", panelId);
-      more.setAttribute("aria-haspopup", "true");
+      more.setAttribute("aria-haspopup", "dialog");
+      more.setAttribute("aria-label", "More editor commands");
     }
     instance.originalGroups = instance.classicGroups
       ? Array.from(instance.classicGroups.querySelectorAll(":scope > .azunt-editor-group")) : [];
     instance.openMenu = null;
     instance.blazorCommands = new Map();
     refreshQuickCommands(instance);
+    // Apply the same thresholds before the first observer notification.
+    const width = instance.element.getBoundingClientRect().width;
+    instance.element.classList.toggle("azunt-editor-narrow", width < 760);
+    instance.element.classList.toggle("azunt-editor-very-narrow", width < 515);
+    instance.element.classList.toggle("azunt-editor-tiny", width < 345);
     if (window.ResizeObserver) {
       instance.toolbarSizeObserver = new ResizeObserver(entries => {
         const width = entries[0]?.contentRect.width || instance.element.clientWidth;
         instance.element.classList.toggle("azunt-editor-narrow", width < 760);
         instance.element.classList.toggle("azunt-editor-very-narrow", width < 515);
+        instance.element.classList.toggle("azunt-editor-tiny", width < 345);
+        repositionOverlays(instance);
       });
       instance.toolbarSizeObserver.observe(instance.element);
     }
@@ -2098,6 +2191,10 @@
     document.addEventListener("pointerdown", event => {
       if (!instance.toolbar.contains(event.target) && !instance.menuPanel?.hidden) closeMenu(instance);
     }, { signal });
+    window.addEventListener("scroll", () => repositionOverlays(instance), { capture: true, passive: true, signal });
+    window.addEventListener("resize", () => repositionOverlays(instance), { passive: true, signal });
+    window.visualViewport?.addEventListener("resize", () => repositionOverlays(instance), { passive: true, signal });
+    window.visualViewport?.addEventListener("scroll", () => repositionOverlays(instance), { passive: true, signal });
     instance.canvas.addEventListener("keydown", event => {
       if (event.key === "Escape" && instance.element.classList.contains("azunt-editor-fullscreen")) {
         event.preventDefault(); toggleFullscreen(instance, false); return;

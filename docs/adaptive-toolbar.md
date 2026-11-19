@@ -74,3 +74,20 @@ Compact mode supports keyboard access without requiring a mouse:
 - `Tab` keeps normal browser focus order and closes an open menu when focus leaves the toolbar.
 
 The current text style is reflected by highlighted Bold, Italic, Underline and other formatting controls and by the footer style label. Keyboard and mouse users share the same editing commands. Classic mode is unchanged.
+
+## Responsive controls (0.6.2)
+
+Compact's menu and contextual tools reposition inside the visible viewport when the
+editor, page, or viewport is resized or scrolled. If there is insufficient space
+below the anchor, the menu opens upward. On touch devices, buttons have a larger
+minimum hit target. At very narrow widths the History quick group may be hidden;
+Undo and Redo remain available from File and More menus.
+
+At the caret, the footer shows explicitly applied font, pixel size, text color,
+and highlight color as well as bold/italic/list state. The Format menu's controls
+reflect supported inline formatting of the current selection. Nonstandard fonts
+and sizes are not rewritten or removed from the document.
+
+Use `Escape` to return focus from a menu to its opener. Tab and native select
+keys retain browser behavior. OS dark appearance and forced-colors/high-contrast
+settings have contrast-aware toolbar styles.

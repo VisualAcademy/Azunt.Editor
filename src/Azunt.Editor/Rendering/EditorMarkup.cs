@@ -24,7 +24,7 @@ public static class EditorMarkup
         w.Append("<div class=\"azunt-editor-menu-row\" data-compact-menu role=\"menubar\" aria-label=\"Editor menus\">");
         foreach (var key in new[] { "File", "Edit", "View", "Insert", "Format", "Table", "Tools", "Export" })
             w.Append("<button type=\"button\" class=\"azunt-editor-menu-trigger\" data-azunt-menu=\"").Append(key.ToLowerInvariant())
-                .Append("\" aria-expanded=\"false\" aria-haspopup=\"true\">").Append(key).Append("</button>");
+                .Append("\" aria-expanded=\"false\" aria-haspopup=\"dialog\">").Append(key).Append("</button>");
         w.Append("</div><div class=\"azunt-editor-quick-row\" data-compact-quick role=\"group\" aria-label=\"Common formatting\">");
         int quickIndex = 0;
         foreach (var (command, label, title, optional) in new (string Command, string Label, string Title, bool Optional)[] {
@@ -44,14 +44,16 @@ public static class EditorMarkup
             w.Append("<button type=\"button\" class=\"azunt-editor-button azunt-editor-quick-command")
                 .Append(optional ? " azunt-editor-quick-optional" : "")
                 .Append("\" data-quick-command=\"").Append(command).Append("\" title=\"").Append(Encode(title))
-                .Append("\" aria-label=\"").Append(Encode(title)).Append("\">");
+                .Append("\" aria-label=\"").Append(Encode(title)).Append("\"");
+            if (command is "bold" or "italic" or "underline" or "ul" or "ol") w.Append(" aria-pressed=\"false\"");
+            w.Append(">");
             w.Append(Icon(command) is { } icon ? "<span class=\"azunt-editor-button-icon\" aria-hidden=\"true\">" + icon + "</span>" : Encode(label));
             w.Append("</button>");
             quickIndex++;
         }
         w.Append("</span></span>");
         w.Append("<span class=\"azunt-editor-quick-custom\" data-quick-custom></span>")
-            .Append("<button class=\"azunt-editor-menu-trigger azunt-editor-quick-more\" type=\"button\" data-azunt-menu=\"more\" aria-expanded=\"false\" aria-haspopup=\"true\" title=\"More editor commands\">More ⋯</button>");
+            .Append("<button class=\"azunt-editor-menu-trigger azunt-editor-quick-more\" type=\"button\" data-azunt-menu=\"more\" aria-expanded=\"false\" aria-haspopup=\"dialog\" title=\"More editor commands\" aria-label=\"More editor commands\">More ⋯</button>");
         w.Append("</div><div class=\"azunt-editor-classic-groups\" data-classic-groups>");
 
         Group("Text formatting");
@@ -152,7 +154,7 @@ public static class EditorMarkup
         Select("margin", "Page margins", new[] { ("normal", "Normal margins"), ("narrow", "Narrow margins"), ("wide", "Wide margins") });
         EndGroup();
         w.Append("</div>"); // Classic groups remain available to Compact menus.
-        w.Append("<div class=\"azunt-editor-menu-panel\" data-menu-panel hidden role=\"region\" tabindex=\"-1\" aria-label=\"Editor menu commands\"></div>");
+        w.Append("<div class=\"azunt-editor-menu-panel\" data-menu-panel hidden role=\"dialog\" aria-modal=\"false\" tabindex=\"-1\" aria-label=\"Editor menu commands\"></div>");
         w.Append("<div class=\"azunt-editor-context-tools\" data-context-tools hidden role=\"toolbar\" aria-label=\"Selected item tools\"></div>");
         w.Append("</div>");
 
@@ -226,7 +228,9 @@ public static class EditorMarkup
         {
             w.Append("<button type=\"button\" class=\"azunt-editor-button\" data-command=\"").Append(Encode(command))
                 .Append("\" title=\"").Append(Encode(shortcut is null ? title : $"{title} ({shortcut})"))
-                .Append("\" aria-label=\"").Append(Encode(title)).Append("\">")
+                .Append("\" aria-label=\"").Append(Encode(title)).Append("\"");
+            if (command is "bold" or "italic" or "underline" or "strike" or "sup" or "sub" or "ul" or "ol") w.Append(" aria-pressed=\"false\"");
+            w.Append(">")
                 .Append(Icon(command) is { } svg ? "<span class=\"azunt-editor-button-icon\" aria-hidden=\"true\">" + svg + "</span>" : "<span class=\"azunt-editor-button-label\">" + Encode(label) + "</span>")
                 .Append("</button>");
         }

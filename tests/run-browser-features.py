@@ -53,64 +53,64 @@ async def main():
         # Inline formatting and CSS/HTML round-trip.
         for command, tag in [('strike','s'), ('sup','sup'), ('sub','sub')]:
             await load('<p>Format me</p>')
-            await select_text('.azunt-editor-canvas p', 0, 6)
+            await select_text('.az-azunt-editor-canvas p', 0, 6)
             await button(command)
             assert f'<{tag}>Format</{tag}>' in await get_html(), (command, await get_html())
         for select, value, css in [('fontFamily','Georgia','font-family: Georgia'),
                                    ('fontSize','24','font-size: 24px')]:
             await load('<p>Format me</p>')
-            await select_text('.azunt-editor-canvas p',0,6)
+            await select_text('.az-azunt-editor-canvas p',0,6)
             await page.locator(f'[data-select="{select}"]').select_option(value)
             assert css in await get_html(), (select, await get_html())
         await load('<p>Colors</p>')
-        await select_text('.azunt-editor-canvas p')
+        await select_text('.az-azunt-editor-canvas p')
         await page.locator('[data-select="color"]').fill('#123456')
         assert 'color: rgb(18, 52, 86)' in await get_html() or 'color: #123456' in await get_html(), await get_html()
         await load('<p>Highlight</p>')
-        await select_text('.azunt-editor-canvas p')
+        await select_text('.az-azunt-editor-canvas p')
         await page.locator('[data-select="backgroundColor"]').fill('#ffff00')
         assert 'background-color:' in await get_html(), await get_html()
         # Paragraph indentation must persist through sanitizer.
         await load('<p>Indented</p>')
-        await select_text('.azunt-editor-canvas p',0,0)
+        await select_text('.az-azunt-editor-canvas p',0,0)
         await button('indent')
         assert 'margin-left: 24px' in await get_html(), await get_html()
         await button('outdent')
         assert 'margin-left:' not in await get_html(), await get_html()
         # Hyperlinks: create, edit, and unlink.
         await load('<p>Azunt Editor</p>')
-        await select_text('.azunt-editor-canvas p',0,5)
+        await select_text('.az-azunt-editor-canvas p',0,5)
         await button('link')
         await page.locator('[data-link-url]').fill('https://example.org')
         await page.locator('[data-link-apply]').click()
         assert 'href="https://example.org"' in await get_html(), await get_html()
-        await select_text('.azunt-editor-canvas a')
+        await select_text('.az-azunt-editor-canvas a')
         await button('link')
         await page.locator('[data-link-url]').fill('https://example.com')
         await page.locator('[data-link-apply]').click()
         assert 'https://example.com' in await get_html(), await get_html()
-        await select_text('.azunt-editor-canvas a')
+        await select_text('.az-azunt-editor-canvas a')
         await button('unlink')
         assert '<a ' not in await get_html(), await get_html()
         # Table row and column modifications are anchored to clicked cell.
         await load('<p>Before table</p>')
-        await select_text('.azunt-editor-canvas p',0,0)
+        await select_text('.az-azunt-editor-canvas p',0,0)
         await button('table')
-        assert await page.locator('.azunt-editor-canvas td').count() == 4
-        await page.locator('.azunt-editor-canvas td').first.click()
+        assert await page.locator('.az-azunt-editor-canvas td').count() == 4
+        await page.locator('.az-azunt-editor-canvas td').first.click()
         await button('table-row-after')
-        assert await page.locator('.azunt-editor-canvas tr').count() == 3
+        assert await page.locator('.az-azunt-editor-canvas tr').count() == 3
         await button('table-col-after')
-        assert await page.locator('.azunt-editor-canvas td').count() == 9
+        assert await page.locator('.az-azunt-editor-canvas td').count() == 9
         await button('table-col-delete')
-        assert await page.locator('.azunt-editor-canvas td').count() == 6
-        await page.locator('.azunt-editor-canvas td').first.click()
+        assert await page.locator('.az-azunt-editor-canvas td').count() == 6
+        await page.locator('.az-azunt-editor-canvas td').first.click()
         await button('table-row-delete')
-        assert await page.locator('.azunt-editor-canvas tr').count() == 2
+        assert await page.locator('.az-azunt-editor-canvas tr').count() == 2
         # Image selection, resize, alignment and deletion.
         tiny = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+8qV0AAAAASUVORK5CYII='
         await load(f'<p><img src="{tiny}" width="300" alt="tiny"></p>')
-        await page.locator('.azunt-editor-canvas img').click()
+        await page.locator('.az-azunt-editor-canvas img').click()
         await page.locator('[data-image-width]').fill('180')
         await page.locator('[data-image-width]').dispatch_event('change')
         assert 'width="180"' in await get_html(), await get_html()

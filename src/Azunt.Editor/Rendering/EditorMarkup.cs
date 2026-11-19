@@ -15,17 +15,17 @@ public static class EditorMarkup
         static string Encode(string? raw) => HtmlEncoder.Default.Encode(raw ?? string.Empty);
         var safeHeight = Math.Clamp(height, 180, 1400);
         var w = new StringBuilder(6500 + (value?.Length ?? 0));
-        w.Append("<div class=\"azunt-editor\" data-azunt-editor=\"true\" id=\"").Append(Encode(id))
+        w.Append("<div class=\"az-azunt-editor\" data-azunt-editor=\"true\" id=\"").Append(Encode(id))
             .Append("\" data-read-only=\"").Append(readOnly ? "true" : "false").Append('"');
         if (!string.IsNullOrWhiteSpace(uploadUrl))
             w.Append(" data-upload-url=\"").Append(Encode(uploadUrl)).Append('"');
         w.Append(" data-toolbar-mode=\"").Append(string.Equals(toolbarMode, "Classic", StringComparison.OrdinalIgnoreCase) ? "classic" : "compact").Append("\">");
-        w.Append("<div class=\"azunt-editor-toolbar\" role=\"toolbar\" aria-label=\"Editor toolbar\">");
-        w.Append("<div class=\"azunt-editor-menu-row\" data-compact-menu role=\"menubar\" aria-label=\"Editor menus\">");
+        w.Append("<div class=\"az-azunt-editor-toolbar\" role=\"toolbar\" aria-label=\"Editor toolbar\">");
+        w.Append("<div class=\"az-azunt-editor-menu-row\" data-compact-menu role=\"menubar\" aria-label=\"Editor menus\">");
         foreach (var key in new[] { "File", "Edit", "View", "Insert", "Format", "Table", "Tools", "Export" })
-            w.Append("<button type=\"button\" class=\"azunt-editor-menu-trigger\" data-azunt-menu=\"").Append(key.ToLowerInvariant())
+            w.Append("<button type=\"button\" class=\"az-azunt-editor-menu-trigger\" data-azunt-menu=\"").Append(key.ToLowerInvariant())
                 .Append("\" aria-expanded=\"false\" aria-haspopup=\"dialog\">").Append(key).Append("</button>");
-        w.Append("</div><div class=\"azunt-editor-quick-row\" data-compact-quick role=\"group\" aria-label=\"Common formatting\">");
+        w.Append("</div><div class=\"az-azunt-editor-quick-row\" data-compact-quick role=\"group\" aria-label=\"Common formatting\">");
         int quickIndex = 0;
         foreach (var (command, label, title, optional) in new (string Command, string Label, string Title, bool Optional)[] {
             ("undo", "↶", "Undo", false), ("redo", "↷", "Redo", false),
@@ -36,25 +36,25 @@ public static class EditorMarkup
             if (quickIndex is 0 or 2 or 5 or 7 or 10) {
                 if (quickIndex > 0) w.Append("</span></span>");
                 var labelText = quickIndex switch { 0 => "History", 2 => "Text formatting", 5 => "Lists", 7 => "Insert", _ => "Tools" };
-                w.Append("<span class=\"azunt-editor-quick-group")
-                    .Append(quickIndex >= 5 ? " azunt-editor-quick-group-optional" : "")
-                    .Append("\"><span class=\"azunt-editor-quick-label\">").Append(labelText)
-                    .Append("</span><span class=\"azunt-editor-quick-controls\">");
+                w.Append("<span class=\"az-azunt-editor-quick-group")
+                    .Append(quickIndex >= 5 ? " az-azunt-editor-quick-group-optional" : "")
+                    .Append("\"><span class=\"az-azunt-editor-quick-label\">").Append(labelText)
+                    .Append("</span><span class=\"az-azunt-editor-quick-controls\">");
             }
-            w.Append("<button type=\"button\" class=\"azunt-editor-button azunt-editor-quick-command")
-                .Append(optional ? " azunt-editor-quick-optional" : "")
+            w.Append("<button type=\"button\" class=\"az-azunt-editor-button az-azunt-editor-quick-command")
+                .Append(optional ? " az-azunt-editor-quick-optional" : "")
                 .Append("\" data-quick-command=\"").Append(command).Append("\" title=\"").Append(Encode(title))
                 .Append("\" aria-label=\"").Append(Encode(title)).Append("\"");
             if (command is "bold" or "italic" or "underline" or "ul" or "ol") w.Append(" aria-pressed=\"false\"");
             w.Append(">");
-            w.Append(Icon(command) is { } icon ? "<span class=\"azunt-editor-button-icon\" aria-hidden=\"true\">" + icon + "</span>" : Encode(label));
+            w.Append(Icon(command) is { } icon ? "<span class=\"az-azunt-editor-button-icon\" aria-hidden=\"true\">" + icon + "</span>" : Encode(label));
             w.Append("</button>");
             quickIndex++;
         }
         w.Append("</span></span>");
-        w.Append("<span class=\"azunt-editor-quick-custom\" data-quick-custom></span>")
-            .Append("<button class=\"azunt-editor-menu-trigger azunt-editor-quick-more\" type=\"button\" data-azunt-menu=\"more\" aria-expanded=\"false\" aria-haspopup=\"dialog\" title=\"More editor commands\" aria-label=\"More editor commands\">More ⋯</button>");
-        w.Append("</div><div class=\"azunt-editor-classic-groups\" data-classic-groups>");
+        w.Append("<span class=\"az-azunt-editor-quick-custom\" data-quick-custom></span>")
+            .Append("<button class=\"az-azunt-editor-menu-trigger az-azunt-editor-quick-more\" type=\"button\" data-azunt-menu=\"more\" aria-expanded=\"false\" aria-haspopup=\"dialog\" title=\"More editor commands\" aria-label=\"More editor commands\">More ⋯</button>");
+        w.Append("</div><div class=\"az-azunt-editor-classic-groups\" data-classic-groups>");
 
         Group("Text formatting");
         Button("bold", "B", "Bold", "Ctrl+B");
@@ -121,11 +121,11 @@ public static class EditorMarkup
         Button("image", "▧", "Insert images");
         Select("imageInsertSize", "New image insertion size", new[] { ("original", "Original size"), ("480", "480 px") });
         Button("image-original", "1:1", "Restore selected image to its original dimensions");
-        w.Append("<label class=\"azunt-editor-input-label\" title=\"Selected image width in pixels (blank means original size)\">W ")
-            .Append("<input class=\"azunt-editor-width\" data-image-width type=\"number\" min=\"24\" max=\"2500\" step=\"1\" ")
+        w.Append("<label class=\"az-azunt-editor-input-label\" title=\"Selected image width in pixels (blank means original size)\">W ")
+            .Append("<input class=\"az-azunt-editor-width\" data-image-width type=\"number\" min=\"24\" max=\"2500\" step=\"1\" ")
             .Append("placeholder=\"original\" aria-label=\"Image width\" /></label>");
-        w.Append("<label class=\"azunt-editor-input-label\" title=\"Description of selected image\">Alt ")
-            .Append("<input class=\"azunt-editor-alt\" data-image-alt type=\"text\" maxlength=\"200\" ")
+        w.Append("<label class=\"az-azunt-editor-input-label\" title=\"Description of selected image\">Alt ")
+            .Append("<input class=\"az-azunt-editor-alt\" data-image-alt type=\"text\" maxlength=\"200\" ")
             .Append("placeholder=\"Image description\" aria-label=\"Image alternative text\" /></label>");
         Select("imageAlign", "Image alignment", new[] { ("", "Image align"), ("left", "Left"), ("center", "Center"), ("right", "Right") });
         Button("image-delete", "×Img", "Delete selected image");
@@ -154,42 +154,42 @@ public static class EditorMarkup
         Select("margin", "Page margins", new[] { ("normal", "Normal margins"), ("narrow", "Narrow margins"), ("wide", "Wide margins") });
         EndGroup();
         w.Append("</div>"); // Classic groups remain available to Compact menus.
-        w.Append("<div class=\"azunt-editor-menu-panel\" data-menu-panel hidden role=\"dialog\" aria-modal=\"false\" tabindex=\"-1\" aria-label=\"Editor menu commands\"></div>");
-        w.Append("<div class=\"azunt-editor-context-tools\" data-context-tools hidden role=\"toolbar\" aria-label=\"Selected item tools\"></div>");
+        w.Append("<div class=\"az-azunt-editor-menu-panel\" data-menu-panel hidden role=\"dialog\" aria-modal=\"false\" tabindex=\"-1\" aria-label=\"Editor menu commands\"></div>");
+        w.Append("<div class=\"az-azunt-editor-context-tools\" data-context-tools hidden role=\"toolbar\" aria-label=\"Selected item tools\"></div>");
         w.Append("</div>");
 
-        w.Append("<div class=\"azunt-editor-link-panel\" data-link-panel hidden role=\"group\" aria-label=\"Edit hyperlink\">")
+        w.Append("<div class=\"az-azunt-editor-link-panel\" data-link-panel hidden role=\"group\" aria-label=\"Edit hyperlink\">")
             .Append("<label>Text <input type=\"text\" data-link-text maxlength=\"250\" autocomplete=\"off\"></label>")
             .Append("<label>URL <input type=\"url\" data-link-url placeholder=\"https://example.com\" maxlength=\"2048\" autocomplete=\"off\"></label>")
             .Append("<button type=\"button\" data-link-apply>Apply link</button>")
             .Append("<button type=\"button\" data-link-cancel>Cancel</button></div>");
 
-        w.Append("<div class=\"azunt-editor-find-panel\" data-find-panel hidden role=\"search\" aria-label=\"Find and replace\">")
+        w.Append("<div class=\"az-azunt-editor-find-panel\" data-find-panel hidden role=\"search\" aria-label=\"Find and replace\">")
             .Append("<label>Find <input type=\"text\" data-find-query maxlength=\"200\" autocomplete=\"off\"></label>")
             .Append("<label>Replace <input type=\"text\" data-find-replacement maxlength=\"200\" autocomplete=\"off\"></label>")
             .Append("<button type=\"button\" data-find-next>Find next</button>")
             .Append("<button type=\"button\" data-find-replace>Replace</button>")
             .Append("<button type=\"button\" data-find-all>Replace all</button>")
             .Append("<button type=\"button\" data-find-close>Close</button>")
-            .Append("<span class=\"azunt-editor-find-status\" data-find-status aria-live=\"polite\"></span></div>");
-        w.Append("<div class=\"azunt-editor-chars-panel\" data-chars-panel hidden role=\"group\" aria-label=\"Insert special character\">")
-            .Append("<span class=\"azunt-editor-panel-heading\">Insert character</span>");
+            .Append("<span class=\"az-azunt-editor-find-status\" data-find-status aria-live=\"polite\"></span></div>");
+        w.Append("<div class=\"az-azunt-editor-chars-panel\" data-chars-panel hidden role=\"group\" aria-label=\"Insert special character\">")
+            .Append("<span class=\"az-azunt-editor-panel-heading\">Insert character</span>");
         foreach (var ch in new[] { "©", "®", "™", "€", "£", "¥", "—", "–", "•", "§", "±", "°", "µ", "∞", "≠", "≤", "≥", "α", "β", "→", "←", "✓", "★", "·" })
             w.Append("<button type=\"button\" data-insert-character=\"").Append(Encode(ch)).Append("\" aria-label=\"Insert ").Append(Encode(ch)).Append("\">")
                 .Append(Encode(ch)).Append("</button>");
         w.Append("<button type=\"button\" data-chars-close>Close</button></div>");
 
-        w.Append("<div class=\"azunt-editor-signature-panel\" data-signature-panel hidden role=\"group\" aria-label=\"Draw signature\">")
-            .Append("<span class=\"azunt-editor-panel-heading\">Draw your signature using mouse, pen or touch</span>")
+        w.Append("<div class=\"az-azunt-editor-signature-panel\" data-signature-panel hidden role=\"group\" aria-label=\"Draw signature\">")
+            .Append("<span class=\"az-azunt-editor-panel-heading\">Draw your signature using mouse, pen or touch</span>")
             .Append("<canvas data-signature-canvas width=\"640\" height=\"180\" aria-label=\"Signature drawing surface\"></canvas>")
             .Append("<label>Ink <input type=\"color\" data-signature-color value=\"#1e293b\" aria-label=\"Signature ink color\"></label>")
             .Append("<label>Pen <select data-signature-width aria-label=\"Signature pen thickness\"><option value=\"2\">Fine</option><option value=\"3\" selected>Normal</option><option value=\"5\">Thick</option></select></label>")
             .Append("<button type=\"button\" data-signature-clear>Clear</button>")
-            .Append("<span class=\"azunt-editor-signature-note\">Handwritten image only; not a verified digital signature.</span>")
+            .Append("<span class=\"az-azunt-editor-signature-note\">Handwritten image only; not a verified digital signature.</span>")
             .Append("<button type=\"button\" data-signature-insert>Insert signature</button>")
             .Append("<button type=\"button\" data-signature-close>Cancel</button></div>");
 
-        w.Append("<div class=\"azunt-editor-template-panel\" data-template-panel hidden role=\"group\" aria-label=\"Document templates\">")
+        w.Append("<div class=\"az-azunt-editor-template-panel\" data-template-panel hidden role=\"group\" aria-label=\"Document templates\">")
             .Append("<label>Template <select data-template-list aria-label=\"Choose document template\">")
             .Append("<option value=\"blank\">Blank document</option>")
             .Append("<option value=\"meeting\">Meeting notes</option>")
@@ -199,39 +199,39 @@ public static class EditorMarkup
             .Append("<button type=\"button\" data-template-apply>Load template</button>")
             .Append("<button type=\"button\" data-template-close>Cancel</button></div>");
 
-        w.Append("<div class=\"azunt-editor-date-panel\" data-date-panel hidden role=\"group\" aria-label=\"Insert date or time\">")
+        w.Append("<div class=\"az-azunt-editor-date-panel\" data-date-panel hidden role=\"group\" aria-label=\"Insert date or time\">")
             .Append("<button type=\"button\" data-date-format=\"date\">Date</button>")
             .Append("<button type=\"button\" data-date-format=\"time\">Time</button>")
             .Append("<button type=\"button\" data-date-format=\"datetime\">Date &amp; time</button>")
             .Append("<button type=\"button\" data-date-close>Cancel</button></div>");
 
-        w.Append("<div class=\"azunt-editor-canvas\" role=\"textbox\" aria-label=\"Document content\" aria-multiline=\"true\" contenteditable=\"")
+        w.Append("<div class=\"az-azunt-editor-canvas\" role=\"textbox\" aria-label=\"Document content\" aria-multiline=\"true\" contenteditable=\"")
             .Append(readOnly ? "false" : "true")
             .Append("\" style=\"min-height:").Append(safeHeight).Append("px\"></div>");
-        w.Append("<div class=\"azunt-editor-image-resize-handle\" data-image-resize-handle hidden "
+        w.Append("<div class=\"az-azunt-editor-image-resize-handle\" data-image-resize-handle hidden "
             + "role=\"button\" tabindex=\"0\" aria-label=\"Resize selected image by dragging the corner\" "
             + "title=\"Drag to resize the selected image (aspect ratio preserved)\"></div>");
-        w.Append("<textarea class=\"azunt-editor-source\" data-azunt-source hidden aria-label=\"HTML source\" spellcheck=\"false\" style=\"min-height:")
+        w.Append("<textarea class=\"az-azunt-editor-source\" data-azunt-source hidden aria-label=\"HTML source\" spellcheck=\"false\" style=\"min-height:")
             .Append(safeHeight).Append("px\"></textarea>");
-        w.Append("<textarea hidden class=\"azunt-editor-value\" data-azunt-value=\"true\" name=\"")
+        w.Append("<textarea hidden class=\"az-azunt-editor-value\" data-azunt-value=\"true\" name=\"")
             .Append(Encode(name)).Append("\">").Append(Encode(value)).Append("</textarea>");
         w.Append("<input hidden type=\"file\" accept=\"image/png,image/jpeg,image/gif,image/webp\" multiple data-azunt-images=\"true\" aria-label=\"Select images\" />");
-        w.Append("<div class=\"azunt-editor-footer\"><p class=\"azunt-editor-message\" role=\"status\" aria-live=\"polite\" aria-atomic=\"true\"></p>")
-            .Append("<span class=\"azunt-editor-current-format\" data-current-format aria-label=\"Current text formatting\" aria-live=\"off\">Paragraph</span>")
-            .Append("<span class=\"azunt-editor-stats\" data-editor-stats aria-live=\"off\">0 words · 0 characters</span></div>");
+        w.Append("<div class=\"az-azunt-editor-footer\"><p class=\"az-azunt-editor-message\" role=\"status\" aria-live=\"polite\" aria-atomic=\"true\"></p>")
+            .Append("<span class=\"az-azunt-editor-current-format\" data-current-format aria-label=\"Current text formatting\" aria-live=\"off\">Paragraph</span>")
+            .Append("<span class=\"az-azunt-editor-stats\" data-editor-stats aria-live=\"off\">0 words · 0 characters</span></div>");
         w.Append("</div>");
         return w.ToString();
 
-        void Group(string label) => w.Append("<div class=\"azunt-editor-group\" role=\"group\" data-group-label=\"").Append(Encode(label)).Append("\" aria-label=\"").Append(Encode(label)).Append("\">");
+        void Group(string label) => w.Append("<div class=\"az-azunt-editor-group\" role=\"group\" data-group-label=\"").Append(Encode(label)).Append("\" aria-label=\"").Append(Encode(label)).Append("\">");
         void EndGroup() => w.Append("</div>");
         void Button(string command, string label, string title, string? shortcut = null)
         {
-            w.Append("<button type=\"button\" class=\"azunt-editor-button\" data-command=\"").Append(Encode(command))
+            w.Append("<button type=\"button\" class=\"az-azunt-editor-button\" data-command=\"").Append(Encode(command))
                 .Append("\" title=\"").Append(Encode(shortcut is null ? title : $"{title} ({shortcut})"))
                 .Append("\" aria-label=\"").Append(Encode(title)).Append("\"");
             if (command is "bold" or "italic" or "underline" or "strike" or "sup" or "sub" or "ul" or "ol") w.Append(" aria-pressed=\"false\"");
             w.Append(">")
-                .Append(Icon(command) is { } svg ? "<span class=\"azunt-editor-button-icon\" aria-hidden=\"true\">" + svg + "</span>" : "<span class=\"azunt-editor-button-label\">" + Encode(label) + "</span>")
+                .Append(Icon(command) is { } svg ? "<span class=\"az-azunt-editor-button-icon\" aria-hidden=\"true\">" + svg + "</span>" : "<span class=\"az-azunt-editor-button-label\">" + Encode(label) + "</span>")
                 .Append("</button>");
         }
         // SVG icons belong to Azunt.Editor: no external icon font, CDN, or UI package.
@@ -271,14 +271,14 @@ public static class EditorMarkup
 
         void Color(string command, string title, string initial)
         {
-            w.Append("<label class=\"azunt-editor-input-label\" title=\"").Append(Encode(title)).Append("\">")
+            w.Append("<label class=\"az-azunt-editor-input-label\" title=\"").Append(Encode(title)).Append("\">")
                 .Append(command == "color" ? "A " : "▣ ")
                 .Append("<input type=\"color\" data-select=\"").Append(Encode(command))
                 .Append("\" value=\"").Append(initial).Append("\" aria-label=\"").Append(Encode(title)).Append("\" /></label>");
         }
         void Select(string command, string title, (string Value, string Label)[] options)
         {
-            w.Append("<select class=\"azunt-editor-select\" data-select=\"").Append(Encode(command))
+            w.Append("<select class=\"az-azunt-editor-select\" data-select=\"").Append(Encode(command))
                 .Append("\" title=\"").Append(Encode(title)).Append("\" aria-label=\"").Append(Encode(title));
             if (command == "paper") w.Append("\" name=\"PaperSize");
             if (command == "orientation") w.Append("\" name=\"Orientation");

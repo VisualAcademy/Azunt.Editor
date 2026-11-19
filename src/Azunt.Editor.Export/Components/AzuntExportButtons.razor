@@ -1,6 +1,6 @@
 @namespace Azunt.Editor.Export.Components
 @using Azunt.Editor.Export.Models
-<div class="azunt-editor-export-actions" role="group" aria-label="Export document">
+<div class="az-azunt-editor-export-actions" role="group" aria-label="Export document">
     <button type="button" @onclick="() => ExportRequested.InvokeAsync(EditorExportFormat.Pdf)">Download PDF</button>
     <button type="button" @onclick="() => ExportRequested.InvokeAsync(EditorExportFormat.Docx)">Download Word</button>
     <button type="button" @onclick="() => ExportRequested.InvokeAsync(EditorExportFormat.Xlsx)">Download Excel</button>

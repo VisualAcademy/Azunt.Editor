@@ -2,8 +2,8 @@
 <html lang="en"><head><meta charset="utf-8"><title>Azunt.Editor browser checks</title>
 <link rel="stylesheet" href="../src/Azunt.Editor/wwwroot/css/azunt-editor.css"></head>
 <body>
-<div id="browser-test" class="azunt-editor" data-azunt-editor="true" data-read-only="false">
-  <div class="azunt-editor-toolbar" role="toolbar">
+<div id="browser-test" class="az-azunt-editor" data-azunt-editor="true" data-read-only="false">
+  <div class="az-azunt-editor-toolbar" role="toolbar">
     <button type="button" data-command="bold">Bold</button>
     <button type="button" data-command="strike">Strike</button>
     <button type="button" data-command="sup">Sup</button>
@@ -36,25 +36,25 @@
     <select data-select="orientation"><option value="portrait">Portrait</option><option value="landscape">Landscape</option></select>
     <select data-select="margin"><option value="normal">Normal</option><option value="narrow">Narrow</option></select>
   </div>
-  <div class="azunt-editor-link-panel" data-link-panel hidden>
+  <div class="az-azunt-editor-link-panel" data-link-panel hidden>
     <input data-link-text><input data-link-url><button data-link-apply>Apply</button><button data-link-cancel>Cancel</button>
   </div>
-  <div class="azunt-editor-find-panel" data-find-panel hidden>
+  <div class="az-azunt-editor-find-panel" data-find-panel hidden>
     <input type="text" data-find-query><input type="text" data-find-replacement>
     <button data-find-next>Find next</button><button data-find-replace>Replace</button>
     <button data-find-all>Replace all</button><button data-find-close>Close</button>
     <span data-find-status></span>
   </div>
-  <div class="azunt-editor-chars-panel" data-chars-panel hidden>
+  <div class="az-azunt-editor-chars-panel" data-chars-panel hidden>
     <button type="button" data-insert-character="©">©</button>
     <button type="button" data-insert-character="✓">✓</button>
     <button type="button" data-chars-close>Close</button>
   </div>
-  <div class="azunt-editor-canvas" contenteditable="true"></div>
+  <div class="az-azunt-editor-canvas" contenteditable="true"></div>
   <textarea data-azunt-source hidden></textarea>
   <textarea data-azunt-value hidden name="Html"><p>Initial</p></textarea>
   <input data-azunt-images type="file" hidden multiple>
-  <p class="azunt-editor-message"></p><span data-editor-stats></span>
+  <p class="az-azunt-editor-message"></p><span data-editor-stats></span>
 </div>
 <script src="../src/Azunt.Editor/wwwroot/js/azunt-editor.js"></script>
 </body></html>

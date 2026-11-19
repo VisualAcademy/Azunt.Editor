@@ -1,11 +1,11 @@
 <!doctype html>
 <html lang="en"><head><meta charset="UTF-8"><title>Azunt.Editor browser smoke test</title></head><body>
-<div id="azunt-browser-test" class="azunt-editor" data-azunt-editor="true" data-read-only="false">
- <div class="azunt-editor-toolbar"><button type="button" data-command="bold">Bold</button></div>
- <div class="azunt-editor-canvas" contenteditable="true"></div>
+<div id="azunt-browser-test" class="az-azunt-editor" data-azunt-editor="true" data-read-only="false">
+ <div class="az-azunt-editor-toolbar"><button type="button" data-command="bold">Bold</button></div>
+ <div class="az-azunt-editor-canvas" contenteditable="true"></div>
  <textarea hidden data-azunt-value="true" name="Html">&lt;p&gt;Hello&lt;/p&gt;&lt;script&gt;alert(1)&lt;/script&gt;</textarea>
  <input hidden type="file" data-azunt-images="true" multiple />
- <p class="azunt-editor-message"></p>
+ <p class="az-azunt-editor-message"></p>
 </div>
 <p id="result">PENDING</p>
 <script src="../src/Azunt.Editor/wwwroot/js/azunt-editor.js"></script>
@@ -19,7 +19,7 @@
       AzuntEditor.setHtml(id, '<p>A</p><img src="javascript:alert(1)" onerror="alert(1)"><img src="data:image/png;base64,YWJj" width="150"><p>B</p>');
       const cleaned = AzuntEditor.getHtml(id);
       if (cleaned.includes("javascript:") || cleaned.includes("onerror") || !cleaned.includes("<img")) throw new Error("HTML cleanup");
-      if ((editor.querySelectorAll('.azunt-editor-canvas img').length) !== 1) throw new Error("image count");
+      if ((editor.querySelectorAll('.az-azunt-editor-canvas img').length) !== 1) throw new Error("image count");
       document.getElementById("result").textContent = "PASS: browser editor initialization and HTML cleanup";
     } catch (error) {
       document.getElementById("result").textContent = "FAIL: " + String(error.message || error);

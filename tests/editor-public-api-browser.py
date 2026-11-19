@@ -89,7 +89,7 @@ async def main():
             # A replaced toolbar DOM must retain configured Blazor commands.
             await page.evaluate('''() => {
               const root=document.getElementById('browser-test');
-              const old=root.querySelector('.azunt-editor-toolbar');
+              const old=root.querySelector('.az-azunt-editor-toolbar');
               old.replaceWith(old.cloneNode(true));
               AzuntEditor.mount('browser-test');
             }''')

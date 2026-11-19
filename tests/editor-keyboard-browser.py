@@ -21,7 +21,7 @@ async def main():
         page.set_default_timeout(4000)
         await page.set_content(FIXTURE)
         await page.evaluate("""() => {
-            document.querySelector('.azunt-editor').insertAdjacentHTML('beforeend', '<span data-current-format>Paragraph</span>');
+            document.querySelector('.az-azunt-editor').insertAdjacentHTML('beforeend', '<span data-current-format>Paragraph</span>');
             document.querySelector('[data-group-label=\"Text formatting\"]').insertAdjacentHTML('beforeend', '<button type=\"button\" data-command=\"italic\">Italic</button>');
         }""")
         await page.add_style_tag(content=CSS)
@@ -30,14 +30,14 @@ async def main():
         async def focus_cursor(html, selector):
             await page.evaluate('([html]) => AzuntEditor.setHtml("browser-test", html)', [html])
             await page.evaluate('''(css) => {
-                const element = document.querySelector('.azunt-editor-canvas ' + css);
+                const element = document.querySelector('.az-azunt-editor-canvas ' + css);
                 const text = element.firstChild;
                 const range = document.createRange();
                 range.setStart(text, Math.min(1, text.length));
                 range.collapse(true);
                 const selection = window.getSelection();
                 selection.removeAllRanges(); selection.addRange(range);
-                document.querySelector('.azunt-editor-canvas').focus();
+                document.querySelector('.az-azunt-editor-canvas').focus();
             }''', selector)
             await page.wait_for_timeout(50)
 
@@ -56,7 +56,7 @@ async def main():
 
         # Alt+F10 focuses the menubar. Arrow navigation is roving and never edits HTML.
         before = await page.evaluate('AzuntEditor.getHtml("browser-test")')
-        await page.locator('.azunt-editor-canvas').focus()
+        await page.locator('.az-azunt-editor-canvas').focus()
         await page.keyboard.press('Alt+F10')
         assert await page.evaluate('document.activeElement.dataset.azuntMenu') == 'file'
         assert await page.locator('[data-azunt-menu="file"]').get_attribute('role') == 'menuitem'
@@ -104,17 +104,17 @@ async def main():
         # Moving focus out of the toolbar closes menus, with no stray popup.
         await page.locator('[data-azunt-menu="format"]').click()
         assert await page.locator('[data-menu-panel]').is_visible()
-        await page.locator('.azunt-editor-canvas').focus()
+        await page.locator('.az-azunt-editor-canvas').focus()
         await page.wait_for_timeout(40)
         assert await page.locator('[data-menu-panel]').is_hidden()
 
         # A keyboard-only formatting command acts on the preserved text selection.
         await page.evaluate('AzuntEditor.setHtml("browser-test", "<p>Keyboard text</p>")')
         await page.evaluate('''() => {
-          const node = document.querySelector('#browser-test .azunt-editor-canvas p').firstChild;
+          const node = document.querySelector('#browser-test .az-azunt-editor-canvas p').firstChild;
           const range = document.createRange(); range.setStart(node, 0); range.setEnd(node, 8);
           const selection = window.getSelection(); selection.removeAllRanges(); selection.addRange(range);
-          document.querySelector('#browser-test .azunt-editor-canvas').focus();
+          document.querySelector('#browser-test .az-azunt-editor-canvas').focus();
         }''')
         await page.wait_for_timeout(40)
         await page.keyboard.press('Alt+F10')

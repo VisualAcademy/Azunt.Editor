@@ -45,7 +45,7 @@ Require(pages.Contains("name=\"Margin\""), "Margin form binding");
 var toolbar = EditorMarkup.Render("toolbar", "Content");
 Require(toolbar.Contains("data-group-label=\"Text formatting\""), "Accessible toolbar group labels");
 Require(toolbar.Contains("data-group-label=\"Document\""), "Document toolbar group");
-Require(toolbar.Contains("azunt-editor-button-icon"), "Source-owned SVG button icons");
+Require(toolbar.Contains("az-azunt-editor-button-icon"), "Source-owned SVG button icons");
 Require(toolbar.Contains("data-command=\"print\""), "Existing print command remains available");
 Require(toolbar.Contains("data-command=\"image\""), "Existing image command remains available");
 

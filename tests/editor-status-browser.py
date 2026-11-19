@@ -29,7 +29,7 @@ async def main():
             await page.set_content(HTML)
             await page.add_style_tag(content=CSS)
             await page.add_script_tag(content=JS)
-            status = page.locator('#browser-test .azunt-editor-message')
+            status = page.locator('#browser-test .az-azunt-editor-message')
             async def show(text, kind):
                 await page.evaluate('([text,kind]) => AzuntEditor.showStatus("browser-test", text, kind)', [text,kind])
             async def check(text, kind, role):
@@ -107,7 +107,7 @@ async def main():
             await show('Primary status', 'error')
             await page.evaluate('AzuntEditor.showStatus("another-editor", "Second editor", "success")')
             await page.clock.run_for(3100)
-            assert await page.locator('#another-editor .azunt-editor-message').text_content() == ''
+            assert await page.locator('#another-editor .az-azunt-editor-message').text_content() == ''
             await check('Primary status', 'error', 'alert')
 
             # Unmount + remount must not leave old timers that clear new notifications.

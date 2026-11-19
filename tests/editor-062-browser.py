@@ -23,14 +23,14 @@ async def setup(browser, width, height, *, is_mobile=False, color_scheme='light'
     await page.set_content(mobile_html)
     await page.add_style_tag(content=CSS)
     await page.evaluate("""() => {
-      document.querySelectorAll('[data-compact-menu] button').forEach(el => el.classList.add('azunt-editor-menu-trigger'));
-      document.querySelector('[data-azunt-menu="more"]').classList.add('azunt-editor-menu-trigger', 'azunt-editor-quick-more');
+      document.querySelectorAll('[data-compact-menu] button').forEach(el => el.classList.add('az-azunt-editor-menu-trigger'));
+      document.querySelector('[data-azunt-menu="more"]').classList.add('az-azunt-editor-menu-trigger', 'az-azunt-editor-quick-more');
     }""")
     await page.add_script_tag(content=JS)
     await page.evaluate('''() => {
       const label = document.createElement('span');
       label.dataset.currentFormat = '';
-      label.className = 'azunt-editor-current-format';
+      label.className = 'az-azunt-editor-current-format';
       label.textContent = 'Paragraph';
       document.querySelector('#browser-test').append(label);
       AzuntEditor.unmount('browser-test');
@@ -76,7 +76,7 @@ async def main():
         # Selecting inline text formatting updates the live Font/Size/Color inputs.
         await page.evaluate('''() => {
           AzuntEditor.setHtml('browser-test', '<p><span style="font-family:Georgia;font-size:24px;color:#ff0000;background-color:#ffff00"><strong>Styled</strong></span> Plain</p>');
-          const text = document.querySelector('.azunt-editor-canvas strong').firstChild;
+          const text = document.querySelector('.az-azunt-editor-canvas strong').firstChild;
           const range = document.createRange(); range.setStart(text, 2); range.collapse(true);
           const selection = window.getSelection(); selection.removeAllRanges(); selection.addRange(range);
         }''')
@@ -94,7 +94,7 @@ async def main():
 
         # Context tools must be placed inside the window for narrow forms.
         await page.evaluate('AzuntEditor.setHtml("browser-test", "<table><tr><td>A</td><td>B</td></tr></table>")')
-        await page.locator('.azunt-editor-canvas td').first.click()
+        await page.locator('.az-azunt-editor-canvas td').first.click()
         await inside_viewport(page, '[data-context-tools]')
         assert await page.locator('[data-context-tools] button').count() >= 3
         await page.locator('[data-context-tools] [data-operate-menu="table"]').click()

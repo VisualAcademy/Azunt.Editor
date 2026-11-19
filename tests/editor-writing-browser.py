@@ -38,7 +38,7 @@ async def main():
                     const range = document.createRange();
                     range.setStart(node,start); range.setEnd(node,end);
                     const sel = window.getSelection(); sel.removeAllRanges();sel.addRange(range);
-                    document.querySelector('.azunt-editor-canvas').dispatchEvent(new KeyboardEvent('keyup', {bubbles:true}));
+                    document.querySelector('.az-azunt-editor-canvas').dispatchEvent(new KeyboardEvent('keyup', {bubbles:true}));
                 }''', dict(selector=selector, start=start, end=end))
             async def command(name):
                 await page.locator(f'[data-command="{name}"]').click()
@@ -46,14 +46,14 @@ async def main():
             # Word/web rich HTML: preserve allowed semantic structures, strip scripts / styles / event handlers.
             await load('<p>Before</p>')
             await page.evaluate('''() => {
-                const node=document.querySelector('.azunt-editor-canvas p').firstChild;
+                const node=document.querySelector('.az-azunt-editor-canvas p').firstChild;
                 const r=document.createRange();r.setStart(node,6);r.collapse(true);
                 const sel=window.getSelection();sel.removeAllRanges();sel.addRange(r);
                 const clipboard=new DataTransfer();
                 clipboard.setData('text/html', '<div class="MsoNormal"><p style="mso-style:evil;color:red" onclick="evil()"><strong>Word</strong> text</p><script>evil()</script><table><tr><td>Safe cell</td></tr></table></div>');
                 clipboard.setData('text/plain', 'Word text');
                 const ev=new ClipboardEvent('paste', { bubbles:true, cancelable:true, clipboardData:clipboard });
-                document.querySelector('.azunt-editor-canvas').dispatchEvent(ev);
+                document.querySelector('.az-azunt-editor-canvas').dispatchEvent(ev);
             }''')
             result = await get_html()
             assert '<strong>Word</strong>' in result and '<table>' in result and 'Safe cell' in result, result
@@ -76,14 +76,14 @@ async def main():
 
             # Clear only selected formatting; preserve text.
             await load('<p><strong>Bold text</strong> after</p>')
-            await select_text('.azunt-editor-canvas strong', 0, 9)
+            await select_text('.az-azunt-editor-canvas strong', 0, 9)
             await command('clear-format')
             result = await get_html()
             assert '<strong>Bold text</strong>' not in result and 'Bold text' in result, result
 
             # Special character and two distinct horizontal rules, plus HTML round-trip.
             await load('<p>Hello</p>')
-            await select_text('.azunt-editor-canvas p', 5, 5)
+            await select_text('.az-azunt-editor-canvas p', 5, 5)
             await command('special-chars')
             await page.locator('[data-insert-character="©"]').click()
             assert 'Hello©' in await get_html(), await get_html()
@@ -96,9 +96,9 @@ async def main():
 
             # Fullscreen toggle and escape, non-persistent metadata/counter.
             await command('fullscreen')
-            assert 'azunt-editor-fullscreen' in await page.locator('.azunt-editor').get_attribute('class')
-            await page.locator('.azunt-editor-canvas').press('Escape')
-            assert 'azunt-editor-fullscreen' not in await page.locator('.azunt-editor').get_attribute('class')
+            assert 'az-azunt-editor-fullscreen' in await page.locator('.az-azunt-editor').get_attribute('class')
+            await page.locator('.az-azunt-editor-canvas').press('Escape')
+            assert 'az-azunt-editor-fullscreen' not in await page.locator('.az-azunt-editor').get_attribute('class')
             await load('<p>One two 세개!</p>')
             stats = await page.locator('[data-editor-stats]').inner_text()
             assert '3 words' in stats and '11 characters' in stats, stats

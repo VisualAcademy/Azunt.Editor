@@ -2,7 +2,7 @@
 
 A lightweight rich-text editor for ASP.NET Core MVC, Razor Pages, and Blazor Server.
 
-Version: **0.6.2** · .NET 10
+Version: **0.6.3** · .NET 10
 
 ## Projects
 - `src/Azunt.Editor` — shared editor components, JavaScript, and CSS
@@ -84,3 +84,24 @@ the existing streaming path. See [public API](docs/public-api.md).
 
 In Compact mode, the More menu uses a width-limited grid. The layout is
 shared by MVC, Razor Pages and Blazor Server, including wide host forms.
+
+### CSS namespace (`az-` prefix)
+
+Starting with **0.6.3**, all CSS class names owned by `Azunt.Editor` and
+`Azunt.Editor.Export` begin with `az-`. Examples:
+
+| Previous (0.6.2) | Current (0.6.3) |
+| --- | --- |
+| `.azunt-editor` | `.az-azunt-editor` |
+| `.azunt-editor-toolbar` | `.az-azunt-editor-toolbar` |
+| `.azunt-editor-canvas` | `.az-azunt-editor-canvas` |
+| `.azunt-editor-export-actions` | `.az-azunt-editor-export-actions` |
+| `.azunt-print-page` | `.az-azunt-print-page` |
+
+Custom CSS and JavaScript selectors written by the **host application** must be
+updated to use the new classes. Editor `data-*` attributes, the `<azunt-editor>`
+Tag Helper, `AzuntEditor` public JavaScript API, and CSS/JS asset filenames remain
+unchanged. The editor's saved document HTML is not rewritten by this naming change.
+The namespace is an identification convention, **not a change of license**: MIT.
+
+For the complete migration notes, see `docs/css-class-namespace.md`.

@@ -444,10 +444,10 @@
   }
 
   function setImageSelection(instance, image) {
-    if (instance.selectedImage) instance.selectedImage.classList.remove("azunt-editor-image-selected");
+    if (instance.selectedImage) instance.selectedImage.classList.remove("az-azunt-editor-image-selected");
     instance.selectedImage = image && instance.canvas.contains(image) ? image : null;
     if (instance.selectedImage) {
-      instance.selectedImage.classList.add("azunt-editor-image-selected");
+      instance.selectedImage.classList.add("az-azunt-editor-image-selected");
       // An absent width attribute represents the full native pixel dimensions.
       instance.imageWidth.value = instance.selectedImage.getAttribute("width") || "";
       if (instance.imageAlt) instance.imageAlt.value = instance.selectedImage.getAttribute("alt") || "";
@@ -518,7 +518,7 @@
       displayWidth: image.getBoundingClientRect().width,
       moved: false
     };
-    handle.classList.add("is-resizing");
+    handle.classList.add("az-is-resizing");
     try { handle.setPointerCapture(event.pointerId); } catch (_) { /* Pointer capture is optional. */ }
   }
 
@@ -537,7 +537,7 @@
     const state = instance.imageResize;
     if (!state || (event?.pointerId !== undefined && event.pointerId !== state.pointerId)) return;
     instance.imageResize = null;
-    instance.imageResizeHandle?.classList.remove("is-resizing");
+    instance.imageResizeHandle?.classList.remove("az-is-resizing");
     if (cancelled && instance.canvas.contains(state.image)) {
       if (state.originalWidth === null) state.image.removeAttribute("width");
       else state.image.setAttribute("width", state.originalWidth);
@@ -1175,8 +1175,8 @@
     message(instance, pageBreak ? "Page break inserted." : "Horizontal line inserted.", "success");
   }
 
-  function toggleFullscreen(instance, enable = !instance.element.classList.contains("azunt-editor-fullscreen")) {
-    instance.element.classList.toggle("azunt-editor-fullscreen", enable);
+  function toggleFullscreen(instance, enable = !instance.element.classList.contains("az-azunt-editor-fullscreen")) {
+    instance.element.classList.toggle("az-azunt-editor-fullscreen", enable);
     const toggle = instance.toolbar.querySelector('[data-command="fullscreen"]');
     if (toggle) toggle.setAttribute("aria-pressed", String(enable));
     if (enable) instance.canvas.focus();
@@ -1309,13 +1309,13 @@
       `*{box-sizing:border-box}body{font:12pt/1.5 Arial,sans-serif;color:#1e293b;margin:0}` +
       `#azunt-print-controls{position:sticky;top:0;padding:12px;background:#e2e8f0;z-index:10}` +
       `#azunt-print-controls button{padding:8px 15px;cursor:pointer}` +
-      `.azunt-print-page{margin:15px auto;padding:${margin};background:#fff;max-width:${orientation === "landscape" ? "297mm" : "210mm"};min-height:200mm;box-shadow:0 1px 12px #ccc}` +
-      `.azunt-print-page img{max-width:100%;height:auto}` +
-      `.azunt-print-page table{border-collapse:collapse;width:100%;break-inside:auto}` +
-      `.azunt-print-page tr{break-inside:avoid}` +
-      `.azunt-print-page hr[data-azunt-page-break="true"]{break-before:page;page-break-before:always;border:0;margin:0;height:0}` +
-      `.azunt-print-page th,.azunt-print-page td{border:1px solid #aaa;padding:6px}` +
-      `@media print{#azunt-print-controls{display:none}.azunt-print-page{margin:0;padding:0;max-width:none;min-height:0;box-shadow:none}}`;
+      `.az-azunt-print-page{margin:15px auto;padding:${margin};background:#fff;max-width:${orientation === "landscape" ? "297mm" : "210mm"};min-height:200mm;box-shadow:0 1px 12px #ccc}` +
+      `.az-azunt-print-page img{max-width:100%;height:auto}` +
+      `.az-azunt-print-page table{border-collapse:collapse;width:100%;break-inside:auto}` +
+      `.az-azunt-print-page tr{break-inside:avoid}` +
+      `.az-azunt-print-page hr[data-azunt-page-break="true"]{break-before:page;page-break-before:always;border:0;margin:0;height:0}` +
+      `.az-azunt-print-page th,.az-azunt-print-page td{border:1px solid #aaa;padding:6px}` +
+      `@media print{#azunt-print-controls{display:none}.az-azunt-print-page{margin:0;padding:0;max-width:none;min-height:0;box-shadow:none}}`;
     win.document.open();
     win.document.write("<!doctype html><html><head><meta charset='utf-8'><title>Azunt Editor — Print Preview</title></head><body></body></html>");
     win.document.close();
@@ -1331,7 +1331,7 @@
     controls.appendChild(button);
     controls.appendChild(win.document.createTextNode(`  ${paper} · ${orientation} · ${instance.page.margin} margins`));
     const page = win.document.createElement("main");
-    page.className = "azunt-print-page";
+    page.className = "az-azunt-print-page";
     page.innerHTML = html; // Already restricted by sanitizeHtml; do not inject raw user HTML.
     win.document.body.append(controls, page);
     const ready = Array.from(page.querySelectorAll("img")).map(image => image.complete
@@ -1600,7 +1600,7 @@
   function createCustomButton(def, compact = false, readOnly = false) {
     const button = document.createElement("button");
     button.type = "button";
-    button.className = compact ? "azunt-editor-button azunt-editor-quick-command" : "azunt-editor-button azunt-editor-custom-button";
+    button.className = compact ? "az-azunt-editor-button az-azunt-editor-quick-command" : "az-azunt-editor-button az-azunt-editor-custom-button";
     button.dataset.customCommand = def.id;
     button.title = def.label;
     button.setAttribute("aria-label", def.label);
@@ -1628,7 +1628,7 @@
       const defs = Array.from(effectiveCommands(instance).values());
       if (defs.length) {
         const group = document.createElement("div");
-        group.className = "azunt-editor-group";
+        group.className = "az-azunt-editor-group";
         group.dataset.groupLabel = "Custom commands";
         group.dataset.classicCustom = "true";
         group.setAttribute("role", "group");
@@ -1645,7 +1645,7 @@
       key === "more" || def.group === key || (key === "file" && def.group === "export"));
     if (!commands.length) return;
     const group = document.createElement("div");
-    group.className = "azunt-editor-group azunt-editor-custom-group";
+    group.className = "az-azunt-editor-group az-azunt-editor-custom-group";
     group.setAttribute("role", "group");
     group.dataset.groupLabel = key === "more" ? "Custom commands" : "Commands";
     group.setAttribute("aria-label", group.dataset.groupLabel);
@@ -1669,7 +1669,7 @@
     appendCustomCommands(instance, key, instance.menuPanel);
     if (!instance.menuPanel.children.length) {
       const note = document.createElement("span");
-      note.className = "azunt-editor-menu-empty";
+      note.className = "az-azunt-editor-menu-empty";
       note.textContent = key === "export" ? "Export commands are supplied by the host application." : "No commands available.";
       instance.menuPanel.appendChild(note);
     }
@@ -1781,7 +1781,7 @@
       const button = document.createElement("button");
       button.type = "button";
       button.textContent = label;
-      button.className = "azunt-editor-button";
+      button.className = "az-azunt-editor-button";
       button.setAttribute("aria-label", label);
       if (command.startsWith("@")) {
         button.dataset.operateMenu = command.slice(1);
@@ -1830,21 +1830,21 @@
       more.setAttribute("aria-label", "More editor commands");
     }
     instance.originalGroups = instance.classicGroups
-      ? Array.from(instance.classicGroups.querySelectorAll(":scope > .azunt-editor-group")) : [];
+      ? Array.from(instance.classicGroups.querySelectorAll(":scope > .az-azunt-editor-group")) : [];
     instance.openMenu = null;
     instance.blazorCommands = new Map();
     refreshQuickCommands(instance);
     // Apply the same thresholds before the first observer notification.
     const width = instance.element.getBoundingClientRect().width;
-    instance.element.classList.toggle("azunt-editor-narrow", width < 760);
-    instance.element.classList.toggle("azunt-editor-very-narrow", width < 515);
-    instance.element.classList.toggle("azunt-editor-tiny", width < 345);
+    instance.element.classList.toggle("az-azunt-editor-narrow", width < 760);
+    instance.element.classList.toggle("az-azunt-editor-very-narrow", width < 515);
+    instance.element.classList.toggle("az-azunt-editor-tiny", width < 345);
     if (window.ResizeObserver) {
       instance.toolbarSizeObserver = new ResizeObserver(entries => {
         const width = entries[0]?.contentRect.width || instance.element.clientWidth;
-        instance.element.classList.toggle("azunt-editor-narrow", width < 760);
-        instance.element.classList.toggle("azunt-editor-very-narrow", width < 515);
-        instance.element.classList.toggle("azunt-editor-tiny", width < 345);
+        instance.element.classList.toggle("az-azunt-editor-narrow", width < 760);
+        instance.element.classList.toggle("az-azunt-editor-very-narrow", width < 515);
+        instance.element.classList.toggle("az-azunt-editor-tiny", width < 345);
         repositionOverlays(instance);
       });
       instance.toolbarSizeObserver.observe(instance.element);
@@ -1855,8 +1855,8 @@
   // The attached canvas/toolbar must be the nodes that are actually visible.
   function bindingIsCurrent(instance, element) {
     return instance && instance.element === element && element.isConnected &&
-      instance.canvas === element.querySelector(".azunt-editor-canvas") &&
-      instance.toolbar === element.querySelector(".azunt-editor-toolbar") &&
+      instance.canvas === element.querySelector(".az-azunt-editor-canvas") &&
+      instance.toolbar === element.querySelector(".az-azunt-editor-toolbar") &&
       instance.value === element.querySelector("[data-azunt-value]") &&
       instance.images === element.querySelector("[data-azunt-images]") &&
       instance.source === element.querySelector("[data-azunt-source]") &&
@@ -1879,7 +1879,7 @@
     }
     // Preserve pending edits if a framework replaced only the canvas/toolbar.
     // Prefer visible canvas content where it exists; detached nodes can be stale.
-    const currentCanvas = element.querySelector(".azunt-editor-canvas");
+    const currentCanvas = element.querySelector(".az-azunt-editor-canvas");
     const visibleHtml = currentCanvas?.innerHTML || "";
     const pendingHtml = previous?.canvas ? readHtml(previous) : "";
     const previousBlazorCommands = previous?.blazorCommands;
@@ -1891,7 +1891,7 @@
     const controller = new AbortController();
     const instance = {
       element, controller, canvas: currentCanvas,
-      toolbar: element.querySelector(".azunt-editor-toolbar"),
+      toolbar: element.querySelector(".az-azunt-editor-toolbar"),
       value: element.querySelector("[data-azunt-value]"),
       images: element.querySelector("[data-azunt-images]"),
       source: element.querySelector("[data-azunt-source]"),
@@ -1903,7 +1903,7 @@
       imageInsertSize: element.querySelector("[data-select=\"imageInsertSize\"]"),
       imageResizeHandle: element.querySelector("[data-image-resize-handle]"),
       imageResize: null,
-      status: element.querySelector(".azunt-editor-message"),
+      status: element.querySelector(".az-azunt-editor-message"),
       stats: element.querySelector("[data-editor-stats]"),
       findPanel: element.querySelector("[data-find-panel]"),
       findQuery: element.querySelector("[data-find-query]"),
@@ -2130,20 +2130,20 @@
     instance.canvas.addEventListener("dragenter", event => {
       if (!isSupportedDrop(event.dataTransfer)) return;
       event.preventDefault();
-      if (!instance.readOnly) instance.element.classList.add("azunt-editor-image-drop-active");
+      if (!instance.readOnly) instance.element.classList.add("az-azunt-editor-image-drop-active");
     }, { signal });
     instance.canvas.addEventListener("dragover", event => {
       if (!isSupportedDrop(event.dataTransfer)) return;
       event.preventDefault();
       if (event.dataTransfer) event.dataTransfer.dropEffect = instance.readOnly ? "none" : "copy";
-      if (!instance.readOnly) instance.element.classList.add("azunt-editor-image-drop-active");
+      if (!instance.readOnly) instance.element.classList.add("az-azunt-editor-image-drop-active");
     }, { signal });
     instance.canvas.addEventListener("dragleave", event => {
       if (!instance.canvas.contains(event.relatedTarget))
-        instance.element.classList.remove("azunt-editor-image-drop-active");
+        instance.element.classList.remove("az-azunt-editor-image-drop-active");
     }, { signal });
     instance.canvas.addEventListener("drop", event => {
-      instance.element.classList.remove("azunt-editor-image-drop-active");
+      instance.element.classList.remove("az-azunt-editor-image-drop-active");
       if (!isSupportedDrop(event.dataTransfer)) return;
       event.preventDefault();
       if (instance.readOnly || instance.sourceMode) return;
@@ -2185,7 +2185,7 @@
           closeMenu(instance, true);
           return;
         }
-        if (instance.element.classList.contains("azunt-editor-fullscreen")) toggleFullscreen(instance, false);
+        if (instance.element.classList.contains("az-azunt-editor-fullscreen")) toggleFullscreen(instance, false);
       }
     }, { signal });
     document.addEventListener("pointerdown", event => {
@@ -2196,7 +2196,7 @@
     window.visualViewport?.addEventListener("resize", () => repositionOverlays(instance), { passive: true, signal });
     window.visualViewport?.addEventListener("scroll", () => repositionOverlays(instance), { passive: true, signal });
     instance.canvas.addEventListener("keydown", event => {
-      if (event.key === "Escape" && instance.element.classList.contains("azunt-editor-fullscreen")) {
+      if (event.key === "Escape" && instance.element.classList.contains("az-azunt-editor-fullscreen")) {
         event.preventDefault(); toggleFullscreen(instance, false); return;
       }
       if (instance.readOnly || !(event.ctrlKey || event.metaKey)) return;
@@ -2290,7 +2290,7 @@
     instance.toolbarSizeObserver?.disconnect();
     closeMenu(instance);
     instance.controller.abort();
-    instance.element.classList.remove("azunt-editor-fullscreen", "azunt-editor-image-drop-active");
+    instance.element.classList.remove("az-azunt-editor-fullscreen", "az-azunt-editor-image-drop-active");
     instance.observer?.disconnect();
     window.clearTimeout(instance.emitTimer);
     window.clearTimeout(instance.messageTimer);

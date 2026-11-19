@@ -35,7 +35,7 @@ async def main():
                                 '<option value="480">480 px</option></select>'
                                 '<button type="button" data-command="image-delete">')
             html = html.replace('<textarea data-azunt-source hidden>',
-                                '<div class="azunt-editor-image-resize-handle" data-image-resize-handle hidden '
+                                '<div class="az-azunt-editor-image-resize-handle" data-image-resize-handle hidden '
                                 'tabindex="0" role="button" aria-label="Resize selected image"></div>'
                                 '<textarea data-azunt-source hidden>')
             await page.set_content(html)
@@ -44,9 +44,9 @@ async def main():
             await page.evaluate('AzuntEditor.setHtml("browser-test", "<p>Start</p>")')
             upload = page.locator('[data-azunt-images]')
             await upload.set_input_files({'name': 'original.png', 'mimeType': 'image/png', 'buffer': png(120, 80)})
-            img = page.locator('.azunt-editor-canvas img').first
+            img = page.locator('.az-azunt-editor-canvas img').first
             await img.wait_for()
-            await page.wait_for_function('document.querySelector(".azunt-editor-canvas img").complete')
+            await page.wait_for_function('document.querySelector(".az-azunt-editor-canvas img").complete')
             assert await img.get_attribute('width') is None, 'Default insertion must preserve native dimensions'
             rect = await img.bounding_box()
             assert 115 <= rect['width'] <= 125, rect
@@ -64,18 +64,18 @@ async def main():
             assert int(await img.get_attribute('width')) > 190
             saved = await page.evaluate('AzuntEditor.getHtml("browser-test")')
             assert 'width="' in saved and 'data-image-resize-handle' not in saved, saved[:300]
-            assert 'azunt-editor-image-selected' not in saved, saved[:300]
+            assert 'az-azunt-editor-image-selected' not in saved, saved[:300]
             await page.evaluate('(v) => AzuntEditor.setHtml("browser-test", v)', saved)
-            img = page.locator('.azunt-editor-canvas img').first
+            img = page.locator('.az-azunt-editor-canvas img').first
             await img.click()
             assert int(await img.get_attribute('width')) > 190, 'Resized width lost on restore'
             await page.locator('[data-command="image-original"]').click()
             assert await img.get_attribute('width') is None, 'Original size button must clear forced width'
             await page.locator('[data-select="imageInsertSize"]').select_option('480')
             await upload.set_input_files({'name': 'large.png', 'mimeType': 'image/png', 'buffer': png(640, 320)})
-            second = page.locator('.azunt-editor-canvas img[alt="large.png"]')
+            second = page.locator('.az-azunt-editor-canvas img[alt="large.png"]')
             await second.wait_for()
-            await page.wait_for_function('Array.from(document.querySelectorAll(".azunt-editor-canvas img")).find(i=>i.alt==="large.png")?.complete')
+            await page.wait_for_function('Array.from(document.querySelectorAll(".az-azunt-editor-canvas img")).find(i=>i.alt==="large.png")?.complete')
             assert await second.get_attribute('width') == '480', 'Legacy 480 px insertion option missing'
             size = await second.bounding_box()
             assert 470 <= size['width'] <= 490, size

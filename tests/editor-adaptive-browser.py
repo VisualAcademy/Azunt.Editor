@@ -24,7 +24,7 @@ async def main():
         root=page.locator('#browser-test')
         assert await root.get_attribute('data-toolbar-mode') == 'compact'
         await page.wait_for_timeout(100)
-        toolbar=page.locator('.azunt-editor-toolbar')
+        toolbar=page.locator('.az-azunt-editor-toolbar')
         box=await toolbar.bounding_box()
         assert box['height'] <= 105, box
         assert await page.locator('[data-classic-groups]').is_hidden()
@@ -43,7 +43,7 @@ async def main():
         # Normal quick action works without duplicating an original command button.
         await page.evaluate('AzuntEditor.setHtml("browser-test", "<p>Word</p>")')
         await page.evaluate('''() => {
-            const node=document.querySelector('.azunt-editor-canvas p').firstChild;
+            const node=document.querySelector('.az-azunt-editor-canvas p').firstChild;
             const range=document.createRange(); range.selectNodeContents(node);
             const selection=window.getSelection(); selection.removeAllRanges(); selection.addRange(range);
         }''')
@@ -51,13 +51,13 @@ async def main():
         assert '<strong>Word</strong>' in await page.evaluate('AzuntEditor.getHtml("browser-test")')
         # Table context toolbar.
         await page.evaluate('AzuntEditor.setHtml("browser-test", "<table><tr><td>A</td><td>B</td></tr></table>")')
-        await page.locator('.azunt-editor-canvas td').first.click()
+        await page.locator('.az-azunt-editor-canvas td').first.click()
         assert await page.locator('[data-context-tools]').is_visible()
         await page.locator('[data-context-tools] [data-quick-command="table-row-after"]').click()
-        assert await page.locator('.azunt-editor-canvas tr').count() == 2
+        assert await page.locator('.az-azunt-editor-canvas tr').count() == 2
         # Image context toolbar.
         await page.evaluate('AzuntEditor.setHtml("browser-test", \'<p><img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+8qV0AAAAASUVORK5CYII=" width="100"></p>\')')
-        await page.locator('.azunt-editor-canvas img').click()
+        await page.locator('.az-azunt-editor-canvas img').click()
         assert await page.locator('[data-context-tools]').is_visible()
         await page.locator('[data-context-tools] [data-operate-menu="image"]').click()
         assert await page.locator('[data-menu-panel] [data-group-label="Image"]').is_visible()

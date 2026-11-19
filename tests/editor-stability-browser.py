@@ -31,7 +31,7 @@ async def run():
             await page.add_script_tag(content=JS.read_text())
             # The compact fixture predates Undo/Redo toolbar buttons.
             await page.evaluate('''''''''() => {
-                const bar = document.querySelector('.azunt-editor-toolbar');
+                const bar = document.querySelector('.az-azunt-editor-toolbar');
                 bar.insertAdjacentHTML('beforeend',
                     '<button type="button" data-command="undo">Undo</button>' +
                     '<button type="button" data-command="redo">Redo</button>');
@@ -48,7 +48,7 @@ async def run():
 
             for i in range(75):
                 await page.evaluate('''i => {
-                    const canvas = document.querySelector('.azunt-editor-canvas');
+                    const canvas = document.querySelector('.az-azunt-editor-canvas');
                     canvas.innerHTML = `<p>Revision ${i}</p>`;
                     canvas.dispatchEvent(new Event('input', {bubbles:true}));
                 }''', i)
@@ -61,7 +61,7 @@ async def run():
             # Repeated 4MB inline image revisions are trimmed from undo history.
             base64_text = 'A' * (4 * 1024 * 1024)
             await page.evaluate('''base64 => {
-                const canvas = document.querySelector('.azunt-editor-canvas');
+                const canvas = document.querySelector('.az-azunt-editor-canvas');
                 for (let i = 0; i < 12; i++) {
                     canvas.innerHTML = `<p>Big ${i}</p><img src="data:image/png;base64,${base64}">`;
                     canvas.dispatchEvent(new Event('input', {bubbles:true}));

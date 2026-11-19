@@ -33,7 +33,7 @@ async def main():
                                 '<input type="text" data-image-alt maxlength="200" aria-label="Image alternative text">'
                                 '<input type="number" data-image-width')
             html = html.replace('<textarea data-azunt-source hidden>',
-                                '<div class="azunt-editor-image-resize-handle" data-image-resize-handle hidden '
+                                '<div class="az-azunt-editor-image-resize-handle" data-image-resize-handle hidden '
                                 'tabindex="0" role="button" aria-label="Resize"></div>'
                                 '<textarea data-azunt-source hidden>')
             await page.set_content(html)
@@ -42,7 +42,7 @@ async def main():
             await page.evaluate('AzuntEditor.setHtml("browser-test", "<p>Before<br>After</p>")')
             image_bytes = png(120, 80)
             await page.evaluate('''async ({payload}) => {
-                const canvas = document.querySelector('.azunt-editor-canvas');
+                const canvas = document.querySelector('.az-azunt-editor-canvas');
                 const dt = new DataTransfer();
                 const bytes = Uint8Array.from(atob(payload), c => c.charCodeAt(0));
                 dt.items.add(new File([bytes], 'dropped.png', {type:'image/png'}));
@@ -52,33 +52,33 @@ async def main():
                 const hover = new DragEvent('dragover', options);
                 canvas.dispatchEvent(hover);
                 if (!hover.defaultPrevented) throw new Error('File drag must be handled');
-                if (!document.querySelector('.azunt-editor-image-drop-active'))
+                if (!document.querySelector('.az-azunt-editor-image-drop-active'))
                   throw new Error('Drag feedback missing');
                 const drop = new DragEvent('drop', options);
                 canvas.dispatchEvent(drop);
                 if (!drop.defaultPrevented) throw new Error('File drop must be handled');
             }''', {'payload':base64.b64encode(image_bytes).decode()})
-            image = page.locator('.azunt-editor-canvas img[alt="dropped.png"]')
+            image = page.locator('.az-azunt-editor-canvas img[alt="dropped.png"]')
             await image.wait_for()
             assert await image.count() == 1
-            assert await page.locator('.azunt-editor-image-drop-active').count() == 0
+            assert await page.locator('.az-azunt-editor-image-drop-active').count() == 0
             # Image is a separate block, not a nested paragraph.
-            assert await page.evaluate('''() => !Array.from(document.querySelectorAll('.azunt-editor-canvas p p')).length''')
+            assert await page.evaluate('''() => !Array.from(document.querySelectorAll('.az-azunt-editor-canvas p p')).length''')
             # Selecting and describing an image must survive HTML save and reload.
             await image.click()
             alt = page.locator('[data-image-alt]')
             assert await alt.input_value() == 'dropped.png'
             await alt.fill('Equipment photo 1')
             await alt.dispatch_event('change')
-            assert await page.locator('.azunt-editor-canvas img').first.get_attribute('alt') == 'Equipment photo 1'
+            assert await page.locator('.az-azunt-editor-canvas img').first.get_attribute('alt') == 'Equipment photo 1'
             html = await page.evaluate('AzuntEditor.getHtml("browser-test")')
             assert 'alt="Equipment photo 1"' in html
             await page.evaluate('(html) => AzuntEditor.setHtml("browser-test", html)', html)
-            assert await page.locator('.azunt-editor-canvas img[alt="Equipment photo 1"]').count() == 1
+            assert await page.locator('.az-azunt-editor-canvas img[alt="Equipment photo 1"]').count() == 1
 
             # Incoming rich HTML must never bypass the editor sanitizer via native drop.
             await page.evaluate('''() => {
-                const canvas = document.querySelector('.azunt-editor-canvas');
+                const canvas = document.querySelector('.az-azunt-editor-canvas');
                 const transfer = new DataTransfer();
                 transfer.setData('text/html', '<p><strong>Keep</strong></p><script>window.unsafeDrop=1</script><p onmouseover="window.unsafeDrop=2">End</p>');
                 transfer.setData('text/plain', 'Keep End');
@@ -94,9 +94,9 @@ async def main():
             assert not await page.evaluate('Boolean(window.unsafeDrop)')
 
             # Unsupported MIME must be blocked and must not navigate away.
-            image_count = await page.locator('.azunt-editor-canvas img').count()
+            image_count = await page.locator('.az-azunt-editor-canvas img').count()
             await page.evaluate('''() => {
-                const canvas = document.querySelector('.azunt-editor-canvas');
+                const canvas = document.querySelector('.az-azunt-editor-canvas');
                 const transfer = new DataTransfer();
                 transfer.items.add(new File(['text'], 'unsafe.svg', {type:'image/svg+xml'}));
                 const r=canvas.getBoundingClientRect();
@@ -106,10 +106,10 @@ async def main():
                 if(!drop.defaultPrevented) throw new Error('Unsupported file must not navigate');
             }''')
             await page.wait_for_timeout(100)
-            assert await page.locator('.azunt-editor-canvas img').count() == image_count
+            assert await page.locator('.az-azunt-editor-canvas img').count() == image_count
 
             # Pointer Events support touch/pens with pointer capture; test touch path.
-            image = page.locator('.azunt-editor-canvas img').first
+            image = page.locator('.az-azunt-editor-canvas img').first
             await image.click()
             handle = page.locator('[data-image-resize-handle]')
             await handle.wait_for(state='visible')
@@ -131,12 +131,12 @@ async def main():
                 AzuntEditor.unmount('browser-test');
                 const element=document.getElementById('browser-test');
                 element.dataset.readOnly='true';
-                element.querySelector('.azunt-editor-canvas').setAttribute('contenteditable','false');
+                element.querySelector('.az-azunt-editor-canvas').setAttribute('contenteditable','false');
                 AzuntEditor.mount('browser-test');
             }''')
             before_readonly = await page.evaluate('AzuntEditor.getHtml("browser-test")')
             await page.evaluate('''({payload}) => {
-                const canvas=document.querySelector('.azunt-editor-canvas');
+                const canvas=document.querySelector('.az-azunt-editor-canvas');
                 const dt=new DataTransfer();
                 const bytes=Uint8Array.from(atob(payload),c=>c.charCodeAt(0));
                 dt.items.add(new File([bytes],'not-allowed.png',{type:'image/png'}));

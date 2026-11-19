@@ -25,7 +25,7 @@ async def main():
         try:
             original = BASE.read_text()
             original = original.replace('<script src="../src/Azunt.Editor/wwwroot/js/azunt-editor.js"></script>', '')
-            original = original.replace('  </div>\n  <div class="azunt-editor-link-panel"', '''    <button type="button" data-command="table-merge-right">Merge</button>
+            original = original.replace('  </div>\n  <div class="az-azunt-editor-link-panel"', '''    <button type="button" data-command="table-merge-right">Merge</button>
     <button type="button" data-command="table-split">Split</button>
     <button type="button" data-command="table-row-before">Row before</button>
     <button type="button" data-command="table-col-before">Col before</button>
@@ -36,8 +36,8 @@ async def main():
     <input type="color" data-select="tableBorderColor" value="#aeb8c6">
     <select data-select="tableBorderWidth"><option value="">Border px</option><option value="2">2 px</option></select>
   </div>
-  <div class="azunt-editor-link-panel"''')
-            original = original.replace('  <div class="azunt-editor-canvas"', '''  <div class="azunt-editor-signature-panel" data-signature-panel hidden>
+  <div class="az-azunt-editor-link-panel"''')
+            original = original.replace('  <div class="az-azunt-editor-canvas"', '''  <div class="az-azunt-editor-signature-panel" data-signature-panel hidden>
     <canvas data-signature-canvas width="640" height="180" style="width:640px;height:180px"></canvas>
     <input type="color" data-signature-color value="#1e293b">
     <select data-signature-width><option value="2">Fine</option><option value="3" selected>Normal</option><option value="5">Thick</option></select>
@@ -45,17 +45,17 @@ async def main():
     <button data-signature-insert>Insert signature</button>
     <button data-signature-close>Cancel</button>
   </div>
-  <div class="azunt-editor-template-panel" data-template-panel hidden>
+  <div class="az-azunt-editor-template-panel" data-template-panel hidden>
     <select data-template-list><option value="blank">Blank</option></select>
     <button data-template-apply>Load</button><button data-template-close>Cancel</button>
   </div>
-  <div class="azunt-editor-date-panel" data-date-panel hidden>
+  <div class="az-azunt-editor-date-panel" data-date-panel hidden>
     <button data-date-format="date">Date</button>
     <button data-date-format="time">Time</button>
     <button data-date-format="datetime">Date &amp; time</button>
     <button data-date-close>Cancel</button>
   </div>
-  <div class="azunt-editor-canvas"''')
+  <div class="az-azunt-editor-canvas"''')
             await page.set_content(original)
             await page.add_style_tag(content=CSS.read_text())
             await page.add_script_tag(content=JS.read_text())
@@ -66,7 +66,7 @@ async def main():
             async def cmd(name):
                 await page.locator(f'[data-command="{name}"]').click()
             await load('<table><tbody><tr><td>first</td><td>second</td><td>third</td></tr><tr><td>A</td><td>B</td><td>C</td></tr></tbody></table>')
-            await page.locator('.azunt-editor-canvas tr').first.locator('td').first.click()
+            await page.locator('.az-azunt-editor-canvas tr').first.locator('td').first.click()
             await cmd('table-merge-right')
             result = await html()
             assert 'colspan="2"' in result and 'first' in result and 'second' in result, result
@@ -78,19 +78,19 @@ async def main():
             assert 'border-width: 2px' in result, result
             await load(result)
             assert 'colspan="2"' in await html(), 'Merged cell should survive save and restore'
-            await page.locator('.azunt-editor-canvas tr').first.locator('td').first.click()
+            await page.locator('.az-azunt-editor-canvas tr').first.locator('td').first.click()
             await cmd('table-split')
             result = await html()
-            assert 'colspan' not in result and len(await page.locator('.azunt-editor-canvas tr').first.locator('td').all()) == 3, result
+            assert 'colspan' not in result and len(await page.locator('.az-azunt-editor-canvas tr').first.locator('td').all()) == 3, result
 
             # Directional insertion and semantic header toggle keep the table rectangular.
-            await page.locator('.azunt-editor-canvas tr').nth(1).locator('td').nth(1).click()
+            await page.locator('.az-azunt-editor-canvas tr').nth(1).locator('td').nth(1).click()
             await cmd('table-row-before')
-            assert await page.locator('.azunt-editor-canvas tr').count() == 3
+            assert await page.locator('.az-azunt-editor-canvas tr').count() == 3
             await cmd('table-col-before')
-            assert await page.locator('.azunt-editor-canvas tr').first.locator('td').count() == 4
+            assert await page.locator('.az-azunt-editor-canvas tr').first.locator('td').count() == 4
             await cmd('table-header-toggle')
-            assert await page.locator('.azunt-editor-canvas tr').nth(1).locator('th').count() == 4
+            assert await page.locator('.az-azunt-editor-canvas tr').nth(1).locator('th').count() == 4
             assert '<th' in await html()
 
             # Native browser pointer event path for signature drawing and PNG insertion.
@@ -108,9 +108,9 @@ async def main():
             await page.locator('[data-signature-insert]').click()
             result = await html()
             assert '<img' in result and 'alt="Signature"' in result and 'data:image/png;base64,' in result, result[:600]
-            assert await page.locator('.azunt-editor-canvas img').count() == 1
+            assert await page.locator('.az-azunt-editor-canvas img').count() == 1
             # The inserted image should be cropped to the ink bounds, not full 640x180.
-            dimensions = await page.locator('.azunt-editor-canvas img').first.evaluate('(img) => ({w:img.naturalWidth,h:img.naturalHeight})')
+            dimensions = await page.locator('.az-azunt-editor-canvas img').first.evaluate('(img) => ({w:img.naturalWidth,h:img.naturalHeight})')
             assert 110 <= dimensions['w'] < 180 and 20 <= dimensions['h'] < 90, dimensions
             assert 'width=' not in result[result.index('<img'):result.index('>', result.index('<img'))]
             await load(result)
@@ -119,7 +119,7 @@ async def main():
             await load('<p>Report: </p>')
             await cmd('datetime')
             await page.locator('[data-date-format="date"]').click()
-            assert (await page.locator('.azunt-editor-canvas').inner_text()).strip() != 'Report:', 'Date inserted'
+            assert (await page.locator('.az-azunt-editor-canvas').inner_text()).strip() != 'Report:', 'Date inserted'
 
             # Require explicit confirmation before overwriting nonempty reports.
             await load('<p>Important current draft</p>')

@@ -14,7 +14,7 @@ public sealed class AzuntExportButtonsTagHelper : TagHelper
     {
         output.TagName = "span";
         output.TagMode = TagMode.StartTagAndEndTag;
-        output.Attributes.SetAttribute("class", "azunt-editor-export-actions");
+        output.Attributes.SetAttribute("class", "az-azunt-editor-export-actions");
         var name = HtmlEncoder.Default.Encode(Name);
         output.Content.SetHtmlContent(
             $"<button type=\"submit\" name=\"{name}\" value=\"Pdf\">Download PDF</button>" +

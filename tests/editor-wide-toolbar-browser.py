@@ -30,7 +30,7 @@ async def main():
         menu_box = await menu.bounding_box()
         assert menu_box['width'] <= 866, menu_box
         assert await menu.evaluate('(el) => getComputedStyle(el).display') == 'grid'
-        groups = page.locator('[data-menu-panel] .azunt-editor-group')
+        groups = page.locator('[data-menu-panel] .az-azunt-editor-group')
         assert await groups.count() >= 3
         for i in range(await groups.count()):
             group = groups.nth(i)
@@ -38,7 +38,7 @@ async def main():
             bounds = await group.bounding_box()
             assert bounds['x'] >= menu_box['x'] - 1
             assert bounds['x'] + bounds['width'] <= menu_box['x'] + menu_box['width'] + 1
-        toolbar = page.locator('.azunt-editor-toolbar')
+        toolbar = page.locator('.az-azunt-editor-toolbar')
         assert (await toolbar.bounding_box())['height'] <= 105
         await page.keyboard.press('Escape')
         assert await menu.is_hidden()

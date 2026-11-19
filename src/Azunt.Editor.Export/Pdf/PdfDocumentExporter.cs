@@ -58,9 +58,12 @@ internal sealed class PdfDocumentExporter : IDisposable
                 <style>
                   *{box-sizing:border-box}body{font-family:Arial,'Malgun Gothic',sans-serif;color:#1e293b;font-size:12pt;line-height:1.45}
                   p,li{overflow-wrap:anywhere}h1,h2,h3,h4{break-after:avoid}
-                  table{border-collapse:collapse;width:100%;margin:10px 0}
-                  td,th{border:1px solid #94a3b8;padding:6px;vertical-align:top;overflow-wrap:anywhere}
-                  tr{break-inside:avoid}img{max-width:100%;height:auto;break-inside:avoid}
+                  table{border-collapse:collapse;width:100%;margin:10px 0;break-inside:auto}
+                  thead{display:table-header-group}tfoot{display:table-footer-group}
+                  td,th{border:1px solid #94a3b8;padding:6px;vertical-align:top;overflow-wrap:anywhere;break-inside:avoid}
+                  tr{break-inside:avoid;page-break-inside:avoid}
+                  img{max-width:100%;height:auto;break-inside:avoid;page-break-inside:avoid}
+                  p{orphans:2;widows:2}h1,h2,h3,h4{page-break-after:avoid}
                   pre{white-space:pre-wrap;overflow-wrap:anywhere}blockquote{border-left:3px solid #cbd5e1;padding-left:15px;margin-left:0}
                   a{color:#1d4ed8}hr{border:0;border-top:1px solid #cbd5e1}
                 </style></head><body>{{safeHtml}}</body></html>
@@ -75,7 +78,18 @@ internal sealed class PdfDocumentExporter : IDisposable
                 Format = paper,
                 Landscape = string.Equals(options.Orientation, "landscape", StringComparison.OrdinalIgnoreCase),
                 PrintBackground = true,
-                Margin = new Margin { Top = margin, Bottom = margin, Left = margin, Right = margin }
+                DisplayHeaderFooter = options.ShowPageNumbers,
+                FooterTemplate = options.ShowPageNumbers
+                    ? "<div style='width:100%;font:9px Arial,sans-serif;color:#64748b;text-align:center'>" +
+                      "<span class='pageNumber'></span> / <span class='totalPages'></span></div>"
+                    : null,
+                Margin = new Margin
+                {
+                    Top = margin,
+                    Bottom = options.ShowPageNumbers && margin == "8mm" ? "12mm" : margin,
+                    Left = margin,
+                    Right = margin
+                }
             });
             token.ThrowIfCancellationRequested();
             return pdf;

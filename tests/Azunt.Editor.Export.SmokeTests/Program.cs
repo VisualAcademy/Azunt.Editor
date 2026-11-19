@@ -23,6 +23,8 @@ using (var zip = new ZipArchive(new MemoryStream(word.Content), ZipArchiveMode.R
     var xml = Read(zip, "word/document.xml");
     Require(xml.Contains("Export test"), "DOCX heading");
     Require(xml.Contains("EGM-001"), "DOCX table text");
+    Require(xml.Contains("cantSplit"), "DOCX prevents table row splitting");
+    Require(xml.Contains("tblHeader"), "DOCX repeats semantic header rows");
     Require(!xml.Contains("<script") && !xml.Contains("onclick"), "DOCX dangerous markup excluded");
     Require(zip.Entries.Any(e => e.FullName.StartsWith("word/media/", StringComparison.Ordinal)), "DOCX embeds PNG image");
 }
@@ -32,6 +34,7 @@ using (var zip = new ZipArchive(new MemoryStream(excel.Content), ZipArchiveMode.
 {
     var xml = Read(zip, "xl/worksheets/sheet1.xml");
     Require(xml.Contains("EGM-001"), "XLSX table data");
+    Require(xml.Contains("<x:cols") || xml.Contains("<cols"), "XLSX defines readable column widths");
     Require(xml.Contains("=1+1"), "XLSX preserves cell text");
     Require(!xml.Contains("<f>"), "XLSX avoids formula injection");
     Require(xml.Contains("<drawing"), "XLSX worksheet references an image drawing");
@@ -75,7 +78,8 @@ catch (ArgumentException) { /* Expected: bounded HTML nesting. */ }
 
 if (Environment.GetEnvironmentVariable("AZUNT_TEST_PDF") == "1")
 {
-    var pdf = await exporter.ExportAsync(html, EditorExportFormat.Pdf);
+    var pdf = await exporter.ExportAsync(html, EditorExportFormat.Pdf,
+        new EditorExportOptions { ShowPageNumbers = true });
     Require(Encoding.ASCII.GetString(pdf.Content, 0, 5) == "%PDF-", "PDF header");
 }
 

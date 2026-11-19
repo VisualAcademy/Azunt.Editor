@@ -39,6 +39,9 @@ internal static class XlsxDocumentExporter
                 Name = "Report"
             });
 
+            // Collect bounded text widths while streaming rows. The Columns element
+            // is inserted before SheetData to satisfy SpreadsheetML ordering.
+            var textWidths = new double[100];
             uint rowNumber = 0;
             uint drawingId = 1;
             long totalImageBytes = 0;
@@ -46,6 +49,21 @@ internal static class XlsxDocumentExporter
 
             foreach (var node in document.Root.Children) WriteBlock(node);
             if (rowNumber == 0) AppendRow(["Document"]);
+
+            var columns = new S.Columns();
+            for (var i = 0; i < textWidths.Length; i++)
+            {
+                if (textWidths[i] <= 0) continue;
+                columns.Append(new S.Column
+                {
+                    Min = (uint)i + 1,
+                    Max = (uint)i + 1,
+                    Width = Math.Clamp(textWidths[i] + 2.5, 14.0, 58.0),
+                    CustomWidth = true
+                });
+            }
+            if (columns.HasChildren)
+                worksheetPart.Worksheet.InsertBefore(columns, sheetData);
 
             if (drawingsPart is not null)
             {
@@ -210,8 +228,15 @@ internal static class XlsxDocumentExporter
                 if (rowNumber >= MaxRows) throw new InvalidOperationException("Excel row limit for this export was exceeded.");
                 rowNumber++;
                 var row = new S.Row { RowIndex = rowNumber };
+                var maxLines = 1;
                 for (int col = 0; col < cells.Length; col++)
                 {
+                    var text = cells[col];
+                    var lines = text.Split('\n');
+                    maxLines = Math.Max(maxLines, lines.Length);
+                    // Count wide characters more generously. Keep all widths bounded.
+                    var longest = lines.Select(line => line.Sum(ch => ch > 0xFF ? 2 : 1)).DefaultIfEmpty(0).Max();
+                    textWidths[col] = Math.Max(textWidths[col], Math.Min(55, longest));
                     // Inline strings also protect leading '=' and '+' from formula execution.
                     row.Append(new S.Cell
                     {
@@ -220,6 +245,11 @@ internal static class XlsxDocumentExporter
                         InlineString = new S.InlineString(new S.Text(cells[col])
                         { Space = SpaceProcessingModeValues.Preserve })
                     });
+                }
+                if (maxLines > 1)
+                {
+                    row.Height = Math.Min(90.0, 15.0 * maxLines);
+                    row.CustomHeight = true;
                 }
                 sheetData.Append(row);
             }

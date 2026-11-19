@@ -27,3 +27,11 @@ var pages = EditorMarkup.Render("report", "Body");
 Require(pages.Contains("name=\"PaperSize\""), "Paper size form binding");
 Require(pages.Contains("name=\"Orientation\""), "Orientation form binding");
 Require(pages.Contains("name=\"Margin\""), "Margin form binding");
+
+// Toolbars preserve their per-command contracts while adding source-owned SVGs.
+var toolbar = EditorMarkup.Render("toolbar", "Content");
+Require(toolbar.Contains("data-group-label=\"Text formatting\""), "Accessible toolbar group labels");
+Require(toolbar.Contains("data-group-label=\"Document\""), "Document toolbar group");
+Require(toolbar.Contains("azunt-editor-button-icon"), "Source-owned SVG button icons");
+Require(toolbar.Contains("data-command=\"print\""), "Existing print command remains available");
+Require(toolbar.Contains("data-command=\"image\""), "Existing image command remains available");

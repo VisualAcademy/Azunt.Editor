@@ -113,14 +113,45 @@ public static class EditorMarkup
         w.Append("</div>");
         return w.ToString();
 
-        void Group(string label) => w.Append("<div class=\"azunt-editor-group\" role=\"group\" aria-label=\"").Append(Encode(label)).Append("\">");
+        void Group(string label) => w.Append("<div class=\"azunt-editor-group\" role=\"group\" data-group-label=\"").Append(Encode(label)).Append("\" aria-label=\"").Append(Encode(label)).Append("\">");
         void EndGroup() => w.Append("</div>");
         void Button(string command, string label, string title, string? shortcut = null)
         {
             w.Append("<button type=\"button\" class=\"azunt-editor-button\" data-command=\"").Append(Encode(command))
                 .Append("\" title=\"").Append(Encode(shortcut is null ? title : $"{title} ({shortcut})"))
-                .Append("\" aria-label=\"").Append(Encode(title)).Append("\">").Append(Encode(label)).Append("</button>");
+                .Append("\" aria-label=\"").Append(Encode(title)).Append("\">")
+                .Append(Icon(command) is { } svg ? "<span class=\"azunt-editor-button-icon\" aria-hidden=\"true\">" + svg + "</span>" : "<span class=\"azunt-editor-button-label\">" + Encode(label) + "</span>")
+                .Append("</button>");
         }
+        // SVG icons belong to Azunt.Editor: no external icon font, CDN, or UI package.
+        static string? Icon(string command)
+        {
+            const string open = "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"17\" height=\"17\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\" stroke-linecap=\"round\" stroke-linejoin=\"round\">";
+            var shape = command switch
+            {
+                "ul" => "<path d=\"M9 6h12M9 12h12M9 18h12\"/><path d=\"M4 6h.01M4 12h.01M4 18h.01\"/>",
+                "ol" => "<path d=\"M10 6h11M10 12h11M10 18h11M3 5h2v4M3 11h3v3H3v3h3\"/>",
+                "left" => "<path d=\"M4 6h16M4 10h10M4 14h16M4 18h10\"/>",
+                "center" => "<path d=\"M4 6h16M7 10h10M4 14h16M7 18h10\"/>",
+                "right" => "<path d=\"M4 6h16M10 10h10M4 14h16M10 18h10\"/>",
+                "justify" => "<path d=\"M4 6h16M4 10h16M4 14h16M4 18h16\"/>",
+                "indent" => "<path d=\"M10 6h11M10 12h11M10 18h11M3 10l3 2-3 2\"/>",
+                "outdent" => "<path d=\"M10 6h11M10 12h11M10 18h11M7 10l-3 2 3 2\"/>",
+                "link" => "<path d=\"M10 13a5 5 0 0 0 7.1 0l3-3a5 5 0 0 0-7.1-7.1l-1.7 1.7M14 11a5 5 0 0 0-7.1 0l-3 3a5 5 0 0 0 7.1 7.1l1.7-1.7\"/>",
+                "unlink" => "<path d=\"M10 13a5 5 0 0 0 7.1 0l3-3a5 5 0 0 0-7.1-7.1M14 11a5 5 0 0 0-7.1 0l-3 3a5 5 0 0 0 7.1 7.1M3 3l18 18\"/>",
+                "table" => "<rect x=\"3\" y=\"3\" width=\"18\" height=\"18\" rx=\"1\"/><path d=\"M3 9h18M3 15h18M9 3v18M15 3v18\"/>",
+                "image" => "<rect x=\"3\" y=\"3\" width=\"18\" height=\"18\" rx=\"2\"/><circle cx=\"9\" cy=\"9\" r=\"2\"/><path d=\"m21 16-5-5L5 21\"/>",
+                "undo" => "<path d=\"M3 7v6h6M21 17a8 8 0 0 0-14-6l-4 2\"/>",
+                "redo" => "<path d=\"M21 7v6h-6M3 17a8 8 0 0 1 14-6l4 2\"/>",
+                "source" => "<path d=\"m8 8-4 4 4 4m8-8 4 4-4 4M14 4l-4 16\"/>",
+                "preview" => "<rect x=\"3\" y=\"3\" width=\"18\" height=\"18\" rx=\"2\"/><path d=\"M8 8h8M8 12h8M8 16h5\"/>",
+                "print" => "<path d=\"M6 9V3h12v6M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2M6 15h12v6H6zM18 12h.01\"/>",
+                "image-delete" or "table-delete" => "<path d=\"M4 7h16M10 11v6M14 11v6M6 7l1 14h10l1-14M9 7V4h6v3\"/>",
+                _ => null
+            };
+            return shape is null ? null : open + shape + "</svg>";
+        }
+
         void Color(string command, string title, string initial)
         {
             w.Append("<label class=\"azunt-editor-input-label\" title=\"").Append(Encode(title)).Append("\">")

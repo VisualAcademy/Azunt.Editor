@@ -1,4 +1,4 @@
-/* Azunt.Editor 0.2 preview.1 — self-contained, no external fonts or CSS frameworks. */
+/* Azunt.Editor 0.4 preview.1 — all toolbar icons/styles self-contained. */
 .azunt-editor {
   --azunt-line: #d8dee6;
   --azunt-text: #1e293b;
@@ -22,6 +22,8 @@
   border-bottom: 1px solid var(--azunt-line);
   background: #f8fafc;
   border-radius: 10px 10px 0 0;
+  row-gap: 7px;
+  align-content: center;
 }
 .azunt-editor-group {
   display: inline-flex;
@@ -31,8 +33,29 @@
   padding-right: 7px;
   margin-right: 2px;
   border-right: 1px solid #d8dee6;
+  position: relative;
+  padding-top: 18px;
+  align-self: stretch;
 }
 .azunt-editor-group:last-child { border-right: 0; }
+.azunt-editor-group::before {
+  content: attr(data-group-label);
+  position: absolute;
+  top: 1px;
+  left: 3px;
+  font: 600 10px/15px system-ui, -apple-system, "Segoe UI", sans-serif;
+  color: #64748b;
+  letter-spacing: .02em;
+  pointer-events: none;
+}
+.azunt-editor-button-icon { display: inline-flex; align-items: center; justify-content: center; }
+.azunt-editor-button-icon svg { display: block; }
+.azunt-editor-button-label { display: inline-block; font-weight: 500; }
+.azunt-editor-toolbar .azunt-editor-button[data-command="bold"] .azunt-editor-button-label { font-weight: 800; }
+.azunt-editor-toolbar .azunt-editor-button[data-command="italic"] .azunt-editor-button-label { font-style: italic; }
+.azunt-editor-toolbar .azunt-editor-button[data-command="underline"] .azunt-editor-button-label { text-decoration: underline; }
+.azunt-editor-toolbar .azunt-editor-button[data-command="strike"] .azunt-editor-button-label { text-decoration: line-through; }
+
 .azunt-editor-button,
 .azunt-editor-select,
 .azunt-editor-input-label {
@@ -41,9 +64,12 @@
   background: transparent;
   color: var(--azunt-text);
   font: 13px/1.25 system-ui, -apple-system, "Segoe UI", sans-serif;
-  min-height: 32px;
+  min-height: 34px;
 }
-.azunt-editor-button { min-width: 31px; padding: 5px 7px; cursor: pointer; white-space: nowrap; }
+.azunt-editor-button { min-width: 34px; padding: 5px 8px; cursor: pointer; white-space: nowrap; display: inline-flex; justify-content: center; align-items: center; }
+.azunt-editor-button:active { background: #dbeafe; border-color: #93c5fd; }
+.azunt-editor-button[disabled], .azunt-editor-select[disabled] { opacity: .45; cursor: not-allowed; }
+
 .azunt-editor-button:hover, .azunt-editor-select:hover { background: #fff; border-color: #cbd5e1; }
 .azunt-editor-button:focus-visible,
 .azunt-editor-select:focus-visible,
@@ -108,6 +134,14 @@
 .azunt-editor-message { margin: 0; min-height: 22px; padding: 2px 12px 5px; font-size: 12px; color: var(--azunt-muted); }
 @media (max-width: 720px) {
   .azunt-editor-toolbar { gap: 4px; padding: 6px; }
+  .azunt-editor-group { padding-top: 17px; gap: 2px; }
   .azunt-editor-canvas { padding: 12px; }
+  .azunt-editor-select { max-width: 125px; }
+}
+@media (max-width: 420px) {
+  .azunt-editor-group { flex-wrap: wrap; }
+  .azunt-editor-button { min-width: 32px; padding: 5px 6px; }
 }
 @media print { .azunt-editor-toolbar, .azunt-editor-message, .azunt-editor-link-panel { display: none !important; } .azunt-editor { border: 0; } }
+/* Allow long tool groups to wrap without forcing a narrow host to scroll sideways. */
+.azunt-editor-group { max-width: 100%; min-width: 0; }

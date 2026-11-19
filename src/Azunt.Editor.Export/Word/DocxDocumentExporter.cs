@@ -131,12 +131,19 @@ internal static class DocxDocumentExporter
         foreach (var rowNode in node.DescendantsAndSelf().Where(e => e.Name == "tr"))
         {
             var row = new W.TableRow();
-            foreach (var cellNode in rowNode.Children.Where(e => e.Name is "td" or "th"))
+            var cells = rowNode.Children.Where(e => e.Name is "td" or "th").ToList();
+            // Keep each row together. Repeat semantic header rows on subsequent pages.
+            var rowProperties = new W.TableRowProperties(new W.CantSplit());
+            if (cells.Count > 0 && cells.All(c => c.Name == "th"))
+                rowProperties.Append(new W.TableHeader());
+            row.Append(rowProperties);
+            var cellImageMaxWidth = Math.Clamp(640 / Math.Max(cells.Count, 1), 120, 480);
+            foreach (var cellNode in cells)
             {
                 var cell = new W.TableCell();
                 var para = Paragraph(cellNode);
                 AppendInline(cellNode, para, part,
-                    cellNode.Name == "th" ? new Format(Bold: true) : new Format(), ref drawingId);
+                    cellNode.Name == "th" ? new Format(Bold: true) : new Format(), ref drawingId, cellImageMaxWidth);
                 cell.Append(para);
                 row.Append(cell);
             }
@@ -146,7 +153,7 @@ internal static class DocxDocumentExporter
     }
 
     private static void AppendInline(SafeEditorDocument.Node node, W.Paragraph para, MainDocumentPart part,
-        Format parent, ref uint drawingId)
+        Format parent, ref uint drawingId, int maxImageWidth = 560)
     {
         if (node.Name == "#text")
         {
@@ -156,7 +163,7 @@ internal static class DocxDocumentExporter
         if (node.Name == "br") { para.Append(new W.Run(new W.Break())); return; }
         if (node.Name == "img")
         {
-            var image = ImageRun(node, part, ref drawingId);
+            var image = ImageRun(node, part, ref drawingId, maxImageWidth);
             if (image is not null) para.Append(image);
             return;
         }
@@ -170,7 +177,7 @@ internal static class DocxDocumentExporter
             para.Append(hyperlink);
             return;
         }
-        foreach (var child in node.Children) AppendInline(child, para, part, next, ref drawingId);
+        foreach (var child in node.Children) AppendInline(child, para, part, next, ref drawingId, maxImageWidth);
     }
 
     private static Format Merge(Format current, SafeEditorDocument.Node node)
@@ -217,7 +224,8 @@ internal static class DocxDocumentExporter
         return new W.Run(properties, new W.Text(text) { Space = SpaceProcessingModeValues.Preserve });
     }
 
-    private static W.Run? ImageRun(SafeEditorDocument.Node node, MainDocumentPart main, ref uint drawingId)
+    private static W.Run? ImageRun(SafeEditorDocument.Node node, MainDocumentPart main, ref uint drawingId,
+        int maxWidth = 560)
     {
         if (!SafeEditorDocument.TryImage(node, out var mime, out var bytes)) return null;
         var part = main.AddImagePart(mime);
@@ -226,7 +234,7 @@ internal static class DocxDocumentExporter
         if (int.TryParse(node.Attribute("width"), out var definedWidth) && definedWidth is >= 24 and <= 2500)
             width = definedWidth;
         var (sourceWidth, sourceHeight) = ImageSize(bytes, mime);
-        width = Math.Min(width, 560);
+        width = Math.Min(width, maxWidth);
         var height = Math.Clamp((int)Math.Round(width * (double)sourceHeight / Math.Max(1, sourceWidth)), 20, 1200);
         var cx = (long)width * 9525;
         var cy = (long)height * 9525;

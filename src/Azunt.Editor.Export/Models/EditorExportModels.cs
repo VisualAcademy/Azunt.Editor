@@ -15,6 +15,8 @@ public sealed class EditorExportOptions
     public string PaperSize { get; set; } = "A4";
     public string Orientation { get; set; } = "portrait";
     public string Margin { get; set; } = "normal";
+    /// <summary>When true, PDF exports include current/total page counts in the footer.</summary>
+    public bool ShowPageNumbers { get; set; } = false;
 }
 
 public sealed record EditorExportResult(string FileName, string ContentType, byte[] Content);

@@ -1,4 +1,4 @@
-/* Azunt.Editor 0.3.0. Self-owned editing engine, no third-party JS. */
+/* Azunt.Editor 0.3.1. Self-owned editing engine, no third-party JS. */
 (function () {
   "use strict";
 
@@ -19,6 +19,10 @@
   // SignalR message limit. Large documents use Microsoft's JS stream references.
   const inlineInteropMaxBytes = 16 * 1024;
   const maxDocumentBytes = 16 * 1024 * 1024;
+  // Base64 images can make each undo snapshot several MB. Bound the total
+  // browser history instead of retaining 60 full copies of large documents.
+  const maxHistoryBytes = 32 * 1024 * 1024;
+  const maxHistoryEntries = 60;
   const allowedFonts = new Set(["Arial", "Georgia", "Times New Roman", "Verdana", "Segoe UI", "Noto Sans KR", "Malgun Gothic"]);
   const hexColor = /^#[0-9a-f]{6}$/i;
   const allowedPageSizes = new Set(["A4", "Letter", "Legal"]);
@@ -175,7 +179,14 @@
     if (instance.history[instance.historyIndex] === html) return;
     instance.history = instance.history.slice(0, instance.historyIndex + 1);
     instance.history.push(html);
-    if (instance.history.length > 60) instance.history.shift();
+    // Always retain at least the current snapshot, even if it alone exceeds
+    // the history budget. Large image-rich documents intentionally have fewer
+    // undo steps to avoid exhausting browser memory.
+    let totalBytes = instance.history.reduce((total, value) => total + new Blob([value]).size, 0);
+    while (instance.history.length > 1 &&
+      (instance.history.length > maxHistoryEntries || totalBytes > maxHistoryBytes)) {
+      totalBytes -= new Blob([instance.history.shift()]).size;
+    }
     instance.historyIndex = instance.history.length - 1;
   }
 

@@ -2,10 +2,12 @@
 @rendermode InteractiveServer
 @using Azunt.Editor.Components
 @using Azunt.Editor.Export.Models
+@using Azunt.Editor.Export.Html
 @using Azunt.Editor.Export.Components
 @using Microsoft.JSInterop
 @inject IEditorExportService ExportService
 @inject IJSRuntime JS
+@inject ILogger<BlazorDemo> Logger
 
 <h1>Azunt.Editor — Blazor Server</h1>
 <p>Interactive Server component using the same JavaScript editor engine.</p>
@@ -47,13 +49,14 @@
         }
         try
         {
-            _savedHtml = await _editor.GetHtmlAsync();
+            _savedHtml = EditorHtmlSanitizer.Sanitize(await _editor.GetHtmlAsync());
             _html = _savedHtml;
             _notice = "Saved to this component's memory (not persisted across reloads).";
         }
         catch (Exception ex)
         {
-            _notice = $"Save failed: {ex.Message}";
+            Logger.LogError(ex, "Blazor editor HTML save failed.");
+            _notice = "Save failed. Check the application logs for details.";
         }
     }
 
@@ -76,7 +79,8 @@
         }
         catch (Exception ex)
         {
-            _notice = $"Download failed: {ex.Message}";
+            Logger.LogError(ex, "Blazor editor export failed for format {Format}.", format);
+            _notice = "Download failed. Check the application logs for details.";
         }
     }
 
@@ -94,7 +98,8 @@
         }
         catch (Exception ex)
         {
-            _notice = $"Restore failed: {ex.Message}";
+            Logger.LogError(ex, "Blazor editor restore failed.");
+            _notice = "Restore failed. Check the application logs for details.";
         }
     }
 }

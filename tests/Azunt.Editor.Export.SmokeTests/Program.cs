@@ -1,4 +1,5 @@
 using Azunt.Editor.Export.Models;
+using Azunt.Editor.Export.Html;
 using Azunt.Editor.Export.Services;
 using Microsoft.Extensions.DependencyInjection;
 using System.IO.Compression;
@@ -41,6 +42,36 @@ using (var zip = new ZipArchive(new MemoryStream(excel.Content), ZipArchiveMode.
     Require(zip.GetEntry("xl/drawings/_rels/drawing1.xml.rels") is not null,
         "XLSX drawing relationships exist");
 }
+
+// Hosts can sanitize editor documents before saving them, not just during export.
+var unsafeHtml = "<input type='hidden' value='x'><p onclick='alert(1)'>Keep me</p>" +
+    "<script>bad()</script><img src='https://example.org/pixel.png' onerror='bad()'>" +
+    "<a href='javascript:alert(1)'>Unsafe link</a><p>After input</p>";
+var cleaned = EditorHtmlSanitizer.Sanitize(unsafeHtml);
+Require(cleaned.Contains("Keep me") && cleaned.Contains("After input"),
+    "Void unsupported tags must not discard subsequent editor content");
+Require(!cleaned.Contains("onclick") && !cleaned.Contains("<script") && !cleaned.Contains("bad()"),
+    "Script and event attributes must not survive sanitization");
+Require(!cleaned.Contains("https://example.org/pixel") && !cleaned.Contains("javascript:"),
+    "Disallowed images and link schemes must be removed");
+Require(cleaned.Contains("Unsafe link"), "Link text must be preserved safely");
+Require(EditorHtmlSanitizer.Sanitize("<a href='/reports/123'>Local</a>").Contains("href=\"/reports/123\""),
+    "Safe root-relative links are retained after persistence");
+Require(EditorHtmlSanitizer.Sanitize("<a href='https://example.org/'>External</a>").Contains("https://example.org/"),
+    "Safe HTTPS links are retained after persistence");
+Require(EditorHtmlSanitizer.Sanitize("<p title=\"ignored\">&lt;ok&gt;</p>").Contains("&lt;ok&gt;"),
+    "Text entities remain encoded after HTML normalization");
+var gif = "R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==";
+Require(EditorHtmlSanitizer.Sanitize($"<p><img src=\"data:image/gif;base64,{gif}\"></p>")
+    .Contains("data:image/gif;base64,"), "Valid GIF image must survive sanitized HTML storage");
+Require(!EditorHtmlSanitizer.Sanitize("<img src='data:image/gif;base64,AQIDBA=='>")
+    .Contains("<img"), "Mismatched inline image payload must be removed");
+try
+{
+    EditorHtmlSanitizer.Sanitize(string.Concat(Enumerable.Repeat("<div>", 130)));
+    throw new Exception("FAILED: Deeply nested HTML was accepted");
+}
+catch (ArgumentException) { /* Expected: bounded HTML nesting. */ }
 
 if (Environment.GetEnvironmentVariable("AZUNT_TEST_PDF") == "1")
 {

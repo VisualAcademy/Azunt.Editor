@@ -1,11 +1,12 @@
 using Azunt.Web.Models;
 using Azunt.Editor.Export.Models;
+using Azunt.Editor.Export.Html;
 using Microsoft.AspNetCore.Mvc;
 
 namespace Azunt.Web.Controllers;
 
 [Route("editor/mvc")]
-public sealed class EditorMvcController(IEditorExportService exporter) : Controller
+public sealed class EditorMvcController(IEditorExportService exporter, ILogger<EditorMvcController> logger) : Controller
 {
     private const string SessionKey = "azunt.demo.mvc";
     private const int MaxHtmlLength = 12_000_000;
@@ -29,6 +30,12 @@ public sealed class EditorMvcController(IEditorExportService exporter) : Control
             ModelState.AddModelError(nameof(vm.Html), "Document exceeds the demo size limit.");
             return View(vm);
         }
+        try { vm.Html = EditorHtmlSanitizer.Sanitize(vm.Html); }
+        catch (ArgumentException)
+        {
+            ModelState.AddModelError(nameof(vm.Html), "Document contains unsupported or excessively complex HTML.");
+            return View(vm);
+        }
         if (!string.IsNullOrWhiteSpace(exportFormat))
         {
             if (!Enum.TryParse<EditorExportFormat>(exportFormat, true, out var format))
@@ -44,7 +51,8 @@ public sealed class EditorMvcController(IEditorExportService exporter) : Control
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
-                ModelState.AddModelError("Export", $"Export failed: {ex.Message}");
+                logger.LogError(ex, "MVC editor export failed for format {Format}.", format);
+                ModelState.AddModelError("Export", "Export failed. Check the application logs for details.");
                 return View(vm);
             }
         }

@@ -51,6 +51,11 @@ internal sealed class SafeEditorDocument
         "form", "input", "textarea", "button", "select", "option", "link", "meta", "base", "video", "audio"
     };
     private static readonly HashSet<string> Void = new(StringComparer.OrdinalIgnoreCase) { "br", "hr", "img" };
+    // Standard HTML void elements have no end tag. They must never cause the
+    // remainder of an otherwise valid document to be discarded.
+    private static readonly HashSet<string> OmittedVoid = new(StringComparer.OrdinalIgnoreCase)
+    { "input", "link", "meta", "base" };
+    private const int MaxElementDepth = 128;
     private static readonly HashSet<string> Fonts = new(StringComparer.OrdinalIgnoreCase)
     { "Arial", "Georgia", "Times New Roman", "Verdana", "Segoe UI", "Noto Sans KR", "Malgun Gothic" };
     private static readonly Regex AttrPattern = new(@"(?<key>[A-Za-z][A-Za-z0-9_-]*)(?:\s*=\s*(?:""(?<double>[^""]*)""|'(?<single>[^']*)'|(?<bare>[^\s>]+)))?", RegexOptions.Compiled | RegexOptions.CultureInvariant, TimeSpan.FromSeconds(1));
@@ -101,13 +106,15 @@ internal sealed class SafeEditorDocument
             var tag = token[..nameEnd].ToLowerInvariant();
             if (skip.Count > 0)
             {
-                if (Omitted.Contains(tag) && !closing) skip.Push(tag);
+                if (Omitted.Contains(tag) && !closing && !OmittedVoid.Contains(tag) && !token.EndsWith('/'))
+                    skip.Push(tag);
                 else if (closing && tag == skip.Peek()) skip.Pop();
                 continue;
             }
             if (Omitted.Contains(tag))
             {
-                if (!closing) skip.Push(tag);
+                if (!closing && !OmittedVoid.Contains(tag) && !token.EndsWith('/'))
+                    skip.Push(tag);
                 continue;
             }
             if (!Allowed.Contains(tag)) continue;
@@ -129,7 +136,12 @@ internal sealed class SafeEditorDocument
                 node.Attributes[key] = WebUtility.HtmlDecode(value);
             }
             stack.Peek().Children.Add(node);
-            if (!Void.Contains(tag) && !token.EndsWith('/')) stack.Push(node);
+            if (!Void.Contains(tag) && !token.EndsWith('/'))
+            {
+                if (stack.Count >= MaxElementDepth)
+                    throw new ArgumentException("HTML nesting exceeds the supported export limit.", nameof(html));
+                stack.Push(node);
+            }
         }
         return doc;
 
@@ -168,7 +180,7 @@ internal sealed class SafeEditorDocument
         if (node.Name == "#text") { output.Append(HtmlEncoder.Default.Encode(node.Text)); return; }
         if (node.Name == "img")
         {
-            if (!TryImage(node, out _, out _)) return; // never allow external image/network requests
+            if (!TryInlineImage(node, out _, out _)) return; // never allow external image/network requests
         }
         output.Append('<').Append(node.Name);
         if (node.Name == "img")
@@ -189,31 +201,75 @@ internal sealed class SafeEditorDocument
         output.Append("</").Append(node.Name).Append('>');
     }
 
-    public static bool TryImage(Node node, out string mime, out byte[] bytes)
+    /// <summary>
+    /// Accept safe inline raster formats for browser rendering and persistence.
+    /// Never retrieve remote image URLs. The Open XML writers currently embed
+    /// PNG/JPEG only; GIF/WebP remain available for HTML/PDF.
+    /// </summary>
+    public static bool TryInlineImage(Node node, out string mime, out byte[] bytes)
     {
         mime = ""; bytes = [];
         var src = node.Attribute("src");
         var comma = src.IndexOf(',');
         if (comma <= 0 || comma >= src.Length - 1) return false;
         var prefix = src[..comma].ToLowerInvariant();
-        mime = prefix switch { "data:image/png;base64" => "image/png", "data:image/jpeg;base64" => "image/jpeg", _ => "" };
-        if (mime.Length == 0 || src.Length - comma - 1 > 4 * 1024 * 1024) return false; // bound base64 size
+        mime = prefix switch
+        {
+            "data:image/png;base64" => "image/png",
+            "data:image/jpeg;base64" => "image/jpeg",
+            "data:image/gif;base64" => "image/gif",
+            "data:image/webp;base64" => "image/webp",
+            _ => ""
+        };
+        if (mime.Length == 0 || src.Length - comma - 1 > 4 * 1024 * 1024) return false;
         try
         {
             bytes = Convert.FromBase64String(src[(comma + 1)..]);
-            if (bytes.Length > 3 * 1024 * 1024) return false;
-            return mime == "image/png"
-                ? bytes.AsSpan().StartsWith(new byte[] { 137, 80, 78, 71, 13, 10, 26, 10 })
-                : bytes.Length > 3 && bytes[0] == 0xff && bytes[1] == 0xd8;
+            if (bytes.Length == 0 || bytes.Length > 3 * 1024 * 1024) return false;
+            return mime switch
+            {
+                "image/png" => bytes.AsSpan().StartsWith(new byte[] { 137, 80, 78, 71, 13, 10, 26, 10 }),
+                "image/jpeg" => bytes.Length > 3 && bytes[0] == 0xff && bytes[1] == 0xd8,
+                "image/gif" => bytes.AsSpan().StartsWith("GIF87a"u8) || bytes.AsSpan().StartsWith("GIF89a"u8),
+                "image/webp" => bytes.Length >= 12 && bytes.AsSpan().StartsWith("RIFF"u8) &&
+                    bytes.AsSpan(8).StartsWith("WEBP"u8),
+                _ => false
+            };
         }
         catch (FormatException) { return false; }
+    }
+
+    /// <summary>Open XML writers can embed supported PNG and JPEG images.</summary>
+    public static bool TryImage(Node node, out string mime, out byte[] bytes)
+    {
+        return TryInlineImage(node, out mime, out bytes) && (mime is "image/png" or "image/jpeg");
     }
 
     public static bool TryLink(string raw, out string safe)
     {
         safe = "";
-        if (!Uri.TryCreate(raw, UriKind.Absolute, out var uri) || !string.IsNullOrEmpty(uri.UserInfo)) return false;
-        if (uri.Scheme != Uri.UriSchemeHttps && uri.Scheme != Uri.UriSchemeMailto) return false;
+        if (string.IsNullOrWhiteSpace(raw) || raw.Length > 2048 || raw.Any(char.IsControl)) return false;
+        var candidate = raw.Trim();
+        if (candidate.Contains('\\') || candidate.StartsWith("//", StringComparison.Ordinal)) return false;
+        // Preserve the same ordinary link forms supported by the browser editor.
+        if (Regex.IsMatch(candidate, @"^#[A-Za-z][A-Za-z0-9_-]*$", RegexOptions.CultureInvariant))
+        {
+            safe = candidate;
+            return true;
+        }
+        if (candidate.StartsWith("/", StringComparison.Ordinal) &&
+            Regex.IsMatch(candidate, @"^/[A-Za-z0-9/_~!$&'()*+,;=.?%#-]*$", RegexOptions.CultureInvariant))
+        {
+            safe = candidate;
+            return true;
+        }
+        if (Regex.IsMatch(candidate, @"^[A-Za-z0-9][A-Za-z0-9/_~!$&'()*+,;=.?%#-]*$", RegexOptions.CultureInvariant))
+        {
+            safe = candidate;
+            return true;
+        }
+        if (!Uri.TryCreate(candidate, UriKind.Absolute, out var uri) || !string.IsNullOrEmpty(uri.UserInfo)) return false;
+        if (uri.Scheme is not ("https" or "http" or "mailto")) return false;
         safe = uri.AbsoluteUri;
         return true;
     }

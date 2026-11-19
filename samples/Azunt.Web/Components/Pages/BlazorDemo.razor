@@ -21,8 +21,12 @@
 <p>Interactive Server component using the same JavaScript editor engine. ·
     <a href="/editor/blazor">Compact toolbar</a> · <a href="/editor/blazor?toolbar=classic">Classic toolbar</a></p>
 
+<p class="document-meta">Mode: <button type="button" @onclick="ToggleModeAsync">
+    @(_demoMode == EditorMode.Edit ? "Switch to View" : "Switch to Edit")
+</button></p>
+
 <AzuntEditor @key="UseStoredImages" @ref="_editor" Id="azunt-blazor-demo" Name="BlazorHtml" @bind-Value="_html" Height="340" UploadUrl="@(UseStoredImages ? "/editor/demo-images" : null)"
-    ToolbarMode="@(UseClassic ? "Classic" : "Compact")" CustomCommands="EditorCommands" CustomCommandInvoked="HandleEditorCommand" />
+    Mode="@_demoMode" ToolbarMode="@(UseClassic ? "Classic" : "Compact")" CustomCommands="EditorCommands" CustomCommandInvoked="HandleEditorCommand" />
 
 <div class="actions">
     <button class="primary" @onclick="SaveAsync">Save HTML</button>
@@ -60,6 +64,13 @@
     private bool UseDeferredImages => HostEnvironment.IsDevelopment() &&
         new Uri(Navigation.Uri).Query.Contains("images=save", StringComparison.OrdinalIgnoreCase);
     private AzuntEditor? _editor;
+    private EditorMode _demoMode = EditorMode.Edit;
+
+    private async Task ToggleModeAsync()
+    {
+        _demoMode = _demoMode == EditorMode.Edit ? EditorMode.View : EditorMode.Edit;
+        if (_editor is not null) await _editor.SetModeAsync(_demoMode);
+    }
     private string _html = "<h2>Blazor Server demo</h2><p>Select text to format it, or add multiple images.</p>";
     private string _savedHtml = "";
     private string? _notice;

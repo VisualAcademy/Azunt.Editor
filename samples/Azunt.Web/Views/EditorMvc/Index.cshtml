@@ -1,6 +1,7 @@
 @model EditorDemoViewModel
 @inject Microsoft.AspNetCore.Hosting.IWebHostEnvironment HostEnvironment
 @{
+    var view = Context.Request.Query["mode"] == "view";
     var classic = Context.Request.Query["toolbar"] == "classic";
     var storedImages = HostEnvironment.IsDevelopment() && Context.Request.Query["images"] == "stored";
     var saveImagesOnSubmit = HostEnvironment.IsDevelopment() &&
@@ -11,15 +12,23 @@
     <a href="?">Inline</a> · <a href="?images=stored">Upload on insert</a> · <a href="?images=save">Store on Save</a></p>
 <p class="document-meta">Toolbar: <a href="?">Compact</a> · <a href="?toolbar=classic">Classic</a></p>
 <h1>Azunt.Editor — MVC</h1>
+<p class="document-meta">Mode: <a href="?">Edit</a> · <a href="?mode=view">View</a></p>
 <p>Submit the form to test MVC model binding and session-scoped HTML persistence.</p>
-<form action="@(storedImages ? "/editor/mvc?images=stored" : saveImagesOnSubmit ? "/editor/mvc?images=save" : "/editor/mvc")" method="post">
-    @Html.AntiForgeryToken()
-    <azunt-editor id="azunt-mvc-demo" name="Html" value="@Model.Html" height="340" toolbar-mode="@(classic ? "Classic" : "Compact")" upload-url="@imageUploadUrl" />
-    <div class="actions">
-        <button class="primary" type="submit">Save HTML</button>
-        <azunt-export-buttons />
-    </div>
-</form>
+@if (view)
+{
+    <azunt-editor id="azunt-mvc-demo" name="Html" value="@Model.Html" mode="View" />
+}
+else
+{
+    <form action="@(storedImages ? "/editor/mvc?images=stored" : saveImagesOnSubmit ? "/editor/mvc?images=save" : "/editor/mvc")" method="post">
+        @Html.AntiForgeryToken()
+        <azunt-editor id="azunt-mvc-demo" name="Html" value="@Model.Html" height="340" toolbar-mode="@(classic ? "Classic" : "Compact")" upload-url="@imageUploadUrl" />
+        <div class="actions">
+            <button class="primary" type="submit">Save HTML</button>
+            <azunt-export-buttons />
+        </div>
+    </form>
+}
 @if (!string.IsNullOrWhiteSpace(Model.Notice)) { <p class="notice" role="status">@Model.Notice</p> }
 <div asp-validation-summary="All" class="validation"></div>
 <h2>Submitted HTML (escaped source)</h2>

@@ -1869,11 +1869,11 @@
       instance.imageResizeHandle === element.querySelector("[data-image-resize-handle]");
   }
 
-  function mount(id, dotNetReference) {
+  function mount(id, dotNetReference, force = false) {
     const element = typeof id === "string" ? document.getElementById(id) : id;
     if (!element || !element.matches("[data-azunt-editor]")) return false;
     const previous = instances.get(element.id);
-    if (bindingIsCurrent(previous, element)) {
+    if (!force && bindingIsCurrent(previous, element)) {
       if (dotNetReference) previous.dotNetReference = dotNetReference;
       return true;
     }
@@ -1918,7 +1918,9 @@
       templatePanel: element.querySelector("[data-template-panel]"),
       templateList: element.querySelector("[data-template-list]"),
       datePanel: element.querySelector("[data-date-panel]"),
-      readOnly: element.dataset.readOnly === "true", uploadUrl: element.dataset.uploadUrl || null,
+      mode: element.dataset.editorMode === "view" ? "view" : "edit",
+      readOnly: element.dataset.editorMode === "view" || element.dataset.readOnly === "true",
+      uploadUrl: element.dataset.uploadUrl || null,
       dotNetReference: dotNetReference || null, emitTimer: null, messageTimer: null, messageVersion: 0,
       history: [], historyIndex: 0, lastRange: null,
       revision: previous?.revision || 0, sourceMode: false,
@@ -1932,8 +1934,23 @@
       : (sameRoot ? pendingHtml : instance.value.value);
     instance.canvas.innerHTML = sanitizeHtml(startingHtml);
     instance.value.value = readHtml(instance);
-    instance.history = [instance.value.value];
+    // Switching modes retains undo history, but starts with the current sanitized HTML.
+    const oldHistory = sameRoot && previous?.history;
+    instance.history = oldHistory?.length ? oldHistory : [instance.value.value];
+    instance.historyIndex = oldHistory?.length ? previous.historyIndex : 0;
     instances.set(element.id, instance);
+    instance.canvas.contentEditable = instance.readOnly ? "false" : "true";
+    instance.value.disabled = instance.mode === "view";
+    if (instance.mode === "view") {
+      instance.canvas.setAttribute("role", "document");
+      instance.canvas.setAttribute("aria-label", "Document viewer");
+      instance.canvas.removeAttribute("aria-multiline");
+      // A viewer has no toolbar/selection/image handlers or Blazor edit callbacks.
+      return true;
+    }
+    instance.canvas.setAttribute("role", "textbox");
+    instance.canvas.setAttribute("aria-label", "Document content");
+    instance.canvas.setAttribute("aria-multiline", "true");
     initAdaptiveToolbar(instance);
     if (previousBlazorCommands?.size) {
       instance.blazorCommands = new Map(previousBlazorCommands);
@@ -2237,6 +2254,24 @@
     document.querySelectorAll("[data-azunt-editor]").forEach(element => mount(element));
   }
 
+  // Mode changes operate on the live editor rather than replacing Blazor-owned markup.
+  // In source mode use the sanitized source (the visible canvas may be stale).
+  function setMode(id, mode) {
+    const desired = String(mode).trim().toLowerCase();
+    if (desired !== "edit" && desired !== "view")
+      throw new Error("Editor mode must be Edit or View.");
+    const instance = getInstance(id);
+    if (instance.mode === desired) return;
+    const html = readHtml(instance);
+    instance.canvas.innerHTML = html;
+    instance.value.value = html;
+    instance.sourceMode = false;
+    instance.source.hidden = true;
+    instance.canvas.hidden = false;
+    instance.element.dataset.editorMode = desired;
+    mount(instance.element, instance.dotNetReference, true);
+  }
+
   function getInstance(id) {
     const element = document.getElementById(id);
     if (!element || !element.matches("[data-azunt-editor]")) {
@@ -2279,7 +2314,8 @@
     instance.history = [readHtml(instance)];
     instance.historyIndex = 0;
     updateStats(instance);
-    updateFormattingState(instance);
+    if (instance.mode === "edit") updateFormattingState(instance);
+    // Programmatic SetHtml is allowed in both modes; View never makes the DOM editable.
     emit(instance);
   }
 
@@ -2303,7 +2339,7 @@
     return { paperSize: instance.page.paper, orientation: instance.page.orientation, margin: instance.page.margin };
   }
 
-  window.AzuntEditor = Object.freeze({ mount, mountAll, getHtml, getHtmlStream, setHtml, getPageSettings, showStatus, unmount, sanitizeHtml, registerTemplate, registerCommand, unregisterCommand, setCommands, setToolbarMode });
+  window.AzuntEditor = Object.freeze({ mount, mountAll, getHtml, getHtmlStream, setHtml, setMode, getPageSettings, showStatus, unmount, sanitizeHtml, registerTemplate, registerCommand, unregisterCommand, setCommands, setToolbarMode });
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", mountAll, { once: true });
   else mountAll();
 })();

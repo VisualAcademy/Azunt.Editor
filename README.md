@@ -2,7 +2,7 @@
 
 A lightweight rich-text editor for ASP.NET Core MVC, Razor Pages, and Blazor Server.
 
-Version: **0.6.4** · .NET 10
+Version: **0.6.5** · .NET 10
 
 ## Projects
 - `src/Azunt.Editor` — shared editor components, JavaScript, and CSS
@@ -16,6 +16,17 @@ dotnet restore Azunt.Editor.sln
 dotnet build Azunt.Editor.sln -c Release
 dotnet run --project samples/Azunt.Web
 ```
+
+## Edit and View modes
+
+The default `Edit` mode keeps the current editor behavior. Set `mode="View"` in
+MVC/Razor Pages or `Mode="EditorMode.View"` in Blazor to display the same
+sanitized document without editing tools. `ReadOnly` remains a separate,
+backwards-compatible option. See [public API](docs/public-api.md) for examples,
+mode transitions and important client-rendering security limitations.
+
+Demo: `/editor/mvc?mode=view`, `/editor/razor-pages?mode=view`, or toggle the
+mode on `/editor/blazor` without discarding the current document.
 
 ## Images
 

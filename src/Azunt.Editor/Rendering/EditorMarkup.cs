@@ -1,5 +1,6 @@
 using System.Text;
 using System.Text.Encodings.Web;
+using Azunt.Editor.Models;
 
 namespace Azunt.Editor.Rendering;
 
@@ -7,16 +8,19 @@ namespace Azunt.Editor.Rendering;
 public static class EditorMarkup
 {
     public static string Render(string id, string name, string? value = null, int height = 320,
-        bool readOnly = false, string? uploadUrl = null, string toolbarMode = "Compact")
+        bool readOnly = false, string? uploadUrl = null, string toolbarMode = "Compact", EditorMode mode = EditorMode.Edit)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(id);
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
+        if (!Enum.IsDefined(mode)) throw new ArgumentOutOfRangeException(nameof(mode));
+        var viewer = mode == EditorMode.View;
 
         static string Encode(string? raw) => HtmlEncoder.Default.Encode(raw ?? string.Empty);
         var safeHeight = Math.Clamp(height, 180, 1400);
         var w = new StringBuilder(6500 + (value?.Length ?? 0));
         w.Append("<div class=\"az-azunt-editor\" data-azunt-editor=\"true\" id=\"").Append(Encode(id))
-            .Append("\" data-read-only=\"").Append(readOnly ? "true" : "false").Append('"');
+            .Append("\" data-read-only=\"").Append(readOnly ? "true" : "false").Append('"')
+            .Append(" data-editor-mode=\"").Append(viewer ? "view" : "edit").Append('"');
         if (!string.IsNullOrWhiteSpace(uploadUrl))
             w.Append(" data-upload-url=\"").Append(Encode(uploadUrl)).Append('"');
         w.Append(" data-toolbar-mode=\"").Append(string.Equals(toolbarMode, "Classic", StringComparison.OrdinalIgnoreCase) ? "classic" : "compact").Append("\">");
@@ -205,16 +209,24 @@ public static class EditorMarkup
             .Append("<button type=\"button\" data-date-format=\"datetime\">Date &amp; time</button>")
             .Append("<button type=\"button\" data-date-close>Cancel</button></div>");
 
-        w.Append("<div class=\"az-azunt-editor-canvas\" role=\"textbox\" aria-label=\"Document content\" aria-multiline=\"true\" contenteditable=\"")
-            .Append(readOnly ? "false" : "true")
-            .Append("\" style=\"min-height:").Append(safeHeight).Append("px\"></div>");
+        w.Append("<div class=\"az-azunt-editor-canvas\" role=\"")
+            .Append(viewer ? "document" : "textbox")
+            .Append("\" aria-label=\"").Append(viewer ? "Document viewer" : "Document content")
+            .Append(viewer ? "" : "\" aria-multiline=\"true")
+            .Append("\" contenteditable=\"")
+            .Append(readOnly || viewer ? "false" : "true")
+            .Append('"');
+        if (!viewer) w.Append(" style=\"min-height:").Append(safeHeight).Append("px\"");
+        w.Append("></div>");
         w.Append("<div class=\"az-azunt-editor-image-resize-handle\" data-image-resize-handle hidden "
             + "role=\"button\" tabindex=\"0\" aria-label=\"Resize selected image by dragging the corner\" "
             + "title=\"Drag to resize the selected image (aspect ratio preserved)\"></div>");
         w.Append("<textarea class=\"az-azunt-editor-source\" data-azunt-source hidden aria-label=\"HTML source\" spellcheck=\"false\" style=\"min-height:")
             .Append(safeHeight).Append("px\"></textarea>");
         w.Append("<textarea hidden class=\"az-azunt-editor-value\" data-azunt-value=\"true\" name=\"")
-            .Append(Encode(name)).Append("\">").Append(Encode(value)).Append("</textarea>");
+            .Append(Encode(name)).Append('"');
+        if (viewer) w.Append(" disabled"); // A viewer must not silently submit the displayed document.
+        w.Append('>').Append(Encode(value)).Append("</textarea>");
         w.Append("<input hidden type=\"file\" accept=\"image/png,image/jpeg,image/gif,image/webp\" multiple data-azunt-images=\"true\" aria-label=\"Select images\" />");
         w.Append("<div class=\"az-azunt-editor-footer\"><p class=\"az-azunt-editor-message\" role=\"status\" aria-live=\"polite\" aria-atomic=\"true\"></p>")
             .Append("<span class=\"az-azunt-editor-current-format\" data-current-format aria-label=\"Current text formatting\" aria-live=\"off\">Paragraph</span>")

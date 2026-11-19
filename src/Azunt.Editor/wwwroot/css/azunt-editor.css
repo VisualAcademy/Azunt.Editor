@@ -629,3 +629,27 @@
   .az-azunt-editor .az-azunt-editor-canvas a { color: #93c5fd; }
   .az-azunt-editor .az-azunt-editor-canvas:focus { box-shadow: inset 0 0 0 2px #60a5fa; }
 }
+
+/* 0.6.5: View is a document renderer, not an inert editable textbox.
+   This rule wins over Compact/Classic and other toolbar visibility rules. */
+.az-azunt-editor[data-editor-mode="view"] {
+  border-color: transparent;
+  border-radius: 0;
+}
+.az-azunt-editor[data-editor-mode="view"] .az-azunt-editor-toolbar,
+.az-azunt-editor[data-editor-mode="view"] .az-azunt-editor-link-panel,
+.az-azunt-editor[data-editor-mode="view"] .az-azunt-editor-find-panel,
+.az-azunt-editor[data-editor-mode="view"] .az-azunt-editor-chars-panel,
+.az-azunt-editor[data-editor-mode="view"] .az-azunt-editor-signature-panel,
+.az-azunt-editor[data-editor-mode="view"] .az-azunt-editor-template-panel,
+.az-azunt-editor[data-editor-mode="view"] .az-azunt-editor-date-panel,
+.az-azunt-editor[data-editor-mode="view"] .az-azunt-editor-image-resize-handle,
+.az-azunt-editor[data-editor-mode="view"] .az-azunt-editor-footer,
+.az-azunt-editor[data-editor-mode="view"] .az-azunt-editor-source { display: none !important; }
+.az-azunt-editor[data-editor-mode="view"] .az-azunt-editor-canvas {
+  min-height: 0 !important;
+  box-shadow: none !important;
+  cursor: auto;
+}
+.az-azunt-editor[data-editor-mode="view"] .az-azunt-editor-canvas img { cursor: auto; }
+.az-azunt-editor[data-editor-mode="view"] .az-azunt-editor-canvas img.az-azunt-editor-image-selected { outline: none; }

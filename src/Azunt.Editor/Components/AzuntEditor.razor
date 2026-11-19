@@ -16,6 +16,8 @@
     [Parameter] public EventCallback<string> ValueChanged { get; set; }
     [Parameter] public int Height { get; set; } = 320;
     [Parameter] public bool ReadOnly { get; set; }
+    /// <summary>View hides editing tools and displays the HTML as a read-only document.</summary>
+    [Parameter] public EditorMode Mode { get; set; } = EditorMode.Edit;
     [Parameter] public string? UploadUrl { get; set; }
     [Parameter] public string ToolbarMode { get; set; } = "Compact";
     [Parameter] public IReadOnlyList<EditorCustomCommand>? CustomCommands { get; set; }
@@ -26,6 +28,7 @@
     private DotNetObjectReference<AzuntEditor>? _reference;
     private bool _mounted;
     private bool _rendered;
+    private EditorMode _appliedMode = EditorMode.Edit;
     private long _lastAppliedRevision;
     private const long MaxDocumentBytes = 16L * 1024 * 1024;
 
@@ -37,7 +40,15 @@
     {
         if (!string.IsNullOrWhiteSpace(Id)) _editorId = Id;
         // Hold stable markup across ValueChanged rerenders. JavaScript owns the live DOM.
-        _initialMarkup = EditorMarkup.Render(_editorId, Name, Value, Height, ReadOnly, UploadUrl, ToolbarMode);
+        _initialMarkup = EditorMarkup.Render(_editorId, Name, Value, Height, ReadOnly, UploadUrl, ToolbarMode, Mode);
+        _appliedMode = Mode;
+    }
+
+    // The live DOM belongs to JavaScript; update the mode without Blazor replacing it.
+    protected override async Task OnParametersSetAsync()
+    {
+        if (_mounted && Mode != _appliedMode)
+            await SetModeAsync(Mode);
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -73,6 +84,16 @@
 
     public ValueTask SetToolbarModeAsync(string mode)
         => JS.InvokeVoidAsync("AzuntEditor.setToolbarMode", _editorId, mode);
+
+    /// <summary>Change between Edit and View without replacing or losing the current HTML.</summary>
+    public async ValueTask SetModeAsync(EditorMode mode)
+    {
+        if (!Enum.IsDefined(mode)) throw new ArgumentOutOfRangeException(nameof(mode));
+        if (!_mounted) throw new InvalidOperationException("The editor must be mounted before its mode can be changed.");
+        await JS.InvokeVoidAsync("AzuntEditor.setMode", _editorId, mode == EditorMode.View ? "View" : "Edit");
+        Mode = mode;
+        _appliedMode = mode;
+    }
 
     [JSInvokable]
     public Task OnHtmlChanged(string html, long revision)

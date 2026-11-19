@@ -152,7 +152,7 @@ public static class EditorMarkup
         Select("margin", "Page margins", new[] { ("normal", "Normal margins"), ("narrow", "Narrow margins"), ("wide", "Wide margins") });
         EndGroup();
         w.Append("</div>"); // Classic groups remain available to Compact menus.
-        w.Append("<div class=\"azunt-editor-menu-panel\" data-menu-panel hidden role=\"region\" aria-label=\"Editor menu commands\"></div>");
+        w.Append("<div class=\"azunt-editor-menu-panel\" data-menu-panel hidden role=\"region\" tabindex=\"-1\" aria-label=\"Editor menu commands\"></div>");
         w.Append("<div class=\"azunt-editor-context-tools\" data-context-tools hidden role=\"toolbar\" aria-label=\"Selected item tools\"></div>");
         w.Append("</div>");
 
@@ -215,6 +215,7 @@ public static class EditorMarkup
             .Append(Encode(name)).Append("\">").Append(Encode(value)).Append("</textarea>");
         w.Append("<input hidden type=\"file\" accept=\"image/png,image/jpeg,image/gif,image/webp\" multiple data-azunt-images=\"true\" aria-label=\"Select images\" />");
         w.Append("<div class=\"azunt-editor-footer\"><p class=\"azunt-editor-message\" role=\"status\" aria-live=\"polite\" aria-atomic=\"true\"></p>")
+            .Append("<span class=\"azunt-editor-current-format\" data-current-format aria-label=\"Current text formatting\" aria-live=\"off\">Paragraph</span>")
             .Append("<span class=\"azunt-editor-stats\" data-editor-stats aria-live=\"off\">0 words · 0 characters</span></div>");
         w.Append("</div>");
         return w.ToString();

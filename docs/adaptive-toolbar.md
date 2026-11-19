@@ -60,3 +60,17 @@ The component sends the command ID to the handler. Retrieve document HTML with `
 - Menu commands use the existing editing implementation; editor HTML is unchanged by layout switching.
 - In the demo, Export menu actions invoke the existing MVC/Razor Pages form handler or Blazor export service. They are not part of the editor library's business logic.
 - Classic can be retained in existing applications by setting `ToolbarMode` or `toolbar-mode` explicitly.
+
+
+## Keyboard navigation
+
+Compact mode supports keyboard access without requiring a mouse:
+
+- `Alt+F10` while editing focuses the first menu.
+- `Left` / `Right` move between menu headings; `Home` / `End` move to the first or last.
+- `Down` / `Up` open the highlighted menu and focus its first or last command.
+- Inside a menu, `Down` / `Up` move between command buttons. Inputs and selects retain their native keyboard behavior.
+- `Enter` / `Space` activate the focused button, and `Escape` closes a menu and returns focus to its opener.
+- `Tab` keeps normal browser focus order and closes an open menu when focus leaves the toolbar.
+
+The current text style is reflected by highlighted Bold, Italic, Underline and other formatting controls and by the footer style label. Keyboard and mouse users share the same editing commands. Classic mode is unchanged.

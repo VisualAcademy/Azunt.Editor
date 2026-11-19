@@ -262,6 +262,7 @@
     remember(instance);
     updateStats(instance);
     updateResizeHandle(instance);
+    updateFormattingState(instance);
     queueEmit(instance);
   }
 
@@ -1427,8 +1428,80 @@
     more: ["Text formatting", "Font and color", "Paragraph", "Link", "Table", "Image", "Writing tools", "Document"]
   });
   const menuNames = new Set(Object.keys(menuGroups));
+  const toggleCommands = new Set(["bold", "italic", "underline", "strike", "sup", "sub", "ul", "ol"]);
 
-  function closeMenu(instance) {
+  // Read the caret's formatting without modifying the document or HTML value.
+  // Keep the last editor selection while the keyboard focus is on a toolbar control.
+  function updateFormattingState(instance) {
+    if (!instance.toolbar || !instance.canvas) return;
+    const selection = window.getSelection();
+    const inCanvas = selection?.rangeCount && instance.canvas.contains(selection.anchorNode);
+    let node = inCanvas ? selection.anchorNode : null;
+    if (!node && instance.toolbar.contains(document.activeElement) &&
+        instance.lastRange && instance.canvas.contains(instance.lastRange.startContainer))
+      node = instance.lastRange.startContainer;
+    if (!node) {
+      instance.toolbar.querySelectorAll("button[aria-pressed]").forEach(button =>
+        button.setAttribute("aria-pressed", "false"));
+      if (instance.formatIndicator) instance.formatIndicator.textContent = "Paragraph";
+      return;
+    }
+    if (node.nodeType !== Node.ELEMENT_NODE) node = node.parentElement;
+    const ancestors = [];
+    for (let current = node; current && current !== instance.canvas; current = current.parentElement)
+      ancestors.push(current);
+    const tags = new Set(ancestors.map(element => element.tagName));
+    const isBold = tags.has("STRONG") || tags.has("B") || ancestors.some(element =>
+      /^(bold|bolder|[6-9]00)$/i.test(element.style?.fontWeight || ""));
+    const isItalic = tags.has("EM") || tags.has("I") || ancestors.some(element => element.style?.fontStyle === "italic");
+    const isUnderline = tags.has("U") || ancestors.some(element => /underline/i.test(element.style?.textDecoration || ""));
+    const isStrike = tags.has("S") || tags.has("STRIKE") || tags.has("DEL") ||
+      ancestors.some(element => /line-through/i.test(element.style?.textDecoration || ""));
+    const active = {
+      bold: isBold, italic: isItalic, underline: isUnderline, strike: isStrike,
+      sup: tags.has("SUP"), sub: tags.has("SUB"), ul: tags.has("UL"), ol: tags.has("OL")
+    };
+    // Classic and Compact contain separate commands, but both reflect one caret.
+    instance.toolbar.querySelectorAll("button[data-command],button[data-quick-command]").forEach(button => {
+      const command = button.dataset.command || button.dataset.quickCommand;
+      if (toggleCommands.has(command)) button.setAttribute("aria-pressed", String(Boolean(active[command])));
+    });
+    const block = ancestors.find(element => /^(H[1-6]|P|LI|BLOCKQUOTE|DIV)$/.test(element.tagName));
+    const paragraph = block?.tagName?.startsWith("H") ? `Heading ${block.tagName.slice(1)}` :
+      block?.tagName === "BLOCKQUOTE" ? "Block quote" : "Paragraph";
+    const styles = ["bold", "italic", "underline", "strike", "sup", "sub"]
+      .filter(key => active[key]).map(key => key[0].toUpperCase() + key.slice(1));
+    if (active.ul) styles.push("Bulleted list");
+    else if (active.ol) styles.push("Numbered list");
+    if (instance.formatIndicator) instance.formatIndicator.textContent = [paragraph, ...styles].join(" · ");
+  }
+
+  function menuTriggers(instance) {
+    return Array.from(instance.toolbar.querySelectorAll("[data-compact-menu] button[data-azunt-menu]"))
+      .filter(button => button.getClientRects().length && !button.disabled);
+  }
+
+  function focusMenuTrigger(instance, trigger) {
+    if (!trigger) return;
+    instance.toolbar.querySelectorAll("[data-compact-menu] button[data-azunt-menu]")
+      .forEach(button => { button.tabIndex = button === trigger ? 0 : -1; });
+    trigger.focus({ preventScroll: true });
+  }
+
+  function menuFocusables(instance) {
+    if (instance.menuPanel?.hidden) return [];
+    return Array.from(instance.menuPanel.querySelectorAll("button, select, input, textarea"))
+      .filter(element => !element.disabled && element.getClientRects().length &&
+        !element.closest("[hidden]"));
+  }
+
+  function focusMenuItem(instance, last = false) {
+    const controls = menuFocusables(instance);
+    if (controls.length) (last ? controls[controls.length - 1] : controls[0]).focus({ preventScroll: true });
+    else instance.menuPanel?.focus({ preventScroll: true });
+  }
+
+  function closeMenu(instance, restoreFocus = false) {
     if (!instance.menuPanel) return;
     for (const group of instance.originalGroups || []) instance.classicGroups.appendChild(group);
     instance.menuPanel.replaceChildren();
@@ -1437,6 +1510,10 @@
     instance.toolbar.querySelectorAll("[data-azunt-menu]").forEach(button => {
       button.setAttribute("aria-expanded", "false");
     });
+    const opener = instance.menuOpener;
+    instance.menuOpener = null;
+    if (restoreFocus && opener?.isConnected && opener.getClientRects().length)
+      opener.focus({ preventScroll: true });
   }
 
   function createCustomButton(def, compact = false) {
@@ -1494,9 +1571,11 @@
     target.appendChild(group);
   }
 
-  function openMenu(instance, key) {
+  function openMenu(instance, key, opener = null) {
     if (!instance.menuPanel || !menuNames.has(key)) return;
+    const oldOpener = instance.menuOpener;
     closeMenu(instance);
+    instance.menuOpener = opener || instance.toolbar.querySelector(`[data-azunt-menu="${key}"]`) || oldOpener;
     instance.openMenu = key;
     instance.menuPanel.hidden = false;
     for (const label of menuGroups[key]) {
@@ -1623,6 +1702,25 @@
     instance.menuPanel = instance.toolbar.querySelector("[data-menu-panel]");
     instance.contextTools = instance.toolbar.querySelector("[data-context-tools]");
     instance.quickCustom = instance.toolbar.querySelector("[data-quick-custom]");
+    instance.formatIndicator = instance.element.querySelector("[data-current-format]");
+    const panelId = `${instance.element.id}-command-menu`;
+    if (instance.menuPanel) {
+      instance.menuPanel.id = panelId;
+      instance.menuPanel.tabIndex = -1;
+    }
+    const triggers = instance.toolbar.querySelectorAll("[data-compact-menu] button[data-azunt-menu]");
+    triggers.forEach((button, index) => {
+      button.setAttribute("role", "menuitem");
+      button.setAttribute("aria-haspopup", "true");
+      button.setAttribute("aria-controls", panelId);
+      button.setAttribute("aria-expanded", "false");
+      button.tabIndex = index === 0 ? 0 : -1;
+    });
+    const more = instance.toolbar.querySelector('[data-azunt-menu="more"]');
+    if (more) {
+      more.setAttribute("aria-controls", panelId);
+      more.setAttribute("aria-haspopup", "true");
+    }
     instance.originalGroups = instance.classicGroups
       ? Array.from(instance.classicGroups.querySelectorAll(":scope > .azunt-editor-group")) : [];
     instance.openMenu = null;
@@ -1727,28 +1825,68 @@
     instance.toolbar.addEventListener("mousedown", event => {
       if (event.target.closest("button")) event.preventDefault();
     }, { signal });
+    instance.toolbar.addEventListener("keydown", event => {
+      const trigger = event.target.closest("[data-compact-menu] button[data-azunt-menu]");
+      if (trigger) {
+        const triggers = menuTriggers(instance);
+        const index = triggers.indexOf(trigger);
+        if (event.key === "ArrowRight" || event.key === "ArrowLeft" ||
+            event.key === "Home" || event.key === "End") {
+          event.preventDefault();
+          const next = event.key === "Home" ? 0 : event.key === "End" ? triggers.length - 1 :
+            (index + (event.key === "ArrowRight" ? 1 : -1) + triggers.length) % triggers.length;
+          const target = triggers[next];
+          focusMenuTrigger(instance, target);
+          if (!instance.menuPanel?.hidden) openMenu(instance, target.dataset.azuntMenu, target);
+        } else if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+          event.preventDefault();
+          if (instance.openMenu !== trigger.dataset.azuntMenu)
+            openMenu(instance, trigger.dataset.azuntMenu, trigger);
+          focusMenuItem(instance, event.key === "ArrowUp");
+        }
+        return;
+      }
+      if (instance.menuPanel?.hidden || !instance.menuPanel.contains(event.target)) return;
+      // Native inputs/selects own their arrows and text editing shortcuts.
+      if (event.target.matches("input, select, textarea")) return;
+      if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) return;
+      const controls = menuFocusables(instance);
+      if (!controls.length) return;
+      event.preventDefault();
+      const index = controls.indexOf(event.target);
+      const next = event.key === "Home" ? 0 : event.key === "End" ? controls.length - 1 :
+        (index + (event.key === "ArrowDown" ? 1 : -1) + controls.length) % controls.length;
+      controls[next].focus({ preventScroll: true });
+    }, { signal });
+    instance.toolbar.addEventListener("focusout", () => {
+      queueMicrotask(() => {
+        if (!instance.toolbar.contains(document.activeElement) && !instance.menuPanel?.hidden)
+          closeMenu(instance);
+      });
+    }, { signal });
     instance.toolbar.addEventListener("click", event => {
       const menu = event.target.closest("button[data-azunt-menu]");
       if (menu) {
         const key = menu.dataset.azuntMenu;
-        if (instance.openMenu === key) closeMenu(instance);
-        else openMenu(instance, key);
+        if (instance.openMenu === key) closeMenu(instance, true);
+        else openMenu(instance, key, menu);
         return;
       }
       const relatedMenu = event.target.closest("button[data-operate-menu]");
-      if (relatedMenu) { openMenu(instance, relatedMenu.dataset.operateMenu); return; }
+      if (relatedMenu) { openMenu(instance, relatedMenu.dataset.operateMenu, relatedMenu); return; }
       const custom = event.target.closest("button[data-custom-command]");
       if (custom) {
-        if (!instance.menuPanel?.hidden) closeMenu(instance);
+        if (!instance.menuPanel?.hidden) closeMenu(instance, event.detail === 0);
         executeCustomCommand(instance, custom.dataset.customCommand);
         return;
       }
       const button = event.target.closest("button[data-command],button[data-quick-command]");
       if (button) {
         const command = button.dataset.command || button.dataset.quickCommand;
-        if (!instance.menuPanel?.hidden) closeMenu(instance);
+        if (!instance.menuPanel?.hidden) closeMenu(instance, event.detail === 0);
         runCommand(instance, command);
         updateContextTools(instance);
+        updateFormattingState(instance);
       }
     }, { signal });
     // Preserve the canvas selection before native selects and color pickers take focus.
@@ -1762,6 +1900,7 @@
       if (!target) return;
       runSelect(instance, target.dataset.select, target.value);
       if (!["paper", "orientation", "margin", "imageInsertSize"].includes(target.dataset.select) && target.type !== "color") target.selectedIndex = 0;
+      updateFormattingState(instance);
     }, { signal });
     instance.linkPanel.querySelector("[data-link-apply]").addEventListener("click", () => applyLink(instance), { signal });
     instance.linkPanel.querySelector("[data-link-cancel]").addEventListener("click", () => {
@@ -1904,9 +2043,28 @@
         event.clipboardData?.getData("text/html") || "",
         event.clipboardData?.getData("text/plain") || "");
     }, { signal });
+    document.addEventListener("selectionchange", () => {
+      const selection = window.getSelection();
+      if (selection?.rangeCount && instance.canvas.contains(selection.anchorNode)) {
+        instance.lastRange = selection.getRangeAt(0).cloneRange();
+        updateFormattingState(instance);
+      }
+    }, { signal });
     document.addEventListener("keydown", event => {
+      if (event.altKey && event.key === "F10" && !event.ctrlKey && !event.metaKey &&
+          instance.element.contains(document.activeElement) &&
+          instance.element.dataset.toolbarMode === "compact") {
+        event.preventDefault();
+        const trigger = menuTriggers(instance)[0];
+        focusMenuTrigger(instance, trigger);
+        return;
+      }
       if (event.key === "Escape") {
-        if (!instance.menuPanel?.hidden) { closeMenu(instance); return; }
+        if (!instance.menuPanel?.hidden) {
+          event.preventDefault();
+          closeMenu(instance, true);
+          return;
+        }
         if (instance.element.classList.contains("azunt-editor-fullscreen")) toggleFullscreen(instance, false);
       }
     }, { signal });
@@ -1997,6 +2155,7 @@
     instance.history = [readHtml(instance)];
     instance.historyIndex = 0;
     updateStats(instance);
+    updateFormattingState(instance);
     emit(instance);
   }
 

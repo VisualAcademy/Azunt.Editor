@@ -2,7 +2,7 @@
 
 A lightweight rich-text editor for ASP.NET Core MVC, Razor Pages, and Blazor Server.
 
-Version: **0.5.8** · .NET 10
+Version: **0.5.9** · .NET 10
 
 ## Projects
 - `src/Azunt.Editor` — shared editor components, JavaScript, and CSS
@@ -66,3 +66,9 @@ them. These messages are not part of the document HTML.
 Host applications can report a status with `AzuntEditor.showStatus(editorId,
 "Saved.", "success")`. The supported levels are `success`, `info`, `warning`,
 and `error`. Passing an empty message clears the status.
+
+## Keyboard access
+
+In Compact mode, press `Alt+F10` to focus the menu bar. Use the arrow keys to
+navigate menus, `Enter` to activate an item, and `Esc` to return focus.
+Active text formatting is shown on the toolbar and in the editor footer.

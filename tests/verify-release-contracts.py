@@ -3,7 +3,7 @@ from pathlib import Path
 from xml.etree import ElementTree
 
 root = Path(__file__).resolve().parents[1]
-version = '0.5.9'
+version = '0.6.0'
 for item in ['src/Azunt.Editor/Azunt.Editor.csproj', 'src/Azunt.Editor.Export/Azunt.Editor.Export.csproj',
              'samples/Azunt.Web/Azunt.Web.csproj']:
     doc = ElementTree.parse(root / item)
@@ -40,4 +40,11 @@ assert 'function setImageAlt' in editor_js
 assert 'function isSupportedDrop' in editor_js
 word_alt = (root / 'src/Azunt.Editor.Export/Word/DocxDocumentExporter.cs').read_text()
 assert 'Description = altText' in word_alt
-print('PASS: Azunt.Editor 0.5.9 release contracts, sources are application-agnostic')
+public_api = (root / 'src/Azunt.Editor/Models/EditorCustomCommand.cs').read_text()
+component = (root / 'src/Azunt.Editor/Components/AzuntEditor.razor').read_text()
+for token in ['Icon { get; set; }', 'RequiresEdit { get; set; }']:
+    assert token in public_api, f'Missing custom command API: {token}'
+assert 'SetCustomCommandsAsync' in component
+for token in ['function unregisterCommand(', 'Duplicate custom command id:', 'previousBlazorCommands']:
+    assert token in editor_js, f'Missing command lifecycle feature: {token}'
+print('PASS: Azunt.Editor 0.6.0 release contracts, sources are application-agnostic')

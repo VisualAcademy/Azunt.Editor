@@ -16,6 +16,19 @@ Require(malicious.Contains("&lt;script&gt;"), "Script text encoded");
 var clamped = EditorMarkup.Render("e2", "Html", height: 999999);
 Require(clamped.Contains("min-height:1400px"), "Height clamped");
 
+// 0.6.0 API remains compatible with both toolbar modes and existing form field names.
+var compact = EditorMarkup.Render("compact", "Html", "<p>Text</p>", toolbarMode: "Compact");
+var classic = EditorMarkup.Render("classic", "Html", "<p>Text</p>", toolbarMode: "Classic");
+Require(compact.Contains("data-toolbar-mode=\"compact\""), "Compact toolbar mode");
+Require(classic.Contains("data-toolbar-mode=\"classic\""), "Classic toolbar mode");
+Require(compact.Contains("name=\"Html\""), "MVC/Razor form binding remains stable");
+Require(classic.Contains("data-azunt-source"), "Classic source edit control remains available");
+var customCommand = new Azunt.Editor.Models.EditorCustomCommand
+{
+    Id = "saveDraft", Label = "Save draft", Group = "File", Placement = "Toolbar",
+    Icon = "S", RequiresEdit = true
+};
+Require(customCommand.RequiresEdit && customCommand.Icon == "S", "Custom command options");
 Console.WriteLine("Azunt.Editor smoke tests passed.");
 
 static void Require(bool success, string test)

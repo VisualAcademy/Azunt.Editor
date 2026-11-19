@@ -7,12 +7,13 @@
     <IsPackable>true</IsPackable>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageId>Azunt.Editor</PackageId>
-    <Version>0.5.9</Version>
+    <Version>0.6.0</Version>
     <Authors>Azunt</Authors>
     <Description>Lightweight editor for ASP.NET Core MVC, Razor Pages, and Blazor Server.</Description>
     <PackageTags>editor;aspnetcore;blazor;mvc;razor</PackageTags>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <RepositoryType>git</RepositoryType>
+    <RepositoryUrl>https://github.com/VisualAcademy/Azunt.Editor</RepositoryUrl>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <NoWarn>$(NoWarn);1591</NoWarn>
   </PropertyGroup>

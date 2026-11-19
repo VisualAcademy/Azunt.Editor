@@ -1516,7 +1516,7 @@
       opener.focus({ preventScroll: true });
   }
 
-  function createCustomButton(def, compact = false) {
+  function createCustomButton(def, compact = false, readOnly = false) {
     const button = document.createElement("button");
     button.type = "button";
     button.className = compact ? "azunt-editor-button azunt-editor-quick-command" : "azunt-editor-button azunt-editor-custom-button";
@@ -1525,6 +1525,7 @@
     button.setAttribute("aria-label", def.label);
     // Labels and icons are always text: no host-provided HTML is inserted.
     button.textContent = compact ? (def.icon || def.label) : def.label;
+    if (readOnly && def.requiresEdit) button.disabled = true;
     return button;
   }
 
@@ -1539,7 +1540,7 @@
     if (!instance.quickCustom) return;
     instance.quickCustom.replaceChildren();
     for (const def of effectiveCommands(instance).values()) {
-      if (def.placement === "toolbar") instance.quickCustom.appendChild(createCustomButton(def, true));
+      if (def.placement === "toolbar") instance.quickCustom.appendChild(createCustomButton(def, true, instance.readOnly));
     }
     if (instance.classicGroups) {
       instance.classicGroups.querySelector("[data-classic-custom]")?.remove();
@@ -1551,7 +1552,7 @@
         group.dataset.classicCustom = "true";
         group.setAttribute("role", "group");
         group.setAttribute("aria-label", "Custom commands");
-        for (const def of defs) group.appendChild(createCustomButton(def));
+        for (const def of defs) group.appendChild(createCustomButton(def, false, instance.readOnly));
         instance.classicGroups.appendChild(group);
       }
     }
@@ -1567,7 +1568,7 @@
     group.setAttribute("role", "group");
     group.dataset.groupLabel = key === "more" ? "Custom commands" : "Commands";
     group.setAttribute("aria-label", group.dataset.groupLabel);
-    for (const def of commands) group.appendChild(createCustomButton(def));
+    for (const def of commands) group.appendChild(createCustomButton(def, false, instance.readOnly));
     target.appendChild(group);
   }
 
@@ -1621,12 +1622,13 @@
       throw new Error("Custom command requires an alphanumeric id (up to 64 characters).");
     if (typeof raw.label !== "string" || !raw.label.trim() || raw.label.length > 90)
       throw new Error("Custom command requires a label (up to 90 characters).");
-    const group = String(raw.group || "tools").toLowerCase();
+    const group = String(raw.group || "tools").trim().toLowerCase();
     if (!menuNames.has(group) || group === "more") throw new Error("Unsupported command group.");
+    const placement = String(raw.placement || "menu").trim().toLowerCase();
+    if (placement !== "menu" && placement !== "toolbar") throw new Error("Custom command placement must be Menu or Toolbar.");
     return {
-      id: raw.id, label: raw.label, icon: String(raw.icon || "").slice(0, 8), group,
-      placement: String(raw.placement || "menu").toLowerCase(),
-      requiresEdit: raw.requiresEdit === true, blazor: isBlazor,
+      id: raw.id, label: raw.label.trim(), icon: String(raw.icon || "").slice(0, 8), group,
+      placement, requiresEdit: raw.requiresEdit === true, blazor: isBlazor,
       execute: typeof raw.execute === "function" && !isBlazor ? raw.execute : undefined
     };
   }
@@ -1644,14 +1646,34 @@
     }
   }
 
+  // Validate the complete new list before replacing the live buttons.
+  // One invalid command must not discard previously working commands.
   function setCommands(id, definitions) {
     const instance = getInstance(id);
-    instance.blazorCommands = new Map();
+    const next = new Map();
     for (const raw of definitions || []) {
       const def = normalizeCommand(raw, true);
-      instance.blazorCommands.set(def.id, def);
+      if (next.has(def.id)) throw new Error(`Duplicate custom command id: ${def.id}`);
+      next.set(def.id, def);
     }
+    instance.blazorCommands = next;
     refreshQuickCommands(instance);
+  }
+
+  // Remove only the selected registration; a global command with the same id
+  // becomes visible again if an editor-scoped override is removed.
+  function unregisterCommand(id, editorId) {
+    if (typeof id !== "string" || !/^[A-Za-z][A-Za-z0-9_-]{0,63}$/.test(id))
+      throw new Error("A valid custom command id is required.");
+    const registry = editorId ? commandsByEditor.get(editorId) : globalCommands;
+    const removed = registry?.delete(id) || false;
+    if (editorId && registry?.size === 0) commandsByEditor.delete(editorId);
+    if (removed) {
+      for (const instance of instances.values()) {
+        if (!editorId || instance.element.id === editorId) refreshQuickCommands(instance);
+      }
+    }
+    return removed;
   }
 
   function updateContextTools(instance) {
@@ -1767,6 +1789,7 @@
     const currentCanvas = element.querySelector(".azunt-editor-canvas");
     const visibleHtml = currentCanvas?.innerHTML || "";
     const pendingHtml = previous?.canvas ? readHtml(previous) : "";
+    const previousBlazorCommands = previous?.blazorCommands;
     const sameRoot = previous && previous.element === element;
     if (previous) {
       dotNetReference = dotNetReference || previous.dotNetReference;
@@ -1819,6 +1842,10 @@
     instance.history = [instance.value.value];
     instances.set(element.id, instance);
     initAdaptiveToolbar(instance);
+    if (previousBlazorCommands?.size) {
+      instance.blazorCommands = new Map(previousBlazorCommands);
+      refreshQuickCommands(instance);
+    }
     updateStats(instance);
 
     const signal = controller.signal;
@@ -2179,7 +2206,7 @@
     return { paperSize: instance.page.paper, orientation: instance.page.orientation, margin: instance.page.margin };
   }
 
-  window.AzuntEditor = Object.freeze({ mount, mountAll, getHtml, getHtmlStream, setHtml, getPageSettings, showStatus, unmount, sanitizeHtml, registerTemplate, registerCommand, setCommands, setToolbarMode });
+  window.AzuntEditor = Object.freeze({ mount, mountAll, getHtml, getHtmlStream, setHtml, getPageSettings, showStatus, unmount, sanitizeHtml, registerTemplate, registerCommand, unregisterCommand, setCommands, setToolbarMode });
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", mountAll, { once: true });
   else mountAll();
 })();

@@ -63,6 +63,14 @@
     [JSInvokable]
     public Task OnCustomCommand(string id) => CustomCommandInvoked.InvokeAsync(id);
 
+    /// <summary>Replace custom commands after the editor has mounted, without rerendering its document.</summary>
+    public async ValueTask SetCustomCommandsAsync(IReadOnlyList<EditorCustomCommand>? commands)
+    {
+        if (!_mounted) throw new InvalidOperationException("The editor must be mounted before custom commands can be changed.");
+        await JS.InvokeVoidAsync("AzuntEditor.setCommands", _editorId, commands ?? Array.Empty<EditorCustomCommand>());
+    }
+
+
     public ValueTask SetToolbarModeAsync(string mode)
         => JS.InvokeVoidAsync("AzuntEditor.setToolbarMode", _editorId, mode);
 

@@ -9,4 +9,8 @@ public sealed class EditorCustomCommand
     public string Group { get; set; } = "Tools";
     /// <summary>Menu or Toolbar.</summary>
     public string Placement { get; set; } = "Menu";
+    /// <summary>Optional short text/symbol for commands placed on the quick toolbar.</summary>
+    public string? Icon { get; set; }
+    /// <summary>Disable this command when the editor is read-only.</summary>
+    public bool RequiresEdit { get; set; }
 }

@@ -9,6 +9,6 @@
     <ProjectReference Include="../../src/Azunt.Editor/Azunt.Editor.csproj" />
   </ItemGroup>
   <ItemGroup Condition="'$(UseLocalEditorPackage)' == 'true'">
-    <PackageReference Include="Azunt.Editor" Version="0.1.0" />
+    <PackageReference Include="Azunt.Editor" Version="0.2.0" />
   </ItemGroup>
 </Project>

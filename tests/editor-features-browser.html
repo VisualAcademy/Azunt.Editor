@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Azunt.Editor browser checks</title>
+<link rel="stylesheet" href="../src/Azunt.Editor/wwwroot/css/azunt-editor.css"></head>
+<body>
+<div id="browser-test" class="azunt-editor" data-azunt-editor="true" data-read-only="false">
+  <div class="azunt-editor-toolbar" role="toolbar">
+    <button type="button" data-command="bold">Bold</button>
+    <button type="button" data-command="strike">Strike</button>
+    <button type="button" data-command="sup">Sup</button>
+    <button type="button" data-command="sub">Sub</button>
+    <button type="button" data-command="indent">Indent</button>
+    <button type="button" data-command="outdent">Outdent</button>
+    <button type="button" data-command="link">Link</button>
+    <button type="button" data-command="unlink">Unlink</button>
+    <button type="button" data-command="table">Table</button>
+    <button type="button" data-command="table-row-after">+Row</button>
+    <button type="button" data-command="table-row-delete">-Row</button>
+    <button type="button" data-command="table-col-after">+Col</button>
+    <button type="button" data-command="table-col-delete">-Col</button>
+    <button type="button" data-command="image-delete">Image delete</button>
+    <button type="button" data-command="source">Source</button>
+    <button type="button" data-command="preview">Preview</button>
+    <button type="button" data-command="print">Print</button>
+    <select data-select="fontFamily"><option value="">Font</option><option value="Georgia">Georgia</option></select>
+    <select data-select="fontSize"><option value="">Size</option><option value="24">24</option></select>
+    <input type="color" data-select="color" value="#1e293b">
+    <input type="color" data-select="backgroundColor" value="#fff2a8">
+    <input type="number" data-image-width min="24" max="2500"><select data-select="imageAlign"><option value="">Image alignment</option><option value="center">Center</option></select>
+    <select data-select="paper"><option value="A4">A4</option><option value="Letter">Letter</option></select>
+    <select data-select="orientation"><option value="portrait">Portrait</option><option value="landscape">Landscape</option></select>
+    <select data-select="margin"><option value="normal">Normal</option><option value="narrow">Narrow</option></select>
+  </div>
+  <div class="azunt-editor-link-panel" data-link-panel hidden>
+    <input data-link-text><input data-link-url><button data-link-apply>Apply</button><button data-link-cancel>Cancel</button>
+  </div>
+  <div class="azunt-editor-canvas" contenteditable="true"></div>
+  <textarea data-azunt-source hidden></textarea>
+  <textarea data-azunt-value hidden name="Html"><p>Initial</p></textarea>
+  <input data-azunt-images type="file" hidden multiple>
+  <p class="azunt-editor-message"></p>
+</div>
+<script src="../src/Azunt.Editor/wwwroot/js/azunt-editor.js"></script>
+</body></html>

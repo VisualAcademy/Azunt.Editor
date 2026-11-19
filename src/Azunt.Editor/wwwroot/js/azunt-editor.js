@@ -1,11 +1,11 @@
-/* Azunt.Editor 0.1 0.1.0. No third-party JavaScript dependency. */
+/* Azunt.Editor 0.2.0. Self-owned editing engine, no third-party JS. */
 (function () {
   "use strict";
 
   const instances = new Map();
   const allowedTags = new Set([
     "p", "div", "h2", "h3", "strong", "b", "em", "i", "u", "s", "ul", "ol", "li",
-    "blockquote", "pre", "code", "table", "thead", "tbody", "tr", "td", "th", "br", "hr", "img", "a", "span"
+    "blockquote", "pre", "code", "sup", "sub", "table", "thead", "tbody", "tr", "td", "th", "br", "hr", "img", "a", "span"
   ]);
   const dropWithChildren = new Set([
     "script", "style", "iframe", "frame", "frameset", "object", "embed", "svg", "math", "template",
@@ -19,12 +19,29 @@
   // SignalR message limit. Large documents use Microsoft's JS stream references.
   const inlineInteropMaxBytes = 16 * 1024;
   const maxDocumentBytes = 16 * 1024 * 1024;
+  const allowedFonts = new Set(["Arial", "Georgia", "Times New Roman", "Verdana", "Segoe UI", "Noto Sans KR", "Malgun Gothic"]);
+  const hexColor = /^#[0-9a-f]{6}$/i;
+  const allowedPageSizes = new Set(["A4", "Letter", "Legal"]);
+  const allowedOrientations = new Set(["portrait", "landscape"]);
+  const allowedMargins = { normal: "16mm", narrow: "8mm", wide: "25mm" };
+
+  function cleanColor(value) {
+    const v = String(value || "").trim().toLowerCase();
+    if (hexColor.test(v)) return v;
+    const match = /^rgba?\(\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})(?:\s*,\s*1(?:\.0+)?)?\s*\)$/i.exec(v);
+    if (match) {
+      const numbers = match.slice(1, 4).map(Number);
+      if (numbers.every(n => n >= 0 && n <= 255)) return "#" + numbers.map(n => n.toString(16).padStart(2, "0")).join("");
+    }
+    return null;
+  }
+
 
   function safeResourceUrl(raw, isImage) {
     if (!raw || typeof raw !== "string") return null;
     const value = raw.trim();
     if (isImage && imageDataUrlPattern.test(value)) return value;
-    if (/^\/(?!\/)[^\\\r\n]*$/.test(value) || /^(?!\/)[A-Za-z0-9][^:\\]*$/.test(value)) {
+    if (/^\/(?!\/)[^\\\r\n]*$/.test(value) || /^(?!\/)[A-Za-z0-9][^:\\]*$/.test(value) || /^#[A-Za-z][A-Za-z0-9_-]*$/.test(value)) {
       return value;
     }
     try {
@@ -76,9 +93,23 @@
           clean.setAttribute("rel", "noopener noreferrer");
         }
       }
-      if (["p", "div", "h2", "h3", "td", "th"].includes(tag)) {
+      // Only allow narrowly-validated formatting properties. Never carry arbitrary CSS.
+      if (tag === "span" || ["p", "div", "h2", "h3", "li", "td", "th"].includes(tag)) {
+        const family = (node.style.fontFamily || "").replace(/^['"]|['"]$/g, "");
+        if (allowedFonts.has(family)) clean.style.fontFamily = family.includes(" ") ? `"${family}"` : family;
+        const size = /^(\d{1,2})px$/.exec(node.style.fontSize || "");
+        if (size && Number(size[1]) >= 8 && Number(size[1]) <= 72) clean.style.fontSize = `${Number(size[1])}px`;
+        const color = cleanColor(node.style.color);
+        const background = cleanColor(node.style.backgroundColor);
+        if (color) clean.style.color = color;
+        if (background) clean.style.backgroundColor = background;
+      }
+      if (["p", "div", "h2", "h3", "li", "td", "th", "blockquote"].includes(tag)) {
         const align = (node.style.textAlign || "").toLowerCase();
-        if (["left", "center", "right"].includes(align)) clean.style.textAlign = align;
+        if (["left", "center", "right", "justify"].includes(align)) clean.style.textAlign = align;
+        const margin = /^(\d{1,3})px$/.exec(node.style.marginLeft || "");
+        if (margin && Number(margin[1]) <= 240 && Number(margin[1]) % 24 === 0)
+          clean.style.marginLeft = `${Number(margin[1])}px`;
       }
       for (const child of Array.from(node.childNodes)) visit(child, clean);
       destination.appendChild(clean);
@@ -93,7 +124,7 @@
   }
 
   function readHtml(instance) {
-    return sanitizeHtml(instance.canvas.innerHTML);
+    return sanitizeHtml(instance.sourceMode ? instance.source.value : instance.canvas.innerHTML);
   }
 
   function createHtmlBlob(html) {
@@ -206,6 +237,192 @@
     changed(instance);
   }
 
+  function formatSpan(instance, property, value) {
+    const range = selectedRange(instance);
+    if (range.collapsed) {
+      message(instance, "Select text before applying this formatting.");
+      return;
+    }
+    const wrapper = document.createElement("span");
+    wrapper.style[property] = value;
+    wrapper.appendChild(range.extractContents());
+    range.insertNode(wrapper);
+    selectAfter(wrapper);
+    changed(instance);
+  }
+
+  function adjustIndent(instance, amount) {
+    const block = nearestBlock(instance, selectedRange(instance));
+    if (!block) return message(instance, "Place the cursor inside a paragraph first.");
+    const old = parseInt(block.style.marginLeft || "0", 10) || 0;
+    const next = Math.max(0, Math.min(240, old + amount));
+    block.style.marginLeft = next ? `${next}px` : "";
+    changed(instance);
+  }
+
+  function editableAncestor(instance, tagNames, origin) {
+    const range = instance.lastRange;
+    let node = origin || range?.startContainer || null;
+    if (node?.nodeType !== Node.ELEMENT_NODE) node = node?.parentElement;
+    while (node && node !== instance.canvas) {
+      if (tagNames.includes(node.tagName)) return node;
+      node = node.parentElement;
+    }
+    return null;
+  }
+
+  function openLinkPanel(instance) {
+    const range = selectedRange(instance);
+    const active = editableAncestor(instance, ["A"], range.startContainer);
+    instance.editingLink = active;
+    instance.linkText.value = active ? active.textContent || "" : range.toString().slice(0, 250);
+    instance.linkUrl.value = active ? active.getAttribute("href") || "" : "";
+    instance.linkPanel.hidden = false;
+    instance.linkUrl.focus();
+  }
+
+  function applyLink(instance) {
+    const rawUrl = instance.linkUrl.value.trim();
+    const url = safeResourceUrl(rawUrl, false);
+    if (!url) return message(instance, "Enter a valid HTTPS, HTTP, mailto, or relative URL.");
+    const label = instance.linkText.value.trim();
+    const active = instance.editingLink && instance.canvas.contains(instance.editingLink) ? instance.editingLink : null;
+    if (active) {
+      active.setAttribute("href", url);
+      active.textContent = label || url;
+    } else {
+      const range = selectedRange(instance);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.rel = "noopener noreferrer";
+      anchor.textContent = label || range.toString() || url;
+      range.deleteContents();
+      range.insertNode(anchor);
+      selectAfter(anchor);
+    }
+    instance.linkPanel.hidden = true;
+    instance.editingLink = null;
+    changed(instance);
+  }
+
+  function removeLink(instance) {
+    const active = editableAncestor(instance, ["A"]);
+    if (!active) return message(instance, "Place the cursor inside a link to remove it.");
+    const parent = active.parentNode;
+    while (active.firstChild) parent.insertBefore(active.firstChild, active);
+    active.remove();
+    changed(instance);
+  }
+
+  function toggleSource(instance) {
+    if (instance.readOnly) return;
+    if (!instance.sourceMode) {
+      instance.source.value = sanitizeHtml(instance.canvas.innerHTML);
+      instance.source.hidden = false;
+      instance.canvas.hidden = true;
+      instance.sourceMode = true;
+      instance.source.focus();
+      message(instance, "HTML source mode. Select </> again to apply permitted markup.");
+    } else {
+      const clean = sanitizeHtml(instance.source.value);
+      instance.canvas.innerHTML = clean;
+      instance.sourceMode = false;
+      instance.source.hidden = true;
+      instance.canvas.hidden = false;
+      instance.lastRange = null;
+      changed(instance);
+      message(instance, "HTML source applied; unsupported markup was removed.");
+    }
+  }
+
+  function selectedImage(instance) {
+    return instance.selectedImage && instance.canvas.contains(instance.selectedImage) ? instance.selectedImage : null;
+  }
+
+  function setImageSelection(instance, image) {
+    if (instance.selectedImage) instance.selectedImage.classList.remove("azunt-editor-image-selected");
+    instance.selectedImage = image && instance.canvas.contains(image) ? image : null;
+    if (instance.selectedImage) {
+      instance.selectedImage.classList.add("azunt-editor-image-selected");
+      instance.imageWidth.value = String(instance.selectedImage.getAttribute("width") || instance.selectedImage.naturalWidth || "");
+    } else {
+      instance.imageWidth.value = "";
+    }
+  }
+
+  function resizeImage(instance) {
+    const image = selectedImage(instance);
+    if (!image) return message(instance, "Click an image to select it first.");
+    const width = Number(instance.imageWidth.value);
+    if (!Number.isInteger(width) || width < 24 || width > 2500)
+      return message(instance, "Image width must be between 24 and 2500 pixels.");
+    image.setAttribute("width", String(width));
+    image.removeAttribute("height");
+    changed(instance);
+  }
+
+  function alignImage(instance, alignment) {
+    const image = selectedImage(instance);
+    if (!image) return message(instance, "Click an image to select it first.");
+    let block = image.closest("p,div");
+    if (!block || !instance.canvas.contains(block)) {
+      block = document.createElement("p");
+      image.replaceWith(block);
+      block.appendChild(image);
+    }
+    block.style.textAlign = alignment;
+    changed(instance);
+  }
+
+  function deleteImage(instance) {
+    const image = selectedImage(instance);
+    if (!image) return message(instance, "Click an image to select it first.");
+    const parent = image.parentElement;
+    setImageSelection(instance, null);
+    image.remove();
+    if (parent && parent !== instance.canvas && parent.tagName === "P" && !parent.textContent?.trim() && !parent.querySelector("img")) parent.remove();
+    changed(instance);
+  }
+
+  function activeTableCell(instance) {
+    if (instance.activeCell && instance.canvas.contains(instance.activeCell)) return instance.activeCell;
+    const cell = editableAncestor(instance, ["TD", "TH"]);
+    return cell && instance.canvas.contains(cell) ? cell : null;
+  }
+
+  function modifyTable(instance, operation) {
+    const cell = activeTableCell(instance);
+    if (!cell) return message(instance, "Click a table cell first.");
+    const row = cell.closest("tr");
+    const table = cell.closest("table");
+    if (!row || !table) return;
+    const rows = Array.from(table.rows);
+    const rowIndex = rows.indexOf(row);
+    const colIndex = Array.from(row.cells).indexOf(cell);
+    if (rows.some(r => r.cells.length !== row.cells.length || Array.from(r.cells).some(c => c.colSpan !== 1 || c.rowSpan !== 1))) {
+      return message(instance, "Table editing currently supports rectangular tables without merged cells.");
+    }
+    if (operation === "table-delete") {
+      table.remove();
+    } else if (operation === "table-row-after") {
+      const added = row.cloneNode(false);
+      for (let index = 0; index < row.cells.length; index++) added.insertCell().appendChild(document.createElement("br"));
+      row.after(added);
+      instance.activeCell = added.cells[Math.min(colIndex, added.cells.length - 1)];
+    } else if (operation === "table-row-delete") {
+      if (rows.length === 1) table.remove(); else row.remove();
+      instance.activeCell = null;
+    } else if (operation === "table-col-after") {
+      for (const r of rows) r.insertCell(colIndex + 1).appendChild(document.createElement("br"));
+      instance.activeCell = row.cells[colIndex + 1];
+    } else if (operation === "table-col-delete") {
+      if (row.cells.length === 1) table.remove(); else for (const r of rows) r.deleteCell(colIndex);
+      instance.activeCell = null;
+    }
+    instance.lastRange = null;
+    changed(instance);
+  }
+
   function nearestBlock(instance, range) {
     let current = range.startContainer.nodeType === Node.ELEMENT_NODE ? range.startContainer : range.startContainer.parentElement;
     while (current && current !== instance.canvas) {
@@ -269,6 +486,7 @@
       }
     }
     insertAtSelection(instance, table);
+    instance.activeCell = table.rows[0].cells[0];
   }
 
   function undoOrRedo(instance, delta) {
@@ -278,6 +496,8 @@
     instance.historyIndex = next;
     instance.canvas.innerHTML = instance.history[next];
     instance.lastRange = null;
+    setImageSelection(instance, null);
+    instance.activeCell = null;
     queueEmit(instance);
   }
 
@@ -336,6 +556,7 @@
         image.style.maxWidth = "100%";
         paragraph.appendChild(image);
         insertAtSelection(instance, paragraph);
+        setImageSelection(instance, image);
         instance.lastRange = window.getSelection().getRangeAt(0).cloneRange();
         inserted++;
       } catch (error) {
@@ -363,43 +584,90 @@
     changed(instance);
   }
 
-  function printDocument(instance) {
-    const printable = readHtml(instance);
-    const win = window.open("", "_blank", "noopener=false,width=900,height=750");
-    if (!win) {
-      message(instance, "Please allow popups for printing.");
-      return;
-    }
+  function printDocument(instance, previewOnly = false) {
+    const html = readHtml(instance);
+    const paper = allowedPageSizes.has(instance.page.paper) ? instance.page.paper : "A4";
+    const orientation = allowedOrientations.has(instance.page.orientation) ? instance.page.orientation : "portrait";
+    const margin = allowedMargins[instance.page.margin] || allowedMargins.normal;
+    // Open synchronously as part of the user's click to avoid popup blockers.
+    const win = window.open("", "_blank", "width=1000,height=850");
+    if (!win) return message(instance, "Please allow popups to preview or print.");
     win.opener = null;
+    const style = `@page{size:${paper} ${orientation};margin:${margin}}` +
+      `*{box-sizing:border-box}body{font:12pt/1.5 Arial,sans-serif;color:#1e293b;margin:0}` +
+      `#azunt-print-controls{position:sticky;top:0;padding:12px;background:#e2e8f0;z-index:10}` +
+      `#azunt-print-controls button{padding:8px 15px;cursor:pointer}` +
+      `.azunt-print-page{margin:15px auto;padding:${margin};background:#fff;max-width:${orientation === "landscape" ? "297mm" : "210mm"};min-height:200mm;box-shadow:0 1px 12px #ccc}` +
+      `.azunt-print-page img{max-width:100%;height:auto}` +
+      `.azunt-print-page table{border-collapse:collapse;width:100%;break-inside:auto}` +
+      `.azunt-print-page tr{break-inside:avoid}` +
+      `.azunt-print-page th,.azunt-print-page td{border:1px solid #aaa;padding:6px}` +
+      `@media print{#azunt-print-controls{display:none}.azunt-print-page{margin:0;padding:0;max-width:none;min-height:0;box-shadow:none}}`;
     win.document.open();
-    win.document.write("<!doctype html><html><head><meta charset='utf-8'><title>Azunt Editor</title>" +
-      "<style>@page{size:A4;margin:16mm}body{font:12pt Arial,sans-serif;line-height:1.5}" +
-      "img{max-width:100%;height:auto}table{border-collapse:collapse;width:100%}" +
-      "td,th{border:1px solid #aaa;padding:6px}h2{font-size:20pt}</style></head><body>" + printable + "</body></html>");
+    win.document.write("<!doctype html><html><head><meta charset='utf-8'><title>Azunt Editor — Print Preview</title></head><body></body></html>");
     win.document.close();
-    // Allow inline images to finish loading before opening the print dialog.
-    const ready = Array.from(win.document.images).map(image => image.complete
+    const styles = win.document.createElement("style");
+    styles.textContent = style;
+    win.document.head.appendChild(styles);
+    const controls = win.document.createElement("header");
+    controls.id = "azunt-print-controls";
+    const button = win.document.createElement("button");
+    button.type = "button";
+    button.textContent = "Print / Save as PDF";
+    button.addEventListener("click", () => win.print());
+    controls.appendChild(button);
+    controls.appendChild(win.document.createTextNode(`  ${paper} · ${orientation} · ${instance.page.margin} margins`));
+    const page = win.document.createElement("main");
+    page.className = "azunt-print-page";
+    page.innerHTML = html; // Already restricted by sanitizeHtml; do not inject raw user HTML.
+    win.document.body.append(controls, page);
+    const ready = Array.from(page.querySelectorAll("img")).map(image => image.complete
       ? Promise.resolve()
       : new Promise(resolve => {
           image.addEventListener("load", resolve, { once: true });
           image.addEventListener("error", resolve, { once: true });
         }));
-    Promise.all(ready).then(() => {
-      win.focus();
-      win.print();
-    });
+    if (!previewOnly) Promise.all(ready).then(() => { if (!win.closed) { win.focus(); win.print(); } });
+  }
+
+  function runSelect(instance, field, value) {
+    if (["paper", "orientation", "margin"].includes(field)) {
+      instance.page[field] = value;
+      return;
+    }
+    if (instance.readOnly) return;
+    if (instance.sourceMode) return message(instance, "Apply HTML source before using formatting tools.");
+    if (field === "imageAlign") {
+      if (value) alignImage(instance, value);
+      return;
+    }
+    if (!value) return;
+    if (field === "fontFamily" && allowedFonts.has(value)) return formatSpan(instance, "fontFamily", value);
+    if (field === "fontSize" && /^\d{1,2}$/.test(value) && Number(value) >= 8 && Number(value) <= 72)
+      return formatSpan(instance, "fontSize", `${value}px`);
+    if (["color", "backgroundColor"].includes(field) && cleanColor(value))
+      return formatSpan(instance, field, cleanColor(value));
   }
 
   function runCommand(instance, command) {
-    if (command === "print") return printDocument(instance);
+    if (command === "preview") return printDocument(instance, true);
+    if (command === "print") return printDocument(instance, false);
     if (instance.readOnly) return;
+    if (command === "source") return toggleSource(instance);
+    if (instance.sourceMode) return message(instance, "Apply HTML source before using formatting tools.");
+    if (command === "image-delete") return deleteImage(instance);
+    if (command.startsWith("table-") && command !== "table") return modifyTable(instance, command);
+    if (command === "link") return openLinkPanel(instance);
+    if (command === "unlink") return removeLink(instance);
     instance.canvas.focus();
-    if (command === "bold" || command === "italic" || command === "underline") {
-      return inlineStyle(instance, { bold: "strong", italic: "em", underline: "u" }[command]);
+    if (["bold", "italic", "underline", "strike", "sup", "sub"].includes(command)) {
+      return inlineStyle(instance, { bold: "strong", italic: "em", underline: "u", strike: "s", sup: "sup", sub: "sub" }[command]);
     }
     if (command === "h2" || command === "p") return changeBlock(instance, command);
     if (command === "ul" || command === "ol") return applyList(instance, command);
-    if (["left", "center", "right"].includes(command)) return alignBlock(instance, command);
+    if (["left", "center", "right", "justify"].includes(command)) return alignBlock(instance, command);
+    if (command === "indent") return adjustIndent(instance, 24);
+    if (command === "outdent") return adjustIndent(instance, -24);
     if (command === "table") return insertTable(instance);
     if (command === "image") return instance.images.click();
     if (command === "undo") return undoOrRedo(instance, -1);
@@ -413,7 +681,9 @@
       instance.canvas === element.querySelector(".azunt-editor-canvas") &&
       instance.toolbar === element.querySelector(".azunt-editor-toolbar") &&
       instance.value === element.querySelector("[data-azunt-value]") &&
-      instance.images === element.querySelector("[data-azunt-images]");
+      instance.images === element.querySelector("[data-azunt-images]") &&
+      instance.source === element.querySelector("[data-azunt-source]") &&
+      instance.linkPanel === element.querySelector("[data-link-panel]");
   }
 
   function mount(id, dotNetReference) {
@@ -440,10 +710,17 @@
       toolbar: element.querySelector(".azunt-editor-toolbar"),
       value: element.querySelector("[data-azunt-value]"),
       images: element.querySelector("[data-azunt-images]"),
+      source: element.querySelector("[data-azunt-source]"),
+      linkPanel: element.querySelector("[data-link-panel]"),
+      linkText: element.querySelector("[data-link-text]"),
+      linkUrl: element.querySelector("[data-link-url]"),
+      imageWidth: element.querySelector("[data-image-width]"),
       status: element.querySelector(".azunt-editor-message"),
       readOnly: element.dataset.readOnly === "true", uploadUrl: element.dataset.uploadUrl || null,
       dotNetReference: dotNetReference || null, emitTimer: null, history: [], historyIndex: 0, lastRange: null,
-      revision: previous?.revision || 0
+      revision: previous?.revision || 0, sourceMode: false,
+      selectedImage: null, activeCell: null, editingLink: null,
+      page: previous?.page || { paper: "A4", orientation: "portrait", margin: "normal" }
     };
     // On first mount the canvas is empty and the textarea owns the initial HTML.
     // After a Blazor subtree replacement, a visible edit wins over the textarea;
@@ -463,11 +740,35 @@
       const button = event.target.closest("button[data-command]");
       if (button) runCommand(instance, button.dataset.command);
     }, { signal });
+    // Preserve the canvas selection before native selects and color pickers take focus.
+    instance.toolbar.addEventListener("pointerdown", () => {
+      const selection = window.getSelection();
+      if (selection?.rangeCount && instance.canvas.contains(selection.getRangeAt(0).commonAncestorContainer))
+        instance.lastRange = selection.getRangeAt(0).cloneRange();
+    }, { signal });
+    instance.toolbar.addEventListener("change", event => {
+      const target = event.target.closest("[data-select]");
+      if (!target) return;
+      runSelect(instance, target.dataset.select, target.value);
+      if (!["paper", "orientation", "margin"].includes(target.dataset.select) && target.type !== "color") target.selectedIndex = 0;
+    }, { signal });
+    instance.linkPanel.querySelector("[data-link-apply]").addEventListener("click", () => applyLink(instance), { signal });
+    instance.linkPanel.querySelector("[data-link-cancel]").addEventListener("click", () => {
+      instance.linkPanel.hidden = true;
+      instance.editingLink = null;
+    }, { signal });
+    instance.imageWidth.addEventListener("change", () => resizeImage(instance), { signal });
     instance.canvas.addEventListener("input", () => changed(instance), { signal });
     instance.canvas.addEventListener("blur", () => {
       window.clearTimeout(instance.emitTimer);
       remember(instance);
       emit(instance);
+    }, { signal });
+    instance.canvas.addEventListener("click", event => {
+      const image = event.target.closest("img");
+      setImageSelection(instance, image);
+      const cell = event.target.closest("td,th");
+      instance.activeCell = cell && instance.canvas.contains(cell) ? cell : null;
     }, { signal });
     instance.canvas.addEventListener("mouseup", () => selectedRange(instance), { signal });
     instance.canvas.addEventListener("keyup", () => selectedRange(instance), { signal });
@@ -490,6 +791,12 @@
     }, { signal });
     instance.images.addEventListener("change", () => {
       void addImages(instance, instance.images.files).finally(() => { instance.images.value = ""; });
+    }, { signal });
+    instance.source.addEventListener("input", () => {
+      // Source edits remain local until switching back; MVC form/Blazor explicit Save
+      // still reads sanitized source if submitted while this mode is open.
+      instance.value.value = readHtml(instance);
+      queueEmit(instance);
     }, { signal });
     const form = element.closest("form");
     if (form) form.addEventListener("submit", () => { instance.value.value = readHtml(instance); }, { signal, capture: true });
@@ -541,8 +848,13 @@
 
   function setHtml(id, html) {
     const instance = getInstance(id);
+    instance.sourceMode = false;
+    instance.source.hidden = true;
+    instance.canvas.hidden = false;
     instance.canvas.innerHTML = sanitizeHtml(html);
     instance.lastRange = null;
+    setImageSelection(instance, null);
+    instance.activeCell = null;
     instance.history = [readHtml(instance)];
     instance.historyIndex = 0;
     emit(instance);

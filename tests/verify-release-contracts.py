@@ -3,7 +3,7 @@ from pathlib import Path
 from xml.etree import ElementTree
 
 root = Path(__file__).resolve().parents[1]
-version = '0.5.0'
+version = '0.5.1'
 for item in ['src/Azunt.Editor/Azunt.Editor.csproj', 'src/Azunt.Editor.Export/Azunt.Editor.Export.csproj',
              'samples/Azunt.Web/Azunt.Web.csproj']:
     doc = ElementTree.parse(root / item)
@@ -13,7 +13,7 @@ for item in ['src/Azunt.Editor/Azunt.Editor.csproj', 'src/Azunt.Editor.Export/Az
 
 markup = (root / 'src/Azunt.Editor/Rendering/EditorMarkup.cs').read_text()
 assert 'data-group-label' in markup and 'static string? Icon' in markup
-for control in ['data-find-panel', 'data-chars-panel', 'data-editor-stats', 'data-command']:
+for control in ['data-find-panel', 'data-chars-panel', 'data-editor-stats', 'data-command', 'data-signature-panel', 'data-template-panel', 'data-date-panel', 'table-merge-right']:
     assert control in markup, f'Missing editor writing control: {control}' 
 assert 'data-command' in markup and '<svg' in markup
 
@@ -21,11 +21,11 @@ pdf = (root / 'src/Azunt.Editor.Export/Pdf/PdfDocumentExporter.cs').read_text()
 assert 'DisplayHeaderFooter = options.ShowPageNumbers' in pdf
 assert 'thead{display:table-header-group}' in pdf
 word = (root / 'src/Azunt.Editor.Export/Word/DocxDocumentExporter.cs').read_text()
-assert 'new W.CantSplit()' in word and 'new W.TableHeader()' in word
+assert 'new W.CantSplit()' in word and 'new W.TableHeader()' in word and 'new W.GridSpan' in word
 xlsx = (root / 'src/Azunt.Editor.Export/Excel/XlsxDocumentExporter.cs').read_text()
-assert 'new S.Columns()' in xlsx and 'InsertBefore(columns, sheetData)' in xlsx
+assert 'new S.Columns()' in xlsx and 'InsertBefore(columns, sheetData)' in xlsx and 'new S.MergeCells()' in xlsx
 for scope in [root / 'src', root / 'samples']:
     for file in scope.rglob('*'):
         if file.is_file() and file.suffix in ('.cs', '.csproj', '.razor', '.js', '.css'):
             assert file.read_text(encoding='utf-8').strip(), f'Empty source file: {file}'
-print('PASS: Azunt.Editor 0.5 release contracts, sources are application-agnostic')
+print('PASS: Azunt.Editor 0.5.1 release contracts, sources are application-agnostic')

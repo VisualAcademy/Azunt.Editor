@@ -46,6 +46,7 @@ internal static class XlsxDocumentExporter
             uint drawingId = 1;
             long totalImageBytes = 0;
             DrawingsPart? drawingsPart = null;
+            var mergedRanges = new List<string>();
 
             foreach (var node in document.Root.Children) WriteBlock(node);
             if (rowNumber == 0) AppendRow(["Document"]);
@@ -65,6 +66,12 @@ internal static class XlsxDocumentExporter
             if (columns.HasChildren)
                 worksheetPart.Worksheet.InsertBefore(columns, sheetData);
 
+            if (mergedRanges.Count > 0)
+            {
+                var merges = new S.MergeCells();
+                foreach (var range in mergedRanges) merges.Append(new S.MergeCell { Reference = range });
+                worksheetPart.Worksheet.Append(merges);
+            }
             if (drawingsPart is not null)
             {
                 // Worksheet drawing references must follow sheetData in SpreadsheetML.
@@ -86,11 +93,22 @@ internal static class XlsxDocumentExporter
                         var cells = tr.Children.Where(n => n.Name is "td" or "th")
                             .Take(100).ToList();
                         if (cells.Count == 0) continue;
-                        AppendRow(cells.Select(c => Normalize(c.PlainText())).ToArray());
-                        var rowImages = cells.SelectMany((cell, index) =>
-                                cell.DescendantsAndSelf().Where(n => n.Name == "img")
-                                    .Select(image => (Image: image, Column: index)))
-                            .ToList();
+                        var values = new List<string>();
+                        var rowImages = new List<(SafeEditorDocument.Node Image, int Column)>();
+                        foreach (var cell in cells)
+                        {
+                            var firstColumn = values.Count;
+                            if (firstColumn >= 100) break;
+                            var span = int.TryParse(cell.Attribute("colspan"), out var parsed) && parsed is >= 2 and <= 12
+                                ? Math.Min(parsed, 100 - firstColumn) : 1;
+                            values.Add(Normalize(cell.PlainText()));
+                            for (var blank = 1; blank < span; blank++) values.Add("");
+                            if (span > 1)
+                                mergedRanges.Add($"{ColumnName(firstColumn)}{rowNumber + 1}:{ColumnName(firstColumn + span - 1)}{rowNumber + 1}");
+                            rowImages.AddRange(cell.DescendantsAndSelf().Where(n => n.Name == "img")
+                                .Select(image => (Image: image, Column: firstColumn)));
+                        }
+                        AppendRow(values.ToArray());
                         var maxHeight = 0;
                         foreach (var (image, column) in rowImages)
                             maxHeight = Math.Max(maxHeight, AddImage(image, rowNumber - 1, column));

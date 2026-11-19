@@ -84,6 +84,34 @@ try
 }
 catch (ArgumentException) { /* Expected: bounded HTML nesting. */ }
 
+// Merged horizontal table cells and border settings survive server normalization
+// and are emitted as editable Open XML rather than flattened text.
+var advancedHtml = EditorHtmlSanitizer.Sanitize(
+    "<table style='border-color:#cc0000;border-width:2px'>" +
+    "<tr><td colspan='2'>Merged heading</td><td>Third</td></tr>" +
+    "<tr><td>One</td><td>Two</td><td>Three</td></tr></table>" +
+    $"<p><img src='data:image/png;base64,{samplePng}' width='120' alt='Signature'></p>");
+Require(advancedHtml.Contains("colspan=\"2\""), "Server keeps safe horizontal span");
+Require(advancedHtml.Contains("border-color:#cc0000"), "Server keeps safe table border color");
+Require(!EditorHtmlSanitizer.Sanitize("<table><tr><td colspan='999'>Bad span</td></tr></table>").Contains("colspan"),
+    "Excessive table spans are removed");
+var advancedDocx = await exporter.ExportAsync(advancedHtml, EditorExportFormat.Docx);
+using (var zip = new ZipArchive(new MemoryStream(advancedDocx.Content), ZipArchiveMode.Read))
+{
+    var xml = Read(zip, "word/document.xml");
+    Require(xml.Contains("gridSpan") && xml.Contains("Merged heading"), "Word preserves horizontal cell merge");
+    Require(zip.Entries.Any(e => e.FullName.StartsWith("word/media/", StringComparison.Ordinal)),
+        "Word embeds signature PNG");
+}
+var advancedXlsx = await exporter.ExportAsync(advancedHtml, EditorExportFormat.Xlsx);
+using (var zip = new ZipArchive(new MemoryStream(advancedXlsx.Content), ZipArchiveMode.Read))
+{
+    var xml = Read(zip, "xl/worksheets/sheet1.xml");
+    Require(xml.Contains("mergeCell") && xml.Contains("A1:B1"), "Excel preserves horizontal cell merge");
+    Require(zip.Entries.Any(e => e.FullName.StartsWith("xl/media/", StringComparison.Ordinal)),
+        "Excel embeds signature PNG");
+}
+
 if (Environment.GetEnvironmentVariable("AZUNT_TEST_PDF") == "1")
 {
     var pdf = await exporter.ExportAsync(html, EditorExportFormat.Pdf,

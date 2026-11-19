@@ -72,6 +72,12 @@ public static class EditorMarkup
         Button("table-col-after", "+Col", "Insert column after current cell");
         Button("table-col-delete", "−Col", "Delete current column");
         Button("table-delete", "×Tbl", "Delete table");
+        Button("table-merge-right", "Merge →", "Merge selected cell with the cell to its right");
+        Button("table-split", "Split", "Split horizontally merged cell");
+        Color("tableBorderColor", "Table border color", "#aeb8c6");
+        Select("tableBorderWidth", "Table border thickness", new[] {
+            ("", "Border px"), ("1", "1 px"), ("2", "2 px"), ("3", "3 px"), ("4", "4 px")
+        });
         EndGroup();
 
         Group("Image");
@@ -90,6 +96,9 @@ public static class EditorMarkup
         Button("page-break", "Page", "Insert page break for print and Word");
         Button("special-chars", "Ω", "Insert special character");
         Button("fullscreen", "⛶", "Toggle fullscreen", "Esc to exit");
+        Button("datetime", "Date", "Insert date or time");
+        Button("signature", "Sign", "Draw and insert a signature image");
+        Button("templates", "Template", "Open document templates");
         EndGroup();
 
         Group("Document");
@@ -124,6 +133,29 @@ public static class EditorMarkup
             w.Append("<button type=\"button\" data-insert-character=\"").Append(Encode(ch)).Append("\" aria-label=\"Insert ").Append(Encode(ch)).Append("\">")
                 .Append(Encode(ch)).Append("</button>");
         w.Append("<button type=\"button\" data-chars-close>Close</button></div>");
+
+        w.Append("<div class=\"azunt-editor-signature-panel\" data-signature-panel hidden role=\"group\" aria-label=\"Draw signature\">")
+            .Append("<span class=\"azunt-editor-panel-heading\">Draw your signature using mouse, pen or touch</span>")
+            .Append("<canvas data-signature-canvas width=\"640\" height=\"180\" aria-label=\"Signature drawing surface\"></canvas>")
+            .Append("<button type=\"button\" data-signature-clear>Clear</button>")
+            .Append("<button type=\"button\" data-signature-insert>Insert signature</button>")
+            .Append("<button type=\"button\" data-signature-close>Cancel</button></div>");
+
+        w.Append("<div class=\"azunt-editor-template-panel\" data-template-panel hidden role=\"group\" aria-label=\"Document templates\">")
+            .Append("<label>Template <select data-template-list aria-label=\"Choose document template\">")
+            .Append("<option value=\"blank\">Blank document</option>")
+            .Append("<option value=\"meeting\">Meeting notes</option>")
+            .Append("<option value=\"report\">Simple report</option>")
+            .Append("<option value=\"letter\">Letter</option>")
+            .Append("</select></label>")
+            .Append("<button type=\"button\" data-template-apply>Load template</button>")
+            .Append("<button type=\"button\" data-template-close>Cancel</button></div>");
+
+        w.Append("<div class=\"azunt-editor-date-panel\" data-date-panel hidden role=\"group\" aria-label=\"Insert date or time\">")
+            .Append("<button type=\"button\" data-date-format=\"date\">Date</button>")
+            .Append("<button type=\"button\" data-date-format=\"time\">Time</button>")
+            .Append("<button type=\"button\" data-date-format=\"datetime\">Date &amp; time</button>")
+            .Append("<button type=\"button\" data-date-close>Cancel</button></div>");
 
         w.Append("<div class=\"azunt-editor-canvas\" role=\"textbox\" aria-label=\"Document content\" aria-multiline=\"true\" contenteditable=\"")
             .Append(readOnly ? "false" : "true")

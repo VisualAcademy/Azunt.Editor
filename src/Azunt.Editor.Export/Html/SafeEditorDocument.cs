@@ -129,7 +129,7 @@ internal sealed class SafeEditorDocument
             foreach (Match match in AttrPattern.Matches(token[nameEnd..]))
             {
                 var key = match.Groups["key"].Value;
-                if (key is not ("src" or "href" or "alt" or "width" or "height" or "style" or "data-azunt-page-break")) continue;
+                if (key is not ("src" or "href" or "alt" or "width" or "height" or "style" or "data-azunt-page-break" or "colspan")) continue;
                 var value = match.Groups["double"].Success ? match.Groups["double"].Value
                     : match.Groups["single"].Success ? match.Groups["single"].Value
                     : match.Groups["bare"].Value;
@@ -191,6 +191,8 @@ internal sealed class SafeEditorDocument
                 if (int.TryParse(node.Attribute(dimension), out var size) && size is >= 1 and <= 2500)
                     output.Append(' ').Append(dimension).Append("=\"").Append(size).Append('"');
         }
+        if ((node.Name is "td" or "th") && int.TryParse(node.Attribute("colspan"), out var span) && span is >= 2 and <= 12)
+            output.Append(" colspan=\"").Append(span).Append('"');
         if (node.Name == "hr" && node.Attribute("data-azunt-page-break") == "true")
             output.Append(" data-azunt-page-break=\"true\"");
         if (node.Name == "a" && TryLink(node.Attribute("href"), out var href))
@@ -291,6 +293,14 @@ internal sealed class SafeEditorDocument
         }
         var align = node.Style("text-align").ToLowerInvariant();
         if (align is "left" or "right" or "center" or "justify") styles.Add($"text-align:{align}");
+        if (node.Name is "table" or "td" or "th")
+        {
+            var borderColor = node.Style("border-color");
+            if (HexColor.IsMatch(borderColor)) styles.Add($"border-color:{borderColor}");
+            var width = node.Style("border-width");
+            if (width is "1px" or "2px" or "3px" or "4px") styles.Add($"border-width:{width}");
+            if (styles.Any(s => s.StartsWith("border-", StringComparison.Ordinal))) styles.Add("border-style:solid");
+        }
         var indent = Pixel.Match(node.Style("margin-left"));
         if (indent.Success && int.TryParse(indent.Groups["value"].Value, out var px) && px <= 240)
             styles.Add($"margin-left:{px}px");

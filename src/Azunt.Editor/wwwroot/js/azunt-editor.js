@@ -1,8 +1,16 @@
-/* Azunt.Editor 0.5.0. Self-owned editing engine, no third-party JS. */
+/* Azunt.Editor 0.5.1. Self-owned editing engine, no third-party JS. */
 (function () {
   "use strict";
 
   const instances = new Map();
+  // Built-in templates are safe, deliberately small HTML examples. Host code can
+  // register additional content via AzuntEditor.registerTemplate (no CDN/network).
+  const templates = new Map([
+    ["blank", { title: "Blank document", html: "<p><br></p>" }],
+    ["meeting", { title: "Meeting notes", html: "<h2>Meeting notes</h2><p>Date: </p><p>Attendees: </p><h3>Agenda</h3><ul><li>Agenda item</li></ul><h3>Decisions</h3><p><br></p><h3>Action items</h3><table><tbody><tr><th>Action</th><th>Owner</th><th>Due</th></tr><tr><td><br></td><td><br></td><td><br></td></tr></tbody></table>" }],
+    ["report", { title: "Simple report", html: "<h2>Report title</h2><p>Date: </p><h3>Summary</h3><p><br></p><h3>Details</h3><table><tbody><tr><th>Item</th><th>Notes</th></tr><tr><td><br></td><td><br></td></tr></tbody></table><h3>Conclusion</h3><p><br></p>" }],
+    ["letter", { title: "Letter", html: "<p>Date: </p><p>To: </p><p>Subject: </p><p>Dear recipient,</p><p><br></p><p>Sincerely,</p><p>Your name</p>" }]
+  ]);
   const allowedTags = new Set([
     "p", "div", "h2", "h3", "strong", "b", "em", "i", "u", "s", "ul", "ol", "li",
     "blockquote", "pre", "code", "sup", "sub", "table", "thead", "tbody", "tr", "td", "th", "br", "hr", "img", "a", "span"
@@ -90,6 +98,10 @@
           }
         }
       }
+      if ((tag === "td" || tag === "th") && node.hasAttribute("colspan")) {
+        const span = Number(node.getAttribute("colspan"));
+        if (Number.isInteger(span) && span >= 2 && span <= 12) clean.setAttribute("colspan", String(span));
+      }
       if (tag === "hr" && node.getAttribute("data-azunt-page-break") === "true")
         clean.setAttribute("data-azunt-page-break", "true");
       if (tag === "a") {
@@ -116,6 +128,13 @@
         const margin = /^(\d{1,3})px$/.exec(node.style.marginLeft || "");
         if (margin && Number(margin[1]) <= 240 && Number(margin[1]) % 24 === 0)
           clean.style.marginLeft = `${Number(margin[1])}px`;
+      }
+      if (["table", "td", "th"].includes(tag)) {
+        const borderColor = cleanColor(node.style.borderColor);
+        const borderWidth = /^([1-4])px$/.exec(node.style.borderWidth || "");
+        if (borderColor) clean.style.borderColor = borderColor;
+        if (borderWidth) clean.style.borderWidth = `${borderWidth[1]}px`;
+        if (borderColor || borderWidth) clean.style.borderStyle = "solid";
       }
       for (const child of Array.from(node.childNodes)) visit(child, clean);
       destination.appendChild(clean);
@@ -416,7 +435,167 @@
     return cell && instance.canvas.contains(cell) ? cell : null;
   }
 
+  function mergeTableRight(instance) {
+    const cell = activeTableCell(instance);
+    if (!cell) return message(instance, "Click a table cell first.");
+    const right = cell.nextElementSibling;
+    if (!right || !["TD", "TH"].includes(right.tagName) || cell.rowSpan !== 1 || right.rowSpan !== 1)
+      return message(instance, "No adjacent cell available for merging.");
+    const width = cell.colSpan + right.colSpan;
+    if (width > 12) return message(instance, "Merged cell cannot exceed 12 columns.");
+    if (right.textContent?.trim() || right.querySelector("img")) {
+      if (cell.textContent?.trim() || cell.querySelector("img")) cell.appendChild(document.createElement("br"));
+      while (right.firstChild) cell.appendChild(right.firstChild);
+    }
+    cell.colSpan = width;
+    right.remove();
+    instance.activeCell = cell;
+    instance.lastRange = null;
+    changed(instance);
+    message(instance, `Merged ${width} columns. Split before adding/deleting rows or columns.`);
+  }
+
+  function splitTableCell(instance) {
+    const cell = activeTableCell(instance);
+    if (!cell) return message(instance, "Click a merged table cell first.");
+    const count = cell.colSpan;
+    if (count < 2) return message(instance, "This cell is not merged.");
+    cell.removeAttribute("colspan");
+    let after = cell;
+    for (let i = 1; i < count; i++) {
+      const sibling = document.createElement(cell.tagName.toLowerCase());
+      sibling.innerHTML = "<br>";
+      sibling.style.borderColor = cell.style.borderColor;
+      sibling.style.borderWidth = cell.style.borderWidth;
+      sibling.style.borderStyle = cell.style.borderStyle;
+      after.after(sibling);
+      after = sibling;
+    }
+    instance.activeCell = cell;
+    instance.lastRange = null;
+    changed(instance);
+    message(instance, `Split into ${count} cells. Content remains in the first cell.`);
+  }
+
+  function updateTableBorders(instance, field, value) {
+    const cell = activeTableCell(instance);
+    if (!cell) return message(instance, "Click a table cell before setting its table border.");
+    const table = cell.closest("table");
+    if (!table) return;
+    if (field === "tableBorderColor" && !cleanColor(value)) return;
+    if (field === "tableBorderWidth" && !/^[1-4]$/.test(String(value))) return;
+    const borderColor = field === "tableBorderColor" ? cleanColor(value) :
+      cleanColor(table.style.borderColor) || "#aeb8c6";
+    const borderWidth = field === "tableBorderWidth" ? `${value}px` :
+      (/^[1-4]px$/.test(table.style.borderWidth) ? table.style.borderWidth : "1px");
+    for (const element of [table, ...table.querySelectorAll("td,th")]) {
+      element.style.borderColor = borderColor;
+      element.style.borderWidth = borderWidth;
+      element.style.borderStyle = "solid";
+    }
+    changed(instance);
+  }
+
+  function insertDateTime(instance, format) {
+    const now = new Date();
+    const locale = document.documentElement.lang || navigator.language || "en-US";
+    const formats = {
+      date: { year: "numeric", month: "2-digit", day: "2-digit" },
+      time: { hour: "2-digit", minute: "2-digit" },
+      datetime: { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" }
+    };
+    if (!formats[format]) return;
+    const text = new Intl.DateTimeFormat(locale, formats[format]).format(now);
+    insertAtSelection(instance, document.createTextNode(text));
+    instance.datePanel.hidden = true;
+  }
+
+  function showSignature(instance) {
+    if (!instance.signaturePanel) return;
+    instance.signaturePanel.hidden = false;
+    if (!instance.signatureContext) {
+      const canvas = instance.signatureCanvas;
+      const context = canvas.getContext("2d");
+      if (!context) return message(instance, "Signature canvas is unavailable.");
+      instance.signatureContext = context;
+      context.lineWidth = 2.8;
+      context.lineCap = "round";
+      context.lineJoin = "round";
+      context.strokeStyle = "#1e293b";
+    }
+    instance.signatureCanvas.focus();
+  }
+
+  function clearSignature(instance) {
+    instance.signatureContext?.clearRect(0, 0, instance.signatureCanvas.width, instance.signatureCanvas.height);
+    instance.signatureHasInk = false;
+  }
+
+  function signaturePoint(instance, event) {
+    const bounds = instance.signatureCanvas.getBoundingClientRect();
+    return { x: (event.clientX - bounds.left) * instance.signatureCanvas.width / bounds.width,
+      y: (event.clientY - bounds.top) * instance.signatureCanvas.height / bounds.height };
+  }
+
+  function insertSignature(instance) {
+    if (!instance.signatureHasInk) return message(instance, "Draw a signature before inserting it.");
+    const dataUrl = instance.signatureCanvas.toDataURL("image/png");
+    if (!imageDataUrlPattern.test(dataUrl) || dataUrl.length > 2 * 1024 * 1024)
+      return message(instance, "Signature image is too large.");
+    const image = document.createElement("img");
+    image.src = dataUrl;
+    image.alt = "Signature";
+    image.width = 480;
+    insertAtSelection(instance, image);
+    instance.signaturePanel.hidden = true;
+    clearSignature(instance);
+    message(instance, "Signature image inserted (not a verified digital signature).");
+  }
+
+  function refreshTemplateOptions(instance) {
+    if (!instance.templateList) return;
+    const existing = instance.templateList.value;
+    instance.templateList.replaceChildren();
+    for (const [key, item] of templates) {
+      const option = document.createElement("option");
+      option.value = key;
+      option.textContent = item.title;
+      instance.templateList.appendChild(option);
+    }
+    if (templates.has(existing)) instance.templateList.value = existing;
+  }
+
+  function applyTemplate(instance) {
+    const selected = templates.get(instance.templateList?.value);
+    if (!selected) return message(instance, "Choose a template first.");
+    const existingText = (instance.canvas.textContent || "").trim();
+    const hasContent = existingText.length > 0 || !!instance.canvas.querySelector("img,table,hr");
+    if (hasContent && !window.confirm("Replace the current document with this template? Existing edits may be lost.")) return;
+    instance.sourceMode = false;
+    instance.source.hidden = true;
+    instance.canvas.hidden = false;
+    instance.canvas.innerHTML = sanitizeHtml(selected.html);
+    instance.lastRange = null;
+    instance.activeCell = null;
+    setImageSelection(instance, null);
+    instance.templatePanel.hidden = true;
+    changed(instance);
+    message(instance, `Loaded template: ${selected.title}`);
+  }
+
+  function registerTemplate(key, title, html) {
+    if (typeof key !== "string" || !/^[a-z][a-z0-9_-]{1,40}$/.test(key) ||
+        typeof title !== "string" || !title.trim() || title.length > 100 ||
+        typeof html !== "string" || html.length > 200000)
+      throw new Error("Invalid template key, title or HTML length.");
+    const clean = sanitizeHtml(html);
+    templates.set(key, { title: title.trim(), html: clean });
+    for (const instance of instances.values()) refreshTemplateOptions(instance);
+  }
+
   function modifyTable(instance, operation) {
+    if (operation === "table-merge-right") return mergeTableRight(instance);
+    if (operation === "table-split") return splitTableCell(instance);
     const cell = activeTableCell(instance);
     if (!cell) return message(instance, "Click a table cell first.");
     const row = cell.closest("tr");
@@ -885,6 +1064,10 @@
     }
     if (instance.readOnly) return;
     if (instance.sourceMode) return message(instance, "Apply HTML source before using formatting tools.");
+    if (field === "tableBorderColor" || field === "tableBorderWidth") {
+      if (value) updateTableBorders(instance, field, value);
+      return;
+    }
     if (field === "imageAlign") {
       if (value) alignImage(instance, value);
       return;
@@ -918,6 +1101,16 @@
     if (command === "clear-format") return clearFormatting(instance);
     if (command === "page-break") return insertRule(instance, true);
     if (command === "horizontal-rule") return insertRule(instance, false);
+    if (command === "datetime") {
+      if (instance.datePanel) instance.datePanel.hidden = !instance.datePanel.hidden;
+      return;
+    }
+    if (command === "signature") return showSignature(instance);
+    if (command === "templates") {
+      refreshTemplateOptions(instance);
+      if (instance.templatePanel) instance.templatePanel.hidden = !instance.templatePanel.hidden;
+      return;
+    }
     if (command === "image-delete") return deleteImage(instance);
     if (command.startsWith("table-") && command !== "table") return modifyTable(instance, command);
     if (command === "link") return openLinkPanel(instance);
@@ -948,7 +1141,10 @@
       instance.source === element.querySelector("[data-azunt-source]") &&
       instance.linkPanel === element.querySelector("[data-link-panel]") &&
       instance.findPanel === element.querySelector("[data-find-panel]") &&
-      instance.characterPanel === element.querySelector("[data-chars-panel]");
+      instance.characterPanel === element.querySelector("[data-chars-panel]") &&
+      instance.signaturePanel === element.querySelector("[data-signature-panel]") &&
+      instance.templatePanel === element.querySelector("[data-template-panel]") &&
+      instance.datePanel === element.querySelector("[data-date-panel]");
   }
 
   function mount(id, dotNetReference) {
@@ -987,6 +1183,12 @@
       findReplacement: element.querySelector("[data-find-replacement]"),
       findStatus: element.querySelector("[data-find-status]"),
       characterPanel: element.querySelector("[data-chars-panel]"),
+      signaturePanel: element.querySelector("[data-signature-panel]"),
+      signatureCanvas: element.querySelector("[data-signature-canvas]"),
+      signatureContext: null, signatureHasInk: false, signatureDrawing: false,
+      templatePanel: element.querySelector("[data-template-panel]"),
+      templateList: element.querySelector("[data-template-list]"),
+      datePanel: element.querySelector("[data-date-panel]"),
       readOnly: element.dataset.readOnly === "true", uploadUrl: element.dataset.uploadUrl || null,
       dotNetReference: dotNetReference || null, emitTimer: null, history: [], historyIndex: 0, lastRange: null,
       revision: previous?.revision || 0, sourceMode: false,
@@ -1046,6 +1248,46 @@
         if (character) insertSpecial(instance, character.dataset.insertCharacter);
         if (event.target.closest("[data-chars-close]")) instance.characterPanel.hidden = true;
       }, { signal });
+    }
+    if (instance.datePanel) {
+      instance.datePanel.addEventListener("click", event => {
+        const button = event.target.closest("[data-date-format]");
+        if (button) insertDateTime(instance, button.dataset.dateFormat);
+        if (event.target.closest("[data-date-close]")) instance.datePanel.hidden = true;
+      }, { signal });
+    }
+    if (instance.templatePanel) {
+      refreshTemplateOptions(instance);
+      instance.templatePanel.querySelector("[data-template-apply]").addEventListener("click", () => applyTemplate(instance), { signal });
+      instance.templatePanel.querySelector("[data-template-close]").addEventListener("click", () => { instance.templatePanel.hidden = true; }, { signal });
+    }
+    if (instance.signaturePanel && instance.signatureCanvas) {
+      const canvas = instance.signatureCanvas;
+      canvas.addEventListener("pointerdown", event => {
+        if (event.button !== 0 && event.pointerType === "mouse") return;
+        event.preventDefault();
+        if (!instance.signatureContext) showSignature(instance);
+        const point = signaturePoint(instance, event);
+        instance.signatureDrawing = true;
+        instance.signatureHasInk = true;
+        instance.signatureContext.beginPath();
+        instance.signatureContext.moveTo(point.x, point.y);
+        instance.signatureContext.lineTo(point.x + .01, point.y + .01);
+        instance.signatureContext.stroke();
+        try { canvas.setPointerCapture(event.pointerId); } catch (_) { /* Browser can release capture. */ }
+      }, { signal });
+      canvas.addEventListener("pointermove", event => {
+        if (!instance.signatureDrawing) return;
+        event.preventDefault();
+        const point = signaturePoint(instance, event);
+        instance.signatureContext.lineTo(point.x, point.y);
+        instance.signatureContext.stroke();
+      }, { signal });
+      for (const type of ["pointerup", "pointercancel", "lostpointercapture"])
+        canvas.addEventListener(type, () => { instance.signatureDrawing = false; }, { signal });
+      instance.signaturePanel.querySelector("[data-signature-clear]").addEventListener("click", () => clearSignature(instance), { signal });
+      instance.signaturePanel.querySelector("[data-signature-insert]").addEventListener("click", () => insertSignature(instance), { signal });
+      instance.signaturePanel.querySelector("[data-signature-close]").addEventListener("click", () => { instance.signaturePanel.hidden = true; }, { signal });
     }
     instance.canvas.addEventListener("input", () => changed(instance), { signal });
     instance.canvas.addEventListener("blur", () => {
@@ -1177,7 +1419,7 @@
     return { paperSize: instance.page.paper, orientation: instance.page.orientation, margin: instance.page.margin };
   }
 
-  window.AzuntEditor = Object.freeze({ mount, mountAll, getHtml, getHtmlStream, setHtml, getPageSettings, unmount, sanitizeHtml });
+  window.AzuntEditor = Object.freeze({ mount, mountAll, getHtml, getHtmlStream, setHtml, getPageSettings, unmount, sanitizeHtml, registerTemplate });
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", mountAll, { once: true });
   else mountAll();
 })();

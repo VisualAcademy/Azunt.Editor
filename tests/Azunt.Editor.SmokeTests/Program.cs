@@ -35,3 +35,10 @@ Require(toolbar.Contains("data-group-label=\"Document\""), "Document toolbar gro
 Require(toolbar.Contains("azunt-editor-button-icon"), "Source-owned SVG button icons");
 Require(toolbar.Contains("data-command=\"print\""), "Existing print command remains available");
 Require(toolbar.Contains("data-command=\"image\""), "Existing image command remains available");
+
+// Advanced editing controls are present in both MVC/Razor and Blazor common markup.
+var advanced = EditorMarkup.Render("advanced", "Body");
+foreach (var command in new[] { "table-merge-right", "table-split", "signature", "datetime", "templates" })
+    Require(advanced.Contains($"data-command=\"{command}\""), $"Missing advanced command {command}");
+foreach (var selector in new[] { "data-signature-canvas", "data-signature-insert", "data-template-list", "data-template-apply", "data-date-format", "tableBorderWidth" })
+    Require(advanced.Contains(selector), $"Missing advanced control {selector}");

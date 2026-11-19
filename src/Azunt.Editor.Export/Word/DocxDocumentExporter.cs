@@ -131,13 +131,17 @@ internal static class DocxDocumentExporter
 
     private static W.Table BuildTable(SafeEditorDocument.Node node, MainDocumentPart part, ref uint drawingId)
     {
+        var color = node.Style("border-color").TrimStart('#');
+        if (color.Length != 6 || !color.All(Uri.IsHexDigit)) color = "AEB8C6";
+        var pixels = node.Style("border-width") switch { "2px" => 2, "3px" => 3, "4px" => 4, _ => 1 };
+        var thickness = (uint)(pixels * 6);
         var borders = new W.TableBorders(
-            new W.TopBorder { Val = W.BorderValues.Single, Size = 5U },
-            new W.LeftBorder { Val = W.BorderValues.Single, Size = 5U },
-            new W.BottomBorder { Val = W.BorderValues.Single, Size = 5U },
-            new W.RightBorder { Val = W.BorderValues.Single, Size = 5U },
-            new W.InsideHorizontalBorder { Val = W.BorderValues.Single, Size = 5U },
-            new W.InsideVerticalBorder { Val = W.BorderValues.Single, Size = 5U });
+            new W.TopBorder { Val = W.BorderValues.Single, Size = thickness, Color = color },
+            new W.LeftBorder { Val = W.BorderValues.Single, Size = thickness, Color = color },
+            new W.BottomBorder { Val = W.BorderValues.Single, Size = thickness, Color = color },
+            new W.RightBorder { Val = W.BorderValues.Single, Size = thickness, Color = color },
+            new W.InsideHorizontalBorder { Val = W.BorderValues.Single, Size = thickness, Color = color },
+            new W.InsideVerticalBorder { Val = W.BorderValues.Single, Size = thickness, Color = color });
         var table = new W.Table(new W.TableProperties(
             new W.TableWidth { Width = "5000", Type = W.TableWidthUnitValues.Pct }, borders));
         foreach (var rowNode in node.DescendantsAndSelf().Where(e => e.Name == "tr"))
@@ -149,10 +153,13 @@ internal static class DocxDocumentExporter
             if (cells.Count > 0 && cells.All(c => c.Name == "th"))
                 rowProperties.Append(new W.TableHeader());
             row.Append(rowProperties);
-            var cellImageMaxWidth = Math.Clamp(640 / Math.Max(cells.Count, 1), 120, 480);
+            var logicalColumns = cells.Sum(c => int.TryParse(c.Attribute("colspan"), out var span) && span is >= 2 and <= 12 ? span : 1);
+            var cellImageMaxWidth = Math.Clamp(640 / Math.Max(logicalColumns, 1), 120, 480);
             foreach (var cellNode in cells)
             {
                 var cell = new W.TableCell();
+                if (int.TryParse(cellNode.Attribute("colspan"), out var span) && span is >= 2 and <= 12)
+                    cell.Append(new W.TableCellProperties(new W.GridSpan { Val = span }));
                 var para = Paragraph(cellNode);
                 AppendInline(cellNode, para, part,
                     cellNode.Name == "th" ? new Format(Bold: true) : new Format(), ref drawingId, cellImageMaxWidth);

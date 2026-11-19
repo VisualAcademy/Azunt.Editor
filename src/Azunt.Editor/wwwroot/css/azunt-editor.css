@@ -1,4 +1,4 @@
-/* Azunt.Editor 0.5 preview.1 — self-contained editor styles and writing tools. */
+/* Azunt.Editor 0.5 preview.2 — self-contained editor styles and writing tools. */
 .azunt-editor {
   --azunt-line: #d8dee6;
   --azunt-text: #1e293b;
@@ -205,4 +205,28 @@
     border: 0 !important; height: 0; margin: 0;
   }
   .azunt-editor-canvas hr[data-azunt-page-break="true"]::after { content: none; }
+}
+
+/* 0.5.1: advanced table controls, compact panels, touch signature pad. */
+.azunt-editor-signature-panel, .azunt-editor-template-panel, .azunt-editor-date-panel {
+  display: flex; flex-wrap: wrap; gap: 9px; align-items: center;
+  padding: 12px 14px; border-bottom: 1px solid var(--azunt-line); background: #f1f5f9;
+}
+.azunt-editor-signature-panel .azunt-editor-panel-heading { width: 100%; padding: 0; }
+.azunt-editor-signature-panel canvas {
+  width: min(100%, 640px); height: auto; aspect-ratio: 32 / 9;
+  border: 1px solid #94a3b8; border-radius: 5px; background: white;
+  display: block; cursor: crosshair; touch-action: none;
+}
+.azunt-editor-signature-panel button, .azunt-editor-template-panel button,
+.azunt-editor-date-panel button {
+  cursor: pointer; border: 1px solid #cbd5e1; border-radius: 5px;
+  background: white; color: var(--azunt-text); padding: 8px 12px; min-height: 34px;
+}
+.azunt-editor-template-panel label { font-size: 12px; display: inline-flex; align-items: center; gap: 8px; }
+.azunt-editor-template-panel select { min-height: 34px; border: 1px solid #cbd5e1; border-radius: 5px; padding: 5px; }
+.azunt-editor-signature-panel button:hover, .azunt-editor-template-panel button:hover,
+.azunt-editor-date-panel button:hover { background: #dbeafe; }
+@media print {
+  .azunt-editor-signature-panel,.azunt-editor-template-panel,.azunt-editor-date-panel { display:none!important; }
 }

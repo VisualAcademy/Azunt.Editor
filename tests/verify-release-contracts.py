@@ -3,7 +3,7 @@ from pathlib import Path
 from xml.etree import ElementTree
 
 root = Path(__file__).resolve().parents[1]
-version = '0.5.2'
+version = '0.5.3'
 for item in ['src/Azunt.Editor/Azunt.Editor.csproj', 'src/Azunt.Editor.Export/Azunt.Editor.Export.csproj',
              'samples/Azunt.Web/Azunt.Web.csproj']:
     doc = ElementTree.parse(root / item)
@@ -30,4 +30,4 @@ for scope in [root / 'src', root / 'samples']:
             assert file.read_text(encoding='utf-8').strip(), f'Empty source file: {file}'
 assert 'var width = Math.Max(1, sourceWidth)' in word
 assert 'var width = Math.Max(1, sourceWidth)' in xlsx
-print('PASS: Azunt.Editor 0.5.2 release contracts, sources are application-agnostic')
+print('PASS: Azunt.Editor 0.5.3 release contracts, sources are application-agnostic')

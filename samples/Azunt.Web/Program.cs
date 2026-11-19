@@ -5,6 +5,7 @@ using Azunt.Editor.Storage;
 using Azunt.Web.Images;
 using Microsoft.AspNetCore.Antiforgery;
 using System.Net;
+using System.Runtime.InteropServices;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -26,6 +27,16 @@ builder.Services.AddAzuntEditorExport(options =>
 {
     options.BrowserChannel = builder.Configuration["Azunt:Pdf:BrowserChannel"];
     options.ExecutablePath = builder.Configuration["Azunt:Pdf:ExecutablePath"];
+    // Sample-only fallback: Windows ARM64 commonly has native Edge installed,
+    // while the sample's Development settings select Chrome. Keep explicit
+    // executable paths and all other platforms/configurations unchanged.
+    if (builder.Environment.IsDevelopment() && OperatingSystem.IsWindows() &&
+        RuntimeInformation.OSArchitecture == Architecture.Arm64 &&
+        string.Equals(options.BrowserChannel, "chrome", StringComparison.OrdinalIgnoreCase) &&
+        string.IsNullOrWhiteSpace(options.ExecutablePath))
+    {
+        options.BrowserChannel = "msedge";
+    }
 });
 
 // Demo-only session persistence. Production applications supply their own document stores.

@@ -2,7 +2,7 @@
 
 A lightweight rich-text editor for ASP.NET Core MVC, Razor Pages, and Blazor Server.
 
-Version: **0.6.3** · .NET 10
+Version: **0.6.4** · .NET 10
 
 ## Projects
 - `src/Azunt.Editor` — shared editor components, JavaScript, and CSS
@@ -105,3 +105,9 @@ unchanged. The editor's saved document HTML is not rewritten by this naming chan
 The namespace is an identification convention, **not a change of license**: MIT.
 
 For the complete migration notes, see `docs/css-class-namespace.md`.
+
+### Windows ARM64 and dark appearance
+
+For PDF browser setup on Windows ARM64 and troubleshooting light/dark editor controls,
+see [Windows ARM64 and dark-mode guidance](docs/windows-arm64-and-dark-mode.md).
+

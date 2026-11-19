@@ -5,6 +5,7 @@
   --azunt-text: #1e293b;
   --azunt-muted: #64748b;
   --azunt-accent: #2563eb;
+  color-scheme: light;
   color: var(--azunt-text);
   border: 1px solid var(--azunt-line);
   border-radius: 10px;
@@ -524,7 +525,8 @@
     forced-color-adjust: auto;
   }
 }
-/* Explicit dark hosts and OS dark appearance use the same palette. */
+/* Dark appearance: scope ALL editor chrome to the editor root, keeping form controls
+   legible under the OS dark preference. The host page is never restyled. */
 @media screen and (prefers-color-scheme: dark) {
   .az-azunt-editor {
     color-scheme: dark;
@@ -534,7 +536,7 @@
     --azunt-accent: #93c5fd;
     background: #0f172a;
   }
-  .az-azunt-editor-toolbar, .az-azunt-editor[data-toolbar-mode="compact"] .az-azunt-editor-menu-panel,
+  .az-azunt-editor .az-azunt-editor-toolbar, .az-azunt-editor[data-toolbar-mode="compact"] .az-azunt-editor-menu-panel,
   .az-azunt-editor[data-toolbar-mode="compact"] .az-azunt-editor-context-tools {
     background: #1e293b; color: var(--azunt-text); border-color: var(--azunt-line);
   }
@@ -560,4 +562,70 @@
   .az-azunt-editor .az-azunt-editor-message[data-status-kind="warning"] { color: #fdba74; }
   .az-azunt-editor .az-azunt-editor-message[data-status-kind="success"] { color: #86efac; }
   .az-azunt-editor .az-azunt-editor-canvas hr[data-azunt-page-break="true"]::after { background: #0f172a; color: var(--azunt-muted); }
+
+  /* The light palette in older panels left light text on white backgrounds. */
+  .az-azunt-editor .az-azunt-editor-group,
+  .az-azunt-editor .az-azunt-editor-quick-group,
+  .az-azunt-editor .az-azunt-editor-menu-row,
+  .az-azunt-editor .az-azunt-editor-menu-panel .az-azunt-editor-group {
+    border-color: var(--azunt-line);
+  }
+  .az-azunt-editor .az-azunt-editor-group::before,
+  .az-azunt-editor .az-azunt-editor-quick-label,
+  .az-azunt-editor .az-azunt-editor-panel-heading { color: var(--azunt-muted); }
+  .az-azunt-editor .az-azunt-editor-menu-panel,
+  .az-azunt-editor .az-azunt-editor-context-tools,
+  .az-azunt-editor .az-azunt-editor-find-panel,
+  .az-azunt-editor .az-azunt-editor-chars-panel,
+  .az-azunt-editor .az-azunt-editor-link-panel,
+  .az-azunt-editor .az-azunt-editor-signature-panel,
+  .az-azunt-editor .az-azunt-editor-template-panel,
+  .az-azunt-editor .az-azunt-editor-date-panel {
+    background: #1e293b;
+    color: var(--azunt-text);
+    border-color: var(--azunt-line);
+  }
+  .az-azunt-editor .az-azunt-editor-input-label,
+  .az-azunt-editor .az-azunt-editor-select,
+  .az-azunt-editor .az-azunt-editor-quick-more,
+  .az-azunt-editor .az-azunt-editor-alt,
+  .az-azunt-editor .az-azunt-editor-input-label input[type="number"],
+  .az-azunt-editor .az-azunt-editor-link-panel input,
+  .az-azunt-editor .az-azunt-editor-find-panel input,
+  .az-azunt-editor .az-azunt-editor-template-panel select,
+  .az-azunt-editor .az-azunt-editor-signature-panel select,
+  .az-azunt-editor .az-azunt-editor-date-panel select,
+  .az-azunt-editor .az-azunt-editor-link-panel button,
+  .az-azunt-editor .az-azunt-editor-find-panel button,
+  .az-azunt-editor .az-azunt-editor-chars-panel button,
+  .az-azunt-editor .az-azunt-editor-signature-panel button,
+  .az-azunt-editor .az-azunt-editor-template-panel button,
+  .az-azunt-editor .az-azunt-editor-date-panel button {
+    background: #0f172a;
+    color: var(--azunt-text);
+    border-color: #64748b;
+  }
+  .az-azunt-editor .az-azunt-editor-menu-trigger,
+  .az-azunt-editor .az-azunt-editor-button {
+    color: var(--azunt-text);
+  }
+  .az-azunt-editor .az-azunt-editor-menu-trigger:hover,
+  .az-azunt-editor .az-azunt-editor-button:hover,
+  .az-azunt-editor .az-azunt-editor-button:active,
+  .az-azunt-editor .az-azunt-editor-find-panel button:hover,
+  .az-azunt-editor .az-azunt-editor-chars-panel button:hover,
+  .az-azunt-editor .az-azunt-editor-signature-panel button:hover,
+  .az-azunt-editor .az-azunt-editor-template-panel button:hover,
+  .az-azunt-editor .az-azunt-editor-date-panel button:hover {
+    background: #334155;
+    color: #fff;
+    border-color: #64748b;
+  }
+  .az-azunt-editor .az-azunt-editor-link-panel [data-link-apply] {
+    background: #1d4ed8;
+    color: #fff;
+    border-color: #93c5fd;
+  }
+  .az-azunt-editor .az-azunt-editor-canvas a { color: #93c5fd; }
+  .az-azunt-editor .az-azunt-editor-canvas:focus { box-shadow: inset 0 0 0 2px #60a5fa; }
 }

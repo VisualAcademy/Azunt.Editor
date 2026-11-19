@@ -2,6 +2,7 @@ using Azunt.Editor.Export.Html;
 using Azunt.Editor.Export.Models;
 using Microsoft.Extensions.Options;
 using Microsoft.Playwright;
+using System.Runtime.InteropServices;
 using System.Text.Encodings.Web;
 
 namespace Azunt.Editor.Export.Pdf;
@@ -22,7 +23,7 @@ internal sealed class PdfDocumentExporter : IDisposable
         await _slots.WaitAsync(token);
         try
         {
-            using var playwright = await Playwright.CreateAsync();
+            using var playwright = await CreatePlaywrightAsync();
             var launch = new BrowserTypeLaunchOptions { Headless = true };
             if (!string.IsNullOrWhiteSpace(_settings.BrowserChannel))
                 launch.Channel = _settings.BrowserChannel;
@@ -33,14 +34,9 @@ internal sealed class PdfDocumentExporter : IDisposable
             {
                 browser = await playwright.Chromium.LaunchAsync(launch);
             }
-            catch (PlaywrightException ex) when (
-                ex.Message.Contains("Executable doesn't exist", StringComparison.OrdinalIgnoreCase) ||
-                ex.Message.Contains("Executable not found", StringComparison.OrdinalIgnoreCase))
+            catch (PlaywrightException ex)
             {
-                throw new InvalidOperationException(
-                    "The configured Playwright browser is missing. Install Chromium for this package version " +
-                    "(run the Azunt.Web build output playwright.ps1 install chromium), or configure " +
-                    "EditorPdfOptions.BrowserChannel = \"chrome\" / \"msedge\" to use an installed browser.", ex);
+                throw CreateBrowserFailure("launch", ex);
             }
             await using var browserLifetime = browser;
             var context = await browser.NewContextAsync(new BrowserNewContextOptions
@@ -96,6 +92,36 @@ internal sealed class PdfDocumentExporter : IDisposable
             return pdf;
         }
         finally { _slots.Release(); }
+    }
+
+    private async Task<IPlaywright> CreatePlaywrightAsync()
+    {
+        try
+        {
+            return await Playwright.CreateAsync();
+        }
+        catch (PlaywrightException ex)
+        {
+            throw CreateBrowserFailure("initialize", ex);
+        }
+    }
+
+    private InvalidOperationException CreateBrowserFailure(string step, PlaywrightException error)
+    {
+        var channel = string.IsNullOrWhiteSpace(_settings.BrowserChannel)
+            ? "Playwright bundled Chromium" : _settings.BrowserChannel;
+        var location = string.IsNullOrWhiteSpace(_settings.ExecutablePath)
+            ? "automatic" : "host-provided executable";
+        return new InvalidOperationException(
+            $"Azunt.Editor PDF browser could not {step}. " +
+            $"OS architecture: {RuntimeInformation.OSArchitecture}; " +
+            $"process architecture: {RuntimeInformation.ProcessArchitecture}; " +
+            $"browser channel: {channel}; executable: {location}. " +
+            "Install the version-matched Playwright browser, or configure " +
+            "Azunt:Pdf:BrowserChannel (e.g. msedge) / Azunt:Pdf:ExecutablePath. " +
+            "On Windows ARM64, Playwright's bundled Windows browser is x64 and may require " +
+            "emulation; try an installed Microsoft Edge, and inspect the inner exception. " +
+            $"Playwright details: {error.Message}", error);
     }
 
     public void Dispose() => _slots.Dispose();

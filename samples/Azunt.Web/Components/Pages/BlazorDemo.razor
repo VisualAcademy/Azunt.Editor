@@ -1,0 +1,71 @@
+@page "/editor/blazor"
+@rendermode InteractiveServer
+@using Azunt.Editor.Components
+
+<h1>Azunt.Editor — Blazor Server</h1>
+<p>Interactive Server component using the same JavaScript editor engine.</p>
+
+<AzuntEditor @ref="_editor" Id="azunt-blazor-demo" Name="BlazorHtml" @bind-Value="_html" Height="340" />
+
+<div class="actions">
+    <button class="primary" @onclick="SaveAsync">Save HTML</button>
+    <button @onclick="RestoreAsync">Restore saved HTML</button>
+</div>
+@if (!string.IsNullOrEmpty(_notice))
+{
+    <p class="notice" role="status">@_notice</p>
+}
+<h2>Last saved HTML (escaped source)</h2>
+@if (_savedHtml.Length > 0)
+{
+    <p class="document-meta">Saved @_savedHtml.Length characters, including @CountImages(_savedHtml) image(s).
+       Only the first 4,000 characters are shown to keep large Base64 images from freezing the demo page.</p>
+}
+<pre class="source">@(_savedHtml.Length > 4000 ? _savedHtml[..4000] + "\n... (source preview truncated; full HTML remains saved in memory)" : _savedHtml)</pre>
+
+@code {
+    private AzuntEditor? _editor;
+    private string _html = "<h2>Blazor Server demo</h2><p>Select text to format it, or add multiple images.</p>";
+    private string _savedHtml = "";
+    private string? _notice;
+
+    private static int CountImages(string html)
+        => System.Text.RegularExpressions.Regex.Matches(html, @"<img(?:\s|>)", System.Text.RegularExpressions.RegexOptions.IgnoreCase).Count;
+
+    private async Task SaveAsync()
+    {
+        if (_editor is null)
+        {
+            _notice = "Editor component reference is unavailable.";
+            return;
+        }
+        try
+        {
+            _savedHtml = await _editor.GetHtmlAsync();
+            _html = _savedHtml;
+            _notice = "Saved to this component's memory (not persisted across reloads).";
+        }
+        catch (Exception ex)
+        {
+            _notice = $"Save failed: {ex.Message}";
+        }
+    }
+
+    private async Task RestoreAsync()
+    {
+        if (_editor is null)
+        {
+            _notice = "Editor component reference is unavailable.";
+            return;
+        }
+        try
+        {
+            await _editor.SetHtmlAsync(_savedHtml);
+            _notice = "Restored the last saved HTML.";
+        }
+        catch (Exception ex)
+        {
+            _notice = $"Restore failed: {ex.Message}";
+        }
+    }
+}

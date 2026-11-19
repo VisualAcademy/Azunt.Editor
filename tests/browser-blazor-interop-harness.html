@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en"><head><meta charset="UTF-8"><title>Azunt.Editor Blazor interop test</title></head><body>
+<div id="blazor-test" class="azunt-editor" data-azunt-editor="true" data-read-only="false">
+ <div class="azunt-editor-toolbar"><button type="button" data-command="bold">Bold</button></div>
+ <div class="azunt-editor-canvas" contenteditable="true"></div>
+ <textarea hidden data-azunt-value="true" name="Html">&lt;p&gt;Initial&lt;/p&gt;</textarea>
+ <input hidden type="file" data-azunt-images="true" multiple />
+ <p class="azunt-editor-message"></p>
+</div>
+<p id="result">PENDING</p>
+<script>
+  window.DotNet = { createJSStreamReference: blob => ({ blob, __mockStreamReference: true }) };
+</script>
+<script src="../src/Azunt.Editor/wwwroot/js/azunt-editor.js"></script>
+<script>
+  window.addEventListener('load', async () => {
+    const result = document.getElementById('result');
+    const calls = [];
+    const fakeDotNetReference = {
+      invokeMethodAsync: (method, ...args) => { calls.push({ method, args }); return Promise.resolve(); }
+    };
+    try {
+      if (!AzuntEditor.mount('blazor-test', fakeDotNetReference)) throw Error('Mount failure');
+      AzuntEditor.setHtml('blazor-test', '<p>Small edit</p>');
+      if (!calls.some(c => c.method === 'OnHtmlChanged')) throw Error('Small edits did not use regular interop');
+      const largeImage = '<img src="data:image/png;base64,' + 'A'.repeat(50000) + '" alt="large" />';
+      AzuntEditor.setHtml('blazor-test', '<p>Large edit</p>' + largeImage);
+      const changed = calls.at(-1);
+      if (changed.method !== 'OnHtmlStreamChanged') throw Error('Large edits were sent as full SignalR arguments');
+      if (!changed.args[0].__mockStreamReference) throw Error('Missing stream reference');
+      if (changed.args[0].blob.size < 50000) throw Error('Incomplete image data');
+      const saved = AzuntEditor.getHtmlStream('blazor-test');
+      if (!(saved instanceof Blob) || saved.size < 50000) throw Error('Save did not return HTML stream');
+      if (!(await saved.text()).includes('Large edit')) throw Error('Saved stream lost text');
+      if (!AzuntEditor.getHtml('blazor-test').includes('data:image/png;base64,')) throw Error('Saved stream lost image');
+      result.textContent = 'PASS: small edits, large image streaming and save stream';
+    } catch (error) {
+      result.textContent = 'FAIL: ' + String(error.message || error);
+    }
+  });
+</script>
+</body></html>

@@ -1,0 +1,12 @@
+@model EditorDemoViewModel
+<h1>Azunt.Editor — MVC</h1>
+<p>Submit the form to test MVC model binding and session-scoped HTML persistence.</p>
+<form action="/editor/mvc" method="post">
+    @Html.AntiForgeryToken()
+    <azunt-editor id="azunt-mvc-demo" name="Html" value="@Model.Html" height="340" />
+    <div class="actions"><button class="primary" type="submit">Save HTML</button></div>
+</form>
+@if (!string.IsNullOrWhiteSpace(Model.Notice)) { <p class="notice" role="status">@Model.Notice</p> }
+<div asp-validation-summary="All" class="validation"></div>
+<h2>Submitted HTML (escaped source)</h2>
+<pre class="source">@Model.Html</pre>

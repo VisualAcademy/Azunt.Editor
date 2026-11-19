@@ -1,0 +1,115 @@
+@namespace Azunt.Editor.Components
+@using Azunt.Editor.Rendering
+@using Microsoft.JSInterop
+@using System.IO
+@using System.Text
+@implements IAsyncDisposable
+@inject IJSRuntime JS
+
+@((MarkupString)_initialMarkup)
+
+@code {
+    [Parameter] public string? Id { get; set; }
+    [Parameter] public string Name { get; set; } = "Html";
+    [Parameter] public string Value { get; set; } = string.Empty;
+    [Parameter] public EventCallback<string> ValueChanged { get; set; }
+    [Parameter] public int Height { get; set; } = 320;
+    [Parameter] public bool ReadOnly { get; set; }
+    [Parameter] public string? UploadUrl { get; set; }
+
+    private string _editorId = $"azunt-editor-{Guid.NewGuid():N}";
+    private string _initialMarkup = string.Empty;
+    private DotNetObjectReference<AzuntEditor>? _reference;
+    private bool _mounted;
+    private bool _rendered;
+    private long _lastAppliedRevision;
+    private const long MaxDocumentBytes = 16L * 1024 * 1024;
+
+    // JavaScript owns the editor's editable DOM after the interactive first render.
+    // Rerendering its markup can detach toolbar/canvas handlers and lose live edits.
+    protected override bool ShouldRender() => !_rendered;
+
+    protected override void OnInitialized()
+    {
+        if (!string.IsNullOrWhiteSpace(Id)) _editorId = Id;
+        // Hold stable markup across ValueChanged rerenders. JavaScript owns the live DOM.
+        _initialMarkup = EditorMarkup.Render(_editorId, Name, Value, Height, ReadOnly, UploadUrl);
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            _reference = DotNetObjectReference.Create(this);
+            _rendered = true;
+        }
+
+        // An interactive render can replace the prerendered DOM node. Re-check
+        // the live element on subsequent renders; mount() is idempotent when
+        // it already owns the current element.
+        if (_reference is not null)
+        {
+            await JS.InvokeVoidAsync("AzuntEditor.mount", _editorId, _reference);
+            _mounted = true;
+        }
+    }
+
+    [JSInvokable]
+    public Task OnHtmlChanged(string html, long revision)
+        => ApplyChangedHtmlAsync(html, revision);
+
+    [JSInvokable]
+    public async Task OnHtmlStreamChanged(IJSStreamReference htmlStream, long revision)
+    {
+        // This prevents an image converted to Base64 from exceeding SignalR's
+        // 32 KiB maximum JS -> .NET invocation message size. The stream is bounded.
+        var html = await ReadHtmlStreamAsync(htmlStream);
+        await ApplyChangedHtmlAsync(html, revision);
+    }
+
+    private async Task ApplyChangedHtmlAsync(string html, long revision)
+    {
+        // Streaming calls can complete out of order. Never reapply stale HTML.
+        if (revision <= _lastAppliedRevision) return;
+        _lastAppliedRevision = revision;
+        if (html == Value) return;
+        Value = html;
+        await ValueChanged.InvokeAsync(html);
+    }
+
+    private static async Task<string> ReadHtmlStreamAsync(IJSStreamReference htmlStream)
+    {
+        await using (htmlStream)
+        {
+            await using var stream = await htmlStream.OpenReadStreamAsync(maxAllowedSize: MaxDocumentBytes);
+            using var reader = new StreamReader(stream, new UTF8Encoding(false, true));
+            return await reader.ReadToEndAsync();
+        }
+    }
+
+    /// <summary>Read current browser state using Blazor streaming, including images.</summary>
+    public async ValueTask<string> GetHtmlAsync()
+    {
+        var htmlStream = await JS.InvokeAsync<IJSStreamReference>("AzuntEditor.getHtmlStream", _editorId);
+        return await ReadHtmlStreamAsync(htmlStream);
+    }
+
+    /// <summary>Programmatically replace the current document.</summary>
+    public async ValueTask SetHtmlAsync(string html)
+    {
+        Value = html;
+        await JS.InvokeVoidAsync("AzuntEditor.setHtml", _editorId, html);
+        await ValueChanged.InvokeAsync(html);
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_mounted)
+        {
+            try { await JS.InvokeVoidAsync("AzuntEditor.unmount", _editorId); }
+            catch (JSDisconnectedException) { }
+            catch (InvalidOperationException) { }
+        }
+        _reference?.Dispose();
+    }
+}

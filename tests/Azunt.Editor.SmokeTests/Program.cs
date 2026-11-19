@@ -42,3 +42,7 @@ foreach (var command in new[] { "table-merge-right", "table-split", "signature",
     Require(advanced.Contains($"data-command=\"{command}\""), $"Missing advanced command {command}");
 foreach (var selector in new[] { "data-signature-canvas", "data-signature-insert", "data-template-list", "data-template-apply", "data-date-format", "tableBorderWidth" })
     Require(advanced.Contains(selector), $"Missing advanced control {selector}");
+
+// Image alternative text uses the same editor markup for MVC, Razor Pages and Blazor.
+Require(advanced.Contains("data-image-alt"), "Image alternative text field");
+Require(advanced.Contains("maxlength=\"200\""), "Image alternative text length limit");

@@ -265,3 +265,15 @@
 .azunt-editor-image-resize-handle:focus-visible { outline: 2px solid #f59e0b; outline-offset: 3px; }
 .azunt-editor-toolbar [data-select="imageInsertSize"] { max-width: 122px; }
 @media print { .azunt-editor-image-resize-handle { display: none !important; } }
+
+/* 0.5.4: image drop feedback and alternative-text editing. */
+.azunt-editor-alt { width: 142px; max-width: 30vw; font: inherit; border: 1px solid #cbd5e1; border-radius: 5px; padding: 5px 7px; }
+.azunt-editor-image-drop-active .azunt-editor-canvas { outline: 2px dashed #2563eb; outline-offset: -5px; background-color: #eff6ff; }
+.azunt-editor-image-drop-active .azunt-editor-canvas { position: relative; }
+.azunt-editor-image-drop-active .azunt-editor-canvas::after {
+  content: "Drop image or text to insert";
+  position: absolute; inset: 10px 10px auto 10px;
+  pointer-events: none; padding: 7px; background: #dbeafe; border: 1px solid #93c5fd;
+  color: #1e40af; text-align: center; font: 600 13px system-ui, sans-serif;
+}
+@media print { .azunt-editor-image-drop-active .azunt-editor-canvas::after { display: none !important; } }

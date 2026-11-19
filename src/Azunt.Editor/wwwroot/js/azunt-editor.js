@@ -1,4 +1,4 @@
-/* Azunt.Editor 0.5.2. Self-owned editing engine, no third-party JS. */
+/* Azunt.Editor 0.5.4. Self-owned editing engine, no third-party JS. */
 (function () {
   "use strict";
 
@@ -413,14 +413,23 @@
       instance.selectedImage.classList.add("azunt-editor-image-selected");
       // An absent width attribute represents the full native pixel dimensions.
       instance.imageWidth.value = instance.selectedImage.getAttribute("width") || "";
+      if (instance.imageAlt) instance.imageAlt.value = instance.selectedImage.getAttribute("alt") || "";
       updateResizeHandle(instance);
       if (!instance.selectedImage.complete) instance.selectedImage.addEventListener("load", () => {
         if (selectedImage(instance) === instance.selectedImage) updateResizeHandle(instance);
       }, { once: true });
     } else {
       instance.imageWidth.value = "";
+      if (instance.imageAlt) instance.imageAlt.value = "";
       updateResizeHandle(instance);
     }
+  }
+
+  function setImageAlt(instance) {
+    const image = selectedImage(instance);
+    if (!image || instance.readOnly || !instance.imageAlt) return;
+    image.setAttribute("alt", instance.imageAlt.value.slice(0, 200));
+    changed(instance);
   }
 
   function setImagePixelWidth(instance, image, width) {
@@ -906,6 +915,63 @@
     return url;
   }
 
+  // External drag-and-drop must use the same validated insertion path as the
+  // file chooser and clipboard. Do not let the browser insert raw dropped HTML.
+  function hasTransferType(dataTransfer, type) {
+    return Array.from(dataTransfer?.types || []).includes(type);
+  }
+
+  function isSupportedDrop(dataTransfer) {
+    return hasTransferType(dataTransfer, "Files") ||
+      hasTransferType(dataTransfer, "text/html") ||
+      hasTransferType(dataTransfer, "text/plain");
+  }
+
+  function placeDropCaret(instance, x, y) {
+    let range = null;
+    if (typeof document.caretRangeFromPoint === "function") {
+      range = document.caretRangeFromPoint(x, y);
+    } else if (typeof document.caretPositionFromPoint === "function") {
+      const position = document.caretPositionFromPoint(x, y);
+      if (position) {
+        range = document.createRange();
+        range.setStart(position.offsetNode, position.offset);
+        range.collapse(true);
+      }
+    }
+    if (!range || !instance.canvas.contains(range.startContainer)) return;
+    range.collapse(true);
+    const selection = window.getSelection();
+    selection.removeAllRanges();
+    selection.addRange(range);
+    instance.lastRange = range.cloneRange();
+  }
+
+  function insertImageParagraph(instance, image) {
+    const paragraph = document.createElement("p");
+    paragraph.appendChild(image);
+    const range = selectedRange(instance);
+    const block = nearestBlock(instance, range);
+    if (block && block.parentElement === instance.canvas &&
+        ["P", "H2", "H3"].includes(block.tagName)) {
+      // A paragraph cannot legally contain another paragraph. Split it at
+      // the caret so save/restore and DOCX export preserve the image position.
+      range.deleteContents();
+      const tail = document.createRange();
+      tail.setStart(range.startContainer, range.startOffset);
+      tail.setEnd(block, block.childNodes.length);
+      const right = block.cloneNode(false);
+      right.appendChild(tail.extractContents());
+      if (!block.hasChildNodes()) block.appendChild(document.createElement("br"));
+      if (!right.hasChildNodes()) right.appendChild(document.createElement("br"));
+      block.after(paragraph, right);
+      selectAfter(paragraph);
+      changed(instance);
+    } else {
+      insertAtSelection(instance, paragraph);
+    }
+  }
+
   async function addImages(instance, files) {
     if (instance.readOnly) return;
     const images = Array.from(files).slice(0, 10);
@@ -919,15 +985,13 @@
       }
       try {
         const url = await imageUrl(instance, file);
-        const paragraph = document.createElement("p");
         const image = document.createElement("img");
         image.setAttribute("src", url);
         image.setAttribute("alt", file.name);
         // Original is the default. No width attribute means native image pixels;
         // CSS max-width:100% keeps oversized images within the editor viewport.
         if (instance.imageInsertSize?.value === "480") image.setAttribute("width", "480");
-        paragraph.appendChild(image);
-        insertAtSelection(instance, paragraph);
+        insertImageParagraph(instance, image);
         setImageSelection(instance, image);
         instance.lastRange = window.getSelection().getRangeAt(0).cloneRange();
         inserted++;
@@ -1345,6 +1409,7 @@
       linkText: element.querySelector("[data-link-text]"),
       linkUrl: element.querySelector("[data-link-url]"),
       imageWidth: element.querySelector("[data-image-width]"),
+      imageAlt: element.querySelector("[data-image-alt]"),
       imageInsertSize: element.querySelector("[data-select=\"imageInsertSize\"]"),
       imageResizeHandle: element.querySelector("[data-image-resize-handle]"),
       imageResize: null,
@@ -1406,6 +1471,7 @@
       instance.editingLink = null;
     }, { signal });
     instance.imageWidth.addEventListener("change", () => resizeImage(instance), { signal });
+    instance.imageAlt?.addEventListener("change", () => setImageAlt(instance), { signal });
     if (instance.imageResizeHandle) {
       const handle = instance.imageResizeHandle;
       handle.addEventListener("pointerdown", event => beginImageResize(instance, event), { signal });
@@ -1503,6 +1569,33 @@
     }, { signal });
     instance.canvas.addEventListener("mouseup", () => selectedRange(instance), { signal });
     instance.canvas.addEventListener("keyup", () => selectedRange(instance), { signal });
+    instance.canvas.addEventListener("dragenter", event => {
+      if (!isSupportedDrop(event.dataTransfer)) return;
+      event.preventDefault();
+      if (!instance.readOnly) instance.element.classList.add("azunt-editor-image-drop-active");
+    }, { signal });
+    instance.canvas.addEventListener("dragover", event => {
+      if (!isSupportedDrop(event.dataTransfer)) return;
+      event.preventDefault();
+      if (event.dataTransfer) event.dataTransfer.dropEffect = instance.readOnly ? "none" : "copy";
+      if (!instance.readOnly) instance.element.classList.add("azunt-editor-image-drop-active");
+    }, { signal });
+    instance.canvas.addEventListener("dragleave", event => {
+      if (!instance.canvas.contains(event.relatedTarget))
+        instance.element.classList.remove("azunt-editor-image-drop-active");
+    }, { signal });
+    instance.canvas.addEventListener("drop", event => {
+      instance.element.classList.remove("azunt-editor-image-drop-active");
+      if (!isSupportedDrop(event.dataTransfer)) return;
+      event.preventDefault();
+      if (instance.readOnly || instance.sourceMode) return;
+      placeDropCaret(instance, event.clientX, event.clientY);
+      const files = Array.from(event.dataTransfer?.files || []);
+      if (files.length) void addImages(instance, files);
+      else pasteCleanContent(instance,
+        event.dataTransfer?.getData("text/html") || "",
+        event.dataTransfer?.getData("text/plain") || "");
+    }, { signal });
     instance.canvas.addEventListener("paste", event => {
       if (instance.readOnly) return;
       event.preventDefault();
@@ -1608,7 +1701,7 @@
     if (!instance) return;
     if (instance.imageResize) finishImageResize(instance, null, true);
     instance.controller.abort();
-    instance.element.classList.remove("azunt-editor-fullscreen");
+    instance.element.classList.remove("azunt-editor-fullscreen", "azunt-editor-image-drop-active");
     instance.observer?.disconnect();
     window.clearTimeout(instance.emitTimer);
     instances.delete(id);

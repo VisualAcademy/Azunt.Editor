@@ -3,7 +3,7 @@ from pathlib import Path
 from xml.etree import ElementTree
 
 root = Path(__file__).resolve().parents[1]
-version = '0.5.3'
+version = '0.5.4'
 for item in ['src/Azunt.Editor/Azunt.Editor.csproj', 'src/Azunt.Editor.Export/Azunt.Editor.Export.csproj',
              'samples/Azunt.Web/Azunt.Web.csproj']:
     doc = ElementTree.parse(root / item)
@@ -13,7 +13,7 @@ for item in ['src/Azunt.Editor/Azunt.Editor.csproj', 'src/Azunt.Editor.Export/Az
 
 markup = (root / 'src/Azunt.Editor/Rendering/EditorMarkup.cs').read_text()
 assert 'data-group-label' in markup and 'static string? Icon' in markup
-for control in ['data-find-panel', 'data-chars-panel', 'data-editor-stats', 'data-command', 'data-signature-panel', 'data-template-panel', 'data-date-panel', 'table-merge-right', 'data-image-resize-handle', 'image-original', 'imageInsertSize', 'table-row-before', 'table-col-before']:
+for control in ['data-find-panel', 'data-chars-panel', 'data-editor-stats', 'data-command', 'data-signature-panel', 'data-template-panel', 'data-date-panel', 'table-merge-right', 'data-image-resize-handle', 'image-original', 'imageInsertSize', 'table-row-before', 'table-col-before', 'data-image-alt']:
     assert control in markup, f'Missing editor writing control: {control}' 
 assert 'data-command' in markup and '<svg' in markup
 
@@ -30,4 +30,11 @@ for scope in [root / 'src', root / 'samples']:
             assert file.read_text(encoding='utf-8').strip(), f'Empty source file: {file}'
 assert 'var width = Math.Max(1, sourceWidth)' in word
 assert 'var width = Math.Max(1, sourceWidth)' in xlsx
-print('PASS: Azunt.Editor 0.5.3 release contracts, sources are application-agnostic')
+editor_js = (root / 'src/Azunt.Editor/wwwroot/js/azunt-editor.js').read_text()
+assert 'function placeDropCaret' in editor_js
+assert 'function insertImageParagraph' in editor_js
+assert 'function setImageAlt' in editor_js
+assert 'function isSupportedDrop' in editor_js
+word_alt = (root / 'src/Azunt.Editor.Export/Word/DocxDocumentExporter.cs').read_text()
+assert 'Description = altText' in word_alt
+print('PASS: Azunt.Editor 0.5.4 release contracts, sources are application-agnostic')

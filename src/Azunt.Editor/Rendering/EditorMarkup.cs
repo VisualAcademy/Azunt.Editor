@@ -90,6 +90,9 @@ public static class EditorMarkup
         w.Append("<label class=\"azunt-editor-input-label\" title=\"Selected image width in pixels (blank means original size)\">W ")
             .Append("<input class=\"azunt-editor-width\" data-image-width type=\"number\" min=\"24\" max=\"2500\" step=\"1\" ")
             .Append("placeholder=\"original\" aria-label=\"Image width\" /></label>");
+        w.Append("<label class=\"azunt-editor-input-label\" title=\"Description of selected image\">Alt ")
+            .Append("<input class=\"azunt-editor-alt\" data-image-alt type=\"text\" maxlength=\"200\" ")
+            .Append("placeholder=\"Image description\" aria-label=\"Image alternative text\" /></label>");
         Select("imageAlign", "Image alignment", new[] { ("", "Image align"), ("left", "Left"), ("center", "Center"), ("right", "Right") });
         Button("image-delete", "×Img", "Delete selected image");
         EndGroup();

@@ -261,9 +261,11 @@ internal static class DocxDocumentExporter
         var cx = (long)width * 9525;
         var cy = (long)height * 9525;
         var id = drawingId++;
+        var altText = node.Attribute("alt");
+        if (altText.Length > 200) altText = altText[..200];
         var picture = new PIC.Picture(
             new PIC.NonVisualPictureProperties(
-                new PIC.NonVisualDrawingProperties { Id = id, Name = "Image" },
+                new PIC.NonVisualDrawingProperties { Id = id, Name = "Image", Description = altText },
                 new PIC.NonVisualPictureDrawingProperties()),
             new PIC.BlipFill(
                 new A.Blip { Embed = main.GetIdOfPart(part) },
@@ -275,7 +277,7 @@ internal static class DocxDocumentExporter
         { Uri = "http://schemas.openxmlformats.org/drawingml/2006/picture" });
         var inline = new DW.Inline(
             new DW.Extent { Cx = cx, Cy = cy },
-            new DW.DocProperties { Id = id, Name = "Azunt image" },
+            new DW.DocProperties { Id = id, Name = "Azunt image", Description = altText },
             graphic)
         { DistanceFromTop = 0U, DistanceFromBottom = 0U, DistanceFromLeft = 0U, DistanceFromRight = 0U };
         return new W.Run(new W.Drawing(inline));

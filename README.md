@@ -1,11 +1,12 @@
 # Azunt.Editor
 A lightweight rich-text editor for ASP.NET Core MVC, Razor Pages, and Blazor Server.
 
-Version: **0.5.3** · .NET 10
+Version: **0.5.4** · .NET 10
 
 ## Features
-- Package metadata and release checks
-- No changes to editor behavior
+- Image drag-and-drop
+- Alternative text for images
+- Refined image insertion and touch resizing
 
 ## Projects
 - `src/Azunt.Editor` — editor components

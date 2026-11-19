@@ -13,7 +13,7 @@ var exporter = provider.GetRequiredService<IEditorExportService>();
 var samplePng = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/sq8AAAAASUVORK5CYII=";
 var html = "<h2>Export test</h2><p><strong>Bold</strong> and <a href=\"https://example.com\">a link</a></p>" +
     "<table><tr><th>Asset</th><th>Status</th></tr><tr><td>EGM-001</td><td>=1+1</td></tr></table>" +
-    $"<p><img src=\"data:image/png;base64,{samplePng}\" width=\"80\" alt=\"test\"></p>" +
+    $"<p><img src=\"data:image/png;base64,{samplePng}\" width=\"80\" alt=\"Document figure\"></p>" +
     "<hr data-azunt-page-break=\"true\"><p>Second page</p>" +
     "<script>alert('bad')</script><p onclick=\"alert('bad')\">Safe</p>";
 
@@ -30,6 +30,7 @@ using (var zip = new ZipArchive(new MemoryStream(word.Content), ZipArchiveMode.R
     Require(xml.Contains("tblHeader"), "DOCX repeats semantic header rows");
     Require(!xml.Contains("<script") && !xml.Contains("onclick"), "DOCX dangerous markup excluded");
     Require(zip.Entries.Any(e => e.FullName.StartsWith("word/media/", StringComparison.Ordinal)), "DOCX embeds PNG image");
+    Require(xml.Contains("Document figure"), "DOCX retains image alternative text");
 }
 
 var excel = await exporter.ExportAsync(html, EditorExportFormat.Xlsx);
@@ -45,6 +46,7 @@ using (var zip = new ZipArchive(new MemoryStream(excel.Content), ZipArchiveMode.
         "XLSX embeds an image binary");
     var drawing = Read(zip, "xl/drawings/drawing1.xml");
     Require(drawing.Contains("oneCellAnchor"), "XLSX image is anchored to a cell");
+    Require(drawing.Contains("Document figure"), "XLSX retains image alternative text");
     Require(zip.GetEntry("xl/drawings/_rels/drawing1.xml.rels") is not null,
         "XLSX drawing relationships exist");
 }

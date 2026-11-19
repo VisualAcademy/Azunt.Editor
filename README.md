@@ -2,7 +2,7 @@
 
 A lightweight rich-text editor for ASP.NET Core MVC, Razor Pages, and Blazor Server.
 
-Version: **0.6.0** · .NET 10
+Version: **0.6.1** · .NET 10
 
 ## Projects
 - `src/Azunt.Editor` — shared editor components, JavaScript, and CSS
@@ -79,3 +79,8 @@ Host applications can add commands to a single editor or globally. Commands can 
 with `AzuntEditor.unregisterCommand(id, editorId)`. Blazor Server can replace the registered
 command list after mounting with `SetCustomCommandsAsync(commands)`; full HTML remains on
 the existing streaming path. See [public API](docs/public-api.md).
+
+## Toolbar layout
+
+In Compact mode, the More menu uses a width-limited grid. The layout is
+shared by MVC, Razor Pages and Blazor Server, including wide host forms.

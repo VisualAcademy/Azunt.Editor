@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk.Razor">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <IsPackable>true</IsPackable>
+    <AddRazorSupportForMvc>true</AddRazorSupportForMvc>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageId>Azunt.Editor.Export</PackageId>
+    <Version>0.3.0</Version>
+    <Authors>Azunt</Authors>
+    <Description>Optional PDF, DOCX and XLSX document exports for ASP.NET Core applications.</Description>
+    <PackageTags>azunt;editor;pdf;docx;xlsx;playwright;openxml</PackageTags>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <RepositoryType>git</RepositoryType>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <NoWarn>$(NoWarn);1591</NoWarn>
+  </PropertyGroup>
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <PackageReference Include="Microsoft.Playwright" Version="1.65.0" />
+    <PackageReference Include="DocumentFormat.OpenXml" Version="3.5.1" />
+    <None Include="../../README.md" Pack="true" PackagePath="/" Link="README.md" />
+  </ItemGroup>
+</Project>

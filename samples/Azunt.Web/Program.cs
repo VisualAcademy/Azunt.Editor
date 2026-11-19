@@ -1,4 +1,5 @@
 using Azunt.Web.Components;
+using Azunt.Editor.Export.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -6,6 +7,14 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddControllersWithViews();
 builder.Services.AddRazorPages();
 builder.Services.AddRazorComponents().AddInteractiveServerComponents();
+// In Development the sample can reuse an installed Chrome or Edge without
+// downloading Playwright's version-matched Chromium. Production uses the
+// standard Playwright browser unless explicitly configured by its host.
+builder.Services.AddAzuntEditorExport(options =>
+{
+    options.BrowserChannel = builder.Configuration["Azunt:Pdf:BrowserChannel"];
+    options.ExecutablePath = builder.Configuration["Azunt:Pdf:ExecutablePath"];
+});
 
 // Demo-only session persistence. Production applications supply their own document stores.
 builder.Services.AddDistributedMemoryCache();

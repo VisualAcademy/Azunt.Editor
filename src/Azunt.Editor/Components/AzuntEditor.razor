@@ -94,6 +94,10 @@
         return await ReadHtmlStreamAsync(htmlStream);
     }
 
+    /// <summary>Returns the current print page settings selected in the toolbar.</summary>
+    public ValueTask<Azunt.Editor.Models.EditorPageSettings> GetPageSettingsAsync()
+        => JS.InvokeAsync<Azunt.Editor.Models.EditorPageSettings>("AzuntEditor.getPageSettings", _editorId);
+
     /// <summary>Programmatically replace the current document.</summary>
     public async ValueTask SetHtmlAsync(string html)
     {

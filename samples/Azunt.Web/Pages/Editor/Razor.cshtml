@@ -5,7 +5,10 @@
 <form method="post">
     @Html.AntiForgeryToken()
     <azunt-editor id="azunt-razor-demo" name="Html" value="@Model.Html" height="340" />
-    <div class="actions"><button class="primary" type="submit">Save HTML</button></div>
+    <div class="actions">
+        <button class="primary" type="submit">Save HTML</button>
+        <azunt-export-buttons />
+    </div>
 </form>
 @if (!string.IsNullOrWhiteSpace(Model.Notice)) { <p class="notice" role="status">@Model.Notice</p> }
 <div asp-validation-summary="All" class="validation"></div>

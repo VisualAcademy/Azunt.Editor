@@ -131,7 +131,11 @@ public static class EditorMarkup
         void Select(string command, string title, (string Value, string Label)[] options)
         {
             w.Append("<select class=\"azunt-editor-select\" data-select=\"").Append(Encode(command))
-                .Append("\" title=\"").Append(Encode(title)).Append("\" aria-label=\"").Append(Encode(title)).Append("\">");
+                .Append("\" title=\"").Append(Encode(title)).Append("\" aria-label=\"").Append(Encode(title));
+            if (command == "paper") w.Append("\" name=\"PaperSize");
+            if (command == "orientation") w.Append("\" name=\"Orientation");
+            if (command == "margin") w.Append("\" name=\"Margin");
+            w.Append("\">");
             foreach (var (optionValue, optionLabel) in options)
                 w.Append("<option value=\"").Append(Encode(optionValue)).Append("\">").Append(Encode(optionLabel)).Append("</option>");
             w.Append("</select>");

@@ -136,6 +136,8 @@ async def main():
         await page.locator('[data-select="paper"]').select_option('Letter')
         await page.locator('[data-select="orientation"]').select_option('landscape')
         await page.locator('[data-select="margin"]').select_option('narrow')
+        settings = await page.evaluate('AzuntEditor.getPageSettings("browser-test")')
+        assert settings == {'paperSize':'Letter','orientation':'landscape','margin':'narrow'}, settings
         async with page.expect_popup() as popup:
             await button('preview')
         preview = await popup.value

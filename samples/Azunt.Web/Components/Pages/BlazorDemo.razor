@@ -1,6 +1,11 @@
 @page "/editor/blazor"
 @rendermode InteractiveServer
 @using Azunt.Editor.Components
+@using Azunt.Editor.Export.Models
+@using Azunt.Editor.Export.Components
+@using Microsoft.JSInterop
+@inject IEditorExportService ExportService
+@inject IJSRuntime JS
 
 <h1>Azunt.Editor — Blazor Server</h1>
 <p>Interactive Server component using the same JavaScript editor engine.</p>
@@ -10,6 +15,7 @@
 <div class="actions">
     <button class="primary" @onclick="SaveAsync">Save HTML</button>
     <button @onclick="RestoreAsync">Restore saved HTML</button>
+    <AzuntExportButtons ExportRequested="ExportAsync" />
 </div>
 @if (!string.IsNullOrEmpty(_notice))
 {
@@ -48,6 +54,29 @@
         catch (Exception ex)
         {
             _notice = $"Save failed: {ex.Message}";
+        }
+    }
+
+    private async Task ExportAsync(EditorExportFormat format)
+    {
+        if (_editor is null) { _notice = "Editor component reference is unavailable."; return; }
+        try
+        {
+            var html = await _editor.GetHtmlAsync(); // Always current DOM, not stale bind state.
+            var page = await _editor.GetPageSettingsAsync();
+            var result = await ExportService.ExportAsync(html, format, new EditorExportOptions
+            {
+                FileName = "Azunt-Blazor-Report", Title = "Blazor editor report",
+                PaperSize = page.PaperSize, Orientation = page.Orientation, Margin = page.Margin
+            });
+            using var stream = new MemoryStream(result.Content, writable: false);
+            using var reference = new DotNetStreamReference(stream);
+            await JS.InvokeVoidAsync("AzuntEditorExport.download", result.FileName, reference);
+            _notice = $"Created {result.FileName} ({result.Content.Length:N0} bytes).";
+        }
+        catch (Exception ex)
+        {
+            _notice = $"Download failed: {ex.Message}";
         }
     }
 

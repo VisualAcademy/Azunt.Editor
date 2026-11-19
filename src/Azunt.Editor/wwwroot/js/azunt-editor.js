@@ -1,4 +1,4 @@
-/* Azunt.Editor 0.2.0. Self-owned editing engine, no third-party JS. */
+/* Azunt.Editor 0.3.0. Self-owned editing engine, no third-party JS. */
 (function () {
   "use strict";
 
@@ -869,7 +869,13 @@
     instances.delete(id);
   }
 
-  window.AzuntEditor = Object.freeze({ mount, mountAll, getHtml, getHtmlStream, setHtml, unmount, sanitizeHtml });
+  function getPageSettings(id) {
+    const instance = instances.get(id);
+    if (!instance) throw new Error("Editor instance is unavailable.");
+    return { paperSize: instance.page.paper, orientation: instance.page.orientation, margin: instance.page.margin };
+  }
+
+  window.AzuntEditor = Object.freeze({ mount, mountAll, getHtml, getHtmlStream, setHtml, getPageSettings, unmount, sanitizeHtml });
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", mountAll, { once: true });
   else mountAll();
 })();

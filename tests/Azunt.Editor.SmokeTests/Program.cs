@@ -22,3 +22,8 @@ static void Require(bool success, string test)
 {
     if (!success) throw new Exception($"FAILED: {test}");
 }
+
+var pages = EditorMarkup.Render("report", "Body");
+Require(pages.Contains("name=\"PaperSize\""), "Paper size form binding");
+Require(pages.Contains("name=\"Orientation\""), "Orientation form binding");
+Require(pages.Contains("name=\"Margin\""), "Margin form binding");

@@ -1,3 +1,4 @@
+using Azunt.Editor.Storage;
 using Azunt.Web.Models;
 using Azunt.Editor.Export.Models;
 using Azunt.Editor.Export.Html;
@@ -6,7 +7,7 @@ using Microsoft.AspNetCore.Mvc;
 namespace Azunt.Web.Controllers;
 
 [Route("editor/mvc")]
-public sealed class EditorMvcController(IEditorExportService exporter, ILogger<EditorMvcController> logger) : Controller
+public sealed class EditorMvcController(IEditorExportService exporter, ILogger<EditorMvcController> logger, FileSystemEditorImageStore imageStore) : Controller
 {
     private const string SessionKey = "azunt.demo.mvc";
     private const int MaxHtmlLength = 12_000_000;
@@ -30,7 +31,7 @@ public sealed class EditorMvcController(IEditorExportService exporter, ILogger<E
             ModelState.AddModelError(nameof(vm.Html), "Document exceeds the demo size limit.");
             return View(vm);
         }
-        try { vm.Html = EditorHtmlSanitizer.Sanitize(vm.Html); }
+        try { vm.Html = EditorHtmlSanitizer.Sanitize(vm.Html, imageStore.IsManagedUrl); }
         catch (ArgumentException)
         {
             ModelState.AddModelError(nameof(vm.Html), "Document contains unsupported or excessively complex HTML.");

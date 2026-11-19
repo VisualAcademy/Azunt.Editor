@@ -40,3 +40,14 @@ public sealed class EditorPdfOptions
     public int MaxConcurrentExports { get; set; } = 2;
     public int RenderTimeoutMilliseconds { get; set; } = 60_000;
 }
+
+/// <summary>
+/// Optional image resolver for exported documents. Implementations must only read
+/// authenticated, host-owned references from trusted storage. Never HTTP-fetch a URL.
+/// </summary>
+public interface IEditorImageResolver
+{
+    ValueTask<EditorResolvedImage?> ResolveAsync(string imageUrl, CancellationToken cancellationToken = default);
+}
+
+public sealed record EditorResolvedImage(byte[] Content, string ContentType);

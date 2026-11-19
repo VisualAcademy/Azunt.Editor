@@ -1,9 +1,16 @@
 @model EditorDemoViewModel
+@inject Microsoft.AspNetCore.Hosting.IWebHostEnvironment HostEnvironment
+@{
+    var storedImages = HostEnvironment.IsDevelopment() && Context.Request.Query["images"] == "stored";
+    var imageUploadUrl = storedImages ? "/editor/demo-images" : null;
+}
+<p class="document-meta">Image mode: @(storedImages ? "local files" : "inline Base64") ·
+    <a href="?images=stored">Stored images</a> · <a href="?">Inline images</a></p>
 <h1>Azunt.Editor — MVC</h1>
 <p>Submit the form to test MVC model binding and session-scoped HTML persistence.</p>
-<form action="/editor/mvc" method="post">
+<form action="@(storedImages ? "/editor/mvc?images=stored" : "/editor/mvc")" method="post">
     @Html.AntiForgeryToken()
-    <azunt-editor id="azunt-mvc-demo" name="Html" value="@Model.Html" height="340" />
+    <azunt-editor id="azunt-mvc-demo" name="Html" value="@Model.Html" height="340" upload-url="@imageUploadUrl" />
     <div class="actions">
         <button class="primary" type="submit">Save HTML</button>
         <azunt-export-buttons />

@@ -7,7 +7,7 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace Azunt.Editor.Export.Services;
 
-internal sealed class EditorExportService(PdfDocumentExporter pdf) : IEditorExportService
+internal sealed class EditorExportService(PdfDocumentExporter pdf, IEnumerable<IEditorImageResolver> resolvers) : IEditorExportService
 {
     public async Task<EditorExportResult> ExportAsync(string html, EditorExportFormat format,
         EditorExportOptions? options = null, CancellationToken cancellationToken = default)
@@ -15,6 +15,30 @@ internal sealed class EditorExportService(PdfDocumentExporter pdf) : IEditorExpo
         cancellationToken.ThrowIfCancellationRequested();
         options ??= new EditorExportOptions();
         var document = SafeEditorDocument.Parse(html);
+        // Local, host-owned images are resolved in memory. Playwright is still
+        // offline, and no URL is ever fetched by the export engine.
+        var resolver = resolvers.FirstOrDefault();
+        if (resolver is not null)
+        {
+            var count = 0;
+            var total = 0;
+            foreach (var image in document.Root.DescendantsAndSelf().Where(n => n.Name == "img"))
+            {
+                var src = image.Attribute("src");
+                if (!SafeEditorDocument.IsSafeLocalImageReference(src)) continue;
+                if (++count > 32) break;
+                var resolved = await resolver.ResolveAsync(src, cancellationToken);
+                if (resolved is null || resolved.Content.Length is <= 0 or > 2 * 1024 * 1024) continue;
+                total += resolved.Content.Length;
+                if (total > 12 * 1024 * 1024) break;
+                var imageMime = resolved.ContentType.ToLowerInvariant();
+                if (imageMime is not ("image/png" or "image/jpeg" or "image/gif" or "image/webp")) continue;
+                var inline = $"data:{imageMime};base64,{Convert.ToBase64String(resolved.Content)}";
+                image.Attributes["src"] = inline;
+                if (!SafeEditorDocument.TryInlineImage(image, out _, out _))
+                    image.Attributes["src"] = string.Empty;
+            }
+        }
         var (content, mime, extension) = format switch
         {
             EditorExportFormat.Pdf => (await pdf.ExportAsync(document, options, cancellationToken),

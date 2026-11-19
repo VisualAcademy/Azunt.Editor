@@ -114,6 +114,33 @@ using (var zip = new ZipArchive(new MemoryStream(advancedXlsx.Content), ZipArchi
         "Excel embeds signature PNG");
 }
 
+// Managed image references are opt-in. No remote URLs are ever fetched.
+var storedImageUrl = "/editor/demo-images/" + new string('a', 32);
+Require(!EditorHtmlSanitizer.Sanitize($"<img src='{storedImageUrl}'>").Contains("<img"),
+    "Default sanitizer must reject non-inline image references");
+Require(EditorHtmlSanitizer.Sanitize($"<img src='{storedImageUrl}'>",
+    url => url == storedImageUrl).Contains(storedImageUrl),
+    "Explicitly trusted stored reference can be preserved");
+Require(!EditorHtmlSanitizer.Sanitize("<img src='//evil.example/img.png'>", _ => true).Contains("<img"),
+    "Protocol-relative image rejected even with unsafe callback");
+Require(!EditorHtmlSanitizer.Sanitize("<img src='/editor/demo-images/%2e%2e'>", _ => true).Contains("<img"),
+    "Encoded traversal rejected");
+using (var storedProvider = new ServiceCollection()
+    .AddSingleton<IEditorImageResolver>(new TestImageResolver(storedImageUrl,
+        Convert.FromBase64String(samplePng)))
+    .AddAzuntEditorExport()
+    .BuildServiceProvider())
+{
+    var storedExporter = storedProvider.GetRequiredService<IEditorExportService>();
+    foreach (var format in new[] { EditorExportFormat.Docx, EditorExportFormat.Xlsx })
+    {
+        var file = await storedExporter.ExportAsync($"<p><img src='{storedImageUrl}' alt='Stored image'></p>", format);
+        using var zip = new ZipArchive(new MemoryStream(file.Content), ZipArchiveMode.Read);
+        Require(zip.Entries.Any(e => e.FullName.Contains("/media/", StringComparison.Ordinal)),
+            $"{format} embeds a host-resolved image");
+    }
+}
+
 if (Environment.GetEnvironmentVariable("AZUNT_TEST_PDF") == "1")
 {
     var pdf = await exporter.ExportAsync(html, EditorExportFormat.Pdf,
@@ -132,4 +159,11 @@ static string Read(ZipArchive zip, string entryName)
 static void Require(bool value, string description)
 {
     if (!value) throw new Exception("FAILED: " + description);
+}
+
+internal sealed class TestImageResolver(string expectedUrl, byte[] png) : IEditorImageResolver
+{
+    public ValueTask<EditorResolvedImage?> ResolveAsync(string url, CancellationToken cancellationToken = default)
+        => ValueTask.FromResult<EditorResolvedImage?>(url == expectedUrl
+            ? new EditorResolvedImage(png, "image/png") : null);
 }

@@ -168,19 +168,22 @@ internal sealed class SafeEditorDocument
         return -1;
     }
 
-    public string ToSafeHtml()
+    public string ToSafeHtml(Func<string, bool>? isManagedImageUrl = null)
     {
         var sb = new StringBuilder();
-        foreach (var child in Root.Children) Append(child, sb);
+        foreach (var child in Root.Children) Append(child, sb, isManagedImageUrl);
         return sb.ToString();
     }
 
-    private static void Append(Node node, StringBuilder output)
+    private static void Append(Node node, StringBuilder output, Func<string, bool>? isManagedImageUrl)
     {
         if (node.Name == "#text") { output.Append(HtmlEncoder.Default.Encode(node.Text)); return; }
         if (node.Name == "img")
         {
-            if (!TryInlineImage(node, out _, out _)) return; // never allow external image/network requests
+            var src = node.Attribute("src");
+            if (!TryInlineImage(node, out _, out _) &&
+                !(isManagedImageUrl is not null && IsSafeLocalImageReference(src) && isManagedImageUrl(src)))
+                return; // Never allow arbitrary remote image URLs.
         }
         output.Append('<').Append(node.Name);
         if (node.Name == "img")
@@ -201,9 +204,15 @@ internal sealed class SafeEditorDocument
         if (style.Length > 0) output.Append(" style=\"").Append(HtmlEncoder.Default.Encode(style)).Append('"');
         output.Append('>');
         if (Void.Contains(node.Name)) return;
-        foreach (var child in node.Children) Append(child, output);
+        foreach (var child in node.Children) Append(child, output, isManagedImageUrl);
         output.Append("</").Append(node.Name).Append('>');
     }
+
+    internal static bool IsSafeLocalImageReference(string? url)
+        => !string.IsNullOrWhiteSpace(url) && url[0] == '/' && !url.StartsWith("//") &&
+           url.Length <= 512 && !url.Contains('\\') && !url.Contains('%') &&
+           !url.Contains('?') && !url.Contains('#') && !url.Contains("..", StringComparison.Ordinal) &&
+           !url.Any(char.IsControl);
 
     /// <summary>
     /// Accept safe inline raster formats for browser rendering and persistence.

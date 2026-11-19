@@ -1,10 +1,17 @@
 @page "/editor/razor-pages"
 @model Azunt.Web.Pages.Editor.RazorModel
+@inject Microsoft.AspNetCore.Hosting.IWebHostEnvironment HostEnvironment
+@{
+    var storedImages = HostEnvironment.IsDevelopment() && Model.HttpContext.Request.Query["images"] == "stored";
+    var imageUploadUrl = storedImages ? "/editor/demo-images" : null;
+}
+<p class="document-meta">Image mode: @(storedImages ? "local files" : "inline Base64") ·
+    <a href="?images=stored">Stored images</a> · <a href="?">Inline images</a></p>
 <h1>Azunt.Editor — Razor Pages</h1>
 <p>Submit the form to test Razor Pages model binding and session-scoped persistence.</p>
 <form method="post">
     @Html.AntiForgeryToken()
-    <azunt-editor id="azunt-razor-demo" name="Html" value="@Model.Html" height="340" />
+    <azunt-editor id="azunt-razor-demo" name="Html" value="@Model.Html" height="340" upload-url="@imageUploadUrl" />
     <div class="actions">
         <button class="primary" type="submit">Save HTML</button>
         <azunt-export-buttons />

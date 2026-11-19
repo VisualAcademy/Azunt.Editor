@@ -8,11 +8,16 @@
 @inject IEditorExportService ExportService
 @inject IJSRuntime JS
 @inject ILogger<BlazorDemo> Logger
+@inject NavigationManager Navigation
+@inject Microsoft.AspNetCore.Hosting.IWebHostEnvironment HostEnvironment
+@inject Azunt.Editor.Storage.FileSystemEditorImageStore ImageStore
 
 <h1>Azunt.Editor — Blazor Server</h1>
+<p class="document-meta">Image mode: @(UseStoredImages ? "local files" : "inline Base64") ·
+    <a href="/editor/blazor?images=stored">Stored images</a> · <a href="/editor/blazor">Inline images</a></p>
 <p>Interactive Server component using the same JavaScript editor engine.</p>
 
-<AzuntEditor @ref="_editor" Id="azunt-blazor-demo" Name="BlazorHtml" @bind-Value="_html" Height="340" />
+<AzuntEditor @key="UseStoredImages" @ref="_editor" Id="azunt-blazor-demo" Name="BlazorHtml" @bind-Value="_html" Height="340" UploadUrl="@(UseStoredImages ? "/editor/demo-images" : null)" />
 
 <div class="actions">
     <button class="primary" @onclick="SaveAsync">Save HTML</button>
@@ -32,6 +37,8 @@
 <pre class="source">@(_savedHtml.Length > 4000 ? _savedHtml[..4000] + "\n... (source preview truncated; full HTML remains saved in memory)" : _savedHtml)</pre>
 
 @code {
+    private bool UseStoredImages => HostEnvironment.IsDevelopment() &&
+        new Uri(Navigation.Uri).Query.Contains("images=stored", StringComparison.OrdinalIgnoreCase);
     private AzuntEditor? _editor;
     private string _html = "<h2>Blazor Server demo</h2><p>Select text to format it, or add multiple images.</p>";
     private string _savedHtml = "";
@@ -49,7 +56,7 @@
         }
         try
         {
-            _savedHtml = EditorHtmlSanitizer.Sanitize(await _editor.GetHtmlAsync());
+            _savedHtml = EditorHtmlSanitizer.Sanitize(await _editor.GetHtmlAsync(), ImageStore.IsManagedUrl);
             _html = _savedHtml;
             _notice = "Saved to this component's memory (not persisted across reloads).";
         }

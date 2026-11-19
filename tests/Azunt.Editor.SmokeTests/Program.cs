@@ -46,3 +46,32 @@ foreach (var selector in new[] { "data-signature-canvas", "data-signature-insert
 // Image alternative text uses the same editor markup for MVC, Razor Pages and Blazor.
 Require(advanced.Contains("data-image-alt"), "Image alternative text field");
 Require(advanced.Contains("maxlength=\"200\""), "Image alternative text length limit");
+
+// Optional on-disk storage is not enabled unless a host supplies endpoints.
+var imageFolder = Path.Combine(Path.GetTempPath(), "azunt-editor-test-" + Guid.NewGuid().ToString("N"));
+try
+{
+    var store = new Azunt.Editor.Storage.FileSystemEditorImageStore(imageFolder, "/editor/images");
+    var png = Convert.FromBase64String("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/sq8AAAAASUVORK5CYII=");
+    await using var content = new MemoryStream(png);
+    var result = await store.SaveAsync(content, "sample.png", "image/png");
+    Require(store.IsManagedUrl(result.Url), "Managed image reference recognized");
+    Require(!store.IsManagedUrl("//evil.example/editor/images/" + result.Url.Split('/').Last()), "Protocol-relative image rejected");
+    Require(!store.IsManagedUrl("/editor/images/../secret"), "Traversal reference rejected");
+    var restored = await store.ReadAsync(result.Url);
+    Require(restored is not null && restored.Content.SequenceEqual(png) && restored.ContentType == "image/png",
+        "Stored image can be read with identical bytes");
+    Require(await store.ReadAsync("https://example.org/image.png") is null, "Remote image cannot be read");
+    try
+    {
+        await store.SaveAsync(new MemoryStream([1, 2, 3]), "invalid.png", "image/png");
+        throw new Exception("FAILED: Invalid image accepted");
+    }
+    catch (ArgumentException) { /* Expected. */ }
+    Require(await store.DeleteUnreferencedAsync(result.Url), "Host can delete an unreferenced image");
+    Require(await store.ReadAsync(result.Url) is null, "Deleted image cannot be read");
+}
+finally
+{
+    if (Directory.Exists(imageFolder)) Directory.Delete(imageFolder, recursive: true);
+}

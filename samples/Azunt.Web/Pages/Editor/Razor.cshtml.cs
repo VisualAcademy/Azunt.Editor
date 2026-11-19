@@ -1,3 +1,4 @@
+using Azunt.Editor.Storage;
 using Microsoft.AspNetCore.Mvc;
 using Azunt.Editor.Export.Models;
 using Azunt.Editor.Export.Html;
@@ -5,7 +6,7 @@ using Microsoft.AspNetCore.Mvc.RazorPages;
 
 namespace Azunt.Web.Pages.Editor;
 
-public sealed class RazorModel(IEditorExportService exporter, ILogger<RazorModel> logger) : PageModel
+public sealed class RazorModel(IEditorExportService exporter, ILogger<RazorModel> logger, FileSystemEditorImageStore imageStore) : PageModel
 {
     private const string SessionKey = "azunt.demo.razorpages";
     private const int MaxHtmlLength = 12_000_000;
@@ -26,7 +27,7 @@ public sealed class RazorModel(IEditorExportService exporter, ILogger<RazorModel
             ModelState.AddModelError(nameof(Html), "Document exceeds the demo size limit.");
             return Page();
         }
-        try { Html = EditorHtmlSanitizer.Sanitize(Html); }
+        try { Html = EditorHtmlSanitizer.Sanitize(Html, imageStore.IsManagedUrl); }
         catch (ArgumentException)
         {
             ModelState.AddModelError(nameof(Html), "Document contains unsupported or excessively complex HTML.");

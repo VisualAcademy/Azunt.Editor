@@ -1,4 +1,4 @@
-/* Azunt.Editor 0.5.4. Self-owned editing engine, no third-party JS. */
+/* Azunt.Editor 0.5.5. Self-owned editing engine, no third-party JS. */
 (function () {
   "use strict";
 
@@ -905,13 +905,32 @@
     const form = new FormData();
     form.append("file", file, file.name);
     const headers = {};
+    const uploadTarget = new URL(instance.uploadUrl, document.baseURI);
+    if (uploadTarget.origin !== location.origin) throw new Error("Image upload must use the same origin.");
     const requestToken = instance.element.closest("form")?.querySelector('input[name="__RequestVerificationToken"]');
-    if (requestToken) headers.RequestVerificationToken = requestToken.value;
-    const response = await fetch(instance.uploadUrl, { method: "POST", body: form, headers, credentials: "same-origin" });
+    if (requestToken) {
+      headers.RequestVerificationToken = requestToken.value;
+    } else {
+      // A standalone Blazor component has no enclosing MVC/Razor form token.
+      // The host's opt-in endpoint issues an antiforgery token using the same
+      // origin and sets the matching cookie. No upload happens without a token.
+      if (!instance.uploadToken) {
+        const tokenResponse = await fetch(uploadTarget.href.replace(/\/$/, "") + "/token", {
+          credentials: "same-origin", cache: "no-store"
+        });
+        if (!tokenResponse.ok) throw new Error("The image upload token could not be obtained.");
+        const token = await tokenResponse.json();
+        if (!token.requestToken) throw new Error("Image upload antiforgery token is missing.");
+        instance.uploadToken = token.requestToken;
+      }
+      headers.RequestVerificationToken = instance.uploadToken;
+    }
+    const response = await fetch(uploadTarget.href, { method: "POST", body: form, headers, credentials: "same-origin" });
     if (!response.ok) throw new Error(`Image upload failed (${response.status}).`);
     const result = await response.json();
     const url = safeResourceUrl(result.url, true);
-    if (!url) throw new Error("Image upload response contains an invalid URL.");
+    if (!url || new URL(url, document.baseURI).origin !== location.origin)
+      throw new Error("Image upload response must contain a same-origin URL.");
     return url;
   }
 

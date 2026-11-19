@@ -16,4 +16,15 @@ public static class EditorHtmlSanitizer
     /// </summary>
     public static string Sanitize(string html)
         => SafeEditorDocument.Parse(html).ToSafeHtml();
+
+    /// <summary>
+    /// Explicit opt-in for host-owned image URLs. The callback must validate exact
+    /// references issued by the host's image store, not merely URL prefixes.
+    /// External HTTP(S) images and protocol-relative URLs are never accepted.
+    /// </summary>
+    public static string Sanitize(string html, Func<string, bool> isManagedImageUrl)
+    {
+        ArgumentNullException.ThrowIfNull(isManagedImageUrl);
+        return SafeEditorDocument.Parse(html).ToSafeHtml(isManagedImageUrl);
+    }
 }

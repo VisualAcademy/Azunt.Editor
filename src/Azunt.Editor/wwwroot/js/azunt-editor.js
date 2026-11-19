@@ -1,4 +1,4 @@
-/* Azunt.Editor 0.5.1. Self-owned editing engine, no third-party JS. */
+/* Azunt.Editor 0.5.2. Self-owned editing engine, no third-party JS. */
 (function () {
   "use strict";
 
@@ -225,6 +225,7 @@
   function changed(instance) {
     remember(instance);
     updateStats(instance);
+    updateResizeHandle(instance);
     queueEmit(instance);
   }
 
@@ -365,6 +366,7 @@
       instance.source.hidden = false;
       instance.canvas.hidden = true;
       instance.sourceMode = true;
+      updateResizeHandle(instance);
       instance.source.focus();
       updateStats(instance);
       message(instance, "HTML source mode. Select </> again to apply permitted markup.");
@@ -384,26 +386,125 @@
     return instance.selectedImage && instance.canvas.contains(instance.selectedImage) ? instance.selectedImage : null;
   }
 
+  function updateResizeHandle(instance) {
+    const image = selectedImage(instance);
+    const handle = instance.imageResizeHandle;
+    if (!handle) return;
+    if (!image || instance.sourceMode || instance.readOnly || !instance.element.isConnected) {
+      handle.hidden = true;
+      return;
+    }
+    const imageRect = image.getBoundingClientRect();
+    const editorRect = instance.element.getBoundingClientRect();
+    // The handle is outside contenteditable: it is never included in saved HTML.
+    if (!imageRect.width || !imageRect.height || imageRect.bottom < 0 || imageRect.top > window.innerHeight) {
+      handle.hidden = true;
+      return;
+    }
+    handle.style.left = `${imageRect.right - editorRect.left - 9}px`;
+    handle.style.top = `${imageRect.bottom - editorRect.top - 9}px`;
+    handle.hidden = false;
+  }
+
   function setImageSelection(instance, image) {
     if (instance.selectedImage) instance.selectedImage.classList.remove("azunt-editor-image-selected");
     instance.selectedImage = image && instance.canvas.contains(image) ? image : null;
     if (instance.selectedImage) {
       instance.selectedImage.classList.add("azunt-editor-image-selected");
-      instance.imageWidth.value = String(instance.selectedImage.getAttribute("width") || instance.selectedImage.naturalWidth || "");
+      // An absent width attribute represents the full native pixel dimensions.
+      instance.imageWidth.value = instance.selectedImage.getAttribute("width") || "";
+      updateResizeHandle(instance);
+      if (!instance.selectedImage.complete) instance.selectedImage.addEventListener("load", () => {
+        if (selectedImage(instance) === instance.selectedImage) updateResizeHandle(instance);
+      }, { once: true });
     } else {
       instance.imageWidth.value = "";
+      updateResizeHandle(instance);
     }
+  }
+
+  function setImagePixelWidth(instance, image, width) {
+    image.setAttribute("width", String(width));
+    image.removeAttribute("height");
+    image.style.removeProperty("width");
+    image.style.removeProperty("height");
+    instance.imageWidth.value = String(width);
+    updateResizeHandle(instance);
+  }
+
+  function restoreOriginalImageSize(instance) {
+    const image = selectedImage(instance);
+    if (!image) return message(instance, "Click an image to select it first.");
+    image.removeAttribute("width");
+    image.removeAttribute("height");
+    image.style.removeProperty("width");
+    image.style.removeProperty("height");
+    instance.imageWidth.value = "";
+    updateResizeHandle(instance);
+    changed(instance);
+    message(instance, "Original image dimensions restored. Large images fit the editor width on screen.");
   }
 
   function resizeImage(instance) {
     const image = selectedImage(instance);
     if (!image) return message(instance, "Click an image to select it first.");
+    if (instance.imageWidth.value.trim() === "") return restoreOriginalImageSize(instance);
     const width = Number(instance.imageWidth.value);
     if (!Number.isInteger(width) || width < 24 || width > 2500)
       return message(instance, "Image width must be between 24 and 2500 pixels.");
-    image.setAttribute("width", String(width));
-    image.removeAttribute("height");
+    setImagePixelWidth(instance, image, width);
     changed(instance);
+  }
+
+  function beginImageResize(instance, event) {
+    const image = selectedImage(instance);
+    if (!image || instance.readOnly || instance.sourceMode || event.button !== 0) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const handle = instance.imageResizeHandle;
+    instance.imageResize = {
+      image,
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      originalWidth: image.getAttribute("width"),
+      originalHeight: image.getAttribute("height"),
+      originalStyle: image.getAttribute("style"),
+      displayWidth: image.getBoundingClientRect().width,
+      moved: false
+    };
+    handle.classList.add("is-resizing");
+    try { handle.setPointerCapture(event.pointerId); } catch (_) { /* Pointer capture is optional. */ }
+  }
+
+  function dragImageResize(instance, event) {
+    const state = instance.imageResize;
+    if (!state || event.pointerId !== state.pointerId || !instance.canvas.contains(state.image)) return;
+    event.preventDefault();
+    // Limit the size to the editable area; export preserves the chosen width.
+    const maxVisible = Math.min(2500, Math.max(24, instance.canvas.clientWidth - 48));
+    const width = Math.round(Math.max(24, Math.min(maxVisible, state.displayWidth + event.clientX - state.startX)));
+    if (Math.abs(width - state.displayWidth) >= 1) state.moved = true;
+    setImagePixelWidth(instance, state.image, width);
+  }
+
+  function finishImageResize(instance, event, cancelled = false) {
+    const state = instance.imageResize;
+    if (!state || (event?.pointerId !== undefined && event.pointerId !== state.pointerId)) return;
+    instance.imageResize = null;
+    instance.imageResizeHandle?.classList.remove("is-resizing");
+    if (cancelled && instance.canvas.contains(state.image)) {
+      if (state.originalWidth === null) state.image.removeAttribute("width");
+      else state.image.setAttribute("width", state.originalWidth);
+      if (state.originalHeight === null) state.image.removeAttribute("height");
+      else state.image.setAttribute("height", state.originalHeight);
+      if (state.originalStyle === null) state.image.removeAttribute("style");
+      else state.image.setAttribute("style", state.originalStyle);
+      instance.imageWidth.value = state.originalWidth || "";
+    } else if (state.moved) {
+      changed(instance); // Exactly one history snapshot and Blazor sync per drag.
+      message(instance, `Image resized to ${state.image.getAttribute("width")} px wide (aspect ratio preserved).`);
+    }
+    updateResizeHandle(instance);
   }
 
   function alignImage(instance, alignment) {
@@ -510,46 +611,86 @@
     instance.datePanel.hidden = true;
   }
 
+  function updateSignaturePen(instance) {
+    const context = instance.signatureContext;
+    if (!context) return;
+    const color = cleanColor(instance.signatureColor?.value) || "#1e293b";
+    const width = Number(instance.signatureWidth?.value);
+    context.strokeStyle = color;
+    context.lineWidth = [2, 3, 5].includes(width) ? width : 3;
+    context.lineCap = "round";
+    context.lineJoin = "round";
+  }
+
   function showSignature(instance) {
-    if (!instance.signaturePanel) return;
+    if (!instance.signaturePanel || instance.readOnly) return;
     instance.signaturePanel.hidden = false;
     if (!instance.signatureContext) {
-      const canvas = instance.signatureCanvas;
-      const context = canvas.getContext("2d");
+      const context = instance.signatureCanvas.getContext("2d", { willReadFrequently: true });
       if (!context) return message(instance, "Signature canvas is unavailable.");
       instance.signatureContext = context;
-      context.lineWidth = 2.8;
-      context.lineCap = "round";
-      context.lineJoin = "round";
-      context.strokeStyle = "#1e293b";
     }
+    updateSignaturePen(instance);
     instance.signatureCanvas.focus();
   }
 
   function clearSignature(instance) {
     instance.signatureContext?.clearRect(0, 0, instance.signatureCanvas.width, instance.signatureCanvas.height);
     instance.signatureHasInk = false;
+    instance.signatureBounds = null;
+    instance.signatureDrawing = false;
   }
 
   function signaturePoint(instance, event) {
     const bounds = instance.signatureCanvas.getBoundingClientRect();
-    return { x: (event.clientX - bounds.left) * instance.signatureCanvas.width / bounds.width,
-      y: (event.clientY - bounds.top) * instance.signatureCanvas.height / bounds.height };
+    return { x: Math.max(0, Math.min(instance.signatureCanvas.width, (event.clientX - bounds.left) * instance.signatureCanvas.width / bounds.width)),
+      y: Math.max(0, Math.min(instance.signatureCanvas.height, (event.clientY - bounds.top) * instance.signatureCanvas.height / bounds.height)) };
+  }
+
+  function recordSignaturePoint(instance, point) {
+    if (!instance.signatureBounds) {
+      instance.signatureBounds = { left: point.x, top: point.y, right: point.x, bottom: point.y };
+    } else {
+      instance.signatureBounds.left = Math.min(instance.signatureBounds.left, point.x);
+      instance.signatureBounds.top = Math.min(instance.signatureBounds.top, point.y);
+      instance.signatureBounds.right = Math.max(instance.signatureBounds.right, point.x);
+      instance.signatureBounds.bottom = Math.max(instance.signatureBounds.bottom, point.y);
+    }
+  }
+
+  // Trim transparent whitespace from the canvas before embedding the PNG.
+  // This keeps signatures usable in PDF/DOCX/XLSX without oversized white margins.
+  function signatureImage(instance) {
+    const canvas = instance.signatureCanvas;
+    const bounds = instance.signatureBounds;
+    if (!bounds) return null;
+    const padding = Math.max(12, Math.ceil(instance.signatureContext.lineWidth * 3));
+    const left = Math.max(0, Math.floor(bounds.left - padding));
+    const top = Math.max(0, Math.floor(bounds.top - padding));
+    const right = Math.min(canvas.width, Math.ceil(bounds.right + padding));
+    const bottom = Math.min(canvas.height, Math.ceil(bounds.bottom + padding));
+    const width = Math.max(1, right - left);
+    const height = Math.max(1, bottom - top);
+    const cropped = document.createElement("canvas");
+    cropped.width = width;
+    cropped.height = height;
+    cropped.getContext("2d").drawImage(canvas, left, top, width, height, 0, 0, width, height);
+    return { dataUrl: cropped.toDataURL("image/png"), width, height };
   }
 
   function insertSignature(instance) {
     if (!instance.signatureHasInk) return message(instance, "Draw a signature before inserting it.");
-    const dataUrl = instance.signatureCanvas.toDataURL("image/png");
-    if (!imageDataUrlPattern.test(dataUrl) || dataUrl.length > 2 * 1024 * 1024)
+    const result = signatureImage(instance);
+    if (!result || !imageDataUrlPattern.test(result.dataUrl) || result.dataUrl.length > 2 * 1024 * 1024)
       return message(instance, "Signature image is too large.");
     const image = document.createElement("img");
-    image.src = dataUrl;
+    image.src = result.dataUrl;
     image.alt = "Signature";
-    image.width = 480;
+    // Insert the tightly cropped signature at its natural pixel size.
     insertAtSelection(instance, image);
     instance.signaturePanel.hidden = true;
     clearSignature(instance);
-    message(instance, "Signature image inserted (not a verified digital signature).");
+    message(instance, "Cropped signature inserted (image only, not a verified digital signature).");
   }
 
   function refreshTemplateOptions(instance) {
@@ -602,27 +743,50 @@
     const table = cell.closest("table");
     if (!row || !table) return;
     const rows = Array.from(table.rows);
-    const rowIndex = rows.indexOf(row);
     const colIndex = Array.from(row.cells).indexOf(cell);
     if (rows.some(r => r.cells.length !== row.cells.length || Array.from(r.cells).some(c => c.colSpan !== 1 || c.rowSpan !== 1))) {
-      return message(instance, "Table editing currently supports rectangular tables without merged cells.");
+      return message(instance, "Split merged cells before changing rows, columns, or header status.");
     }
+    const emptyCell = tag => {
+      const result = document.createElement(tag);
+      result.appendChild(document.createElement("br"));
+      return result;
+    };
     if (operation === "table-delete") {
       table.remove();
-    } else if (operation === "table-row-after") {
-      const added = row.cloneNode(false);
-      for (let index = 0; index < row.cells.length; index++) added.insertCell().appendChild(document.createElement("br"));
-      row.after(added);
-      instance.activeCell = added.cells[Math.min(colIndex, added.cells.length - 1)];
+      instance.activeCell = null;
+    } else if (operation === "table-row-before" || operation === "table-row-after") {
+      const added = document.createElement("tr");
+      for (const existing of Array.from(row.cells)) added.appendChild(emptyCell(existing.tagName.toLowerCase()));
+      if (operation === "table-row-before") row.before(added); else row.after(added);
+      instance.activeCell = added.cells[Math.max(0, colIndex)];
     } else if (operation === "table-row-delete") {
       if (rows.length === 1) table.remove(); else row.remove();
       instance.activeCell = null;
-    } else if (operation === "table-col-after") {
-      for (const r of rows) r.insertCell(colIndex + 1).appendChild(document.createElement("br"));
-      instance.activeCell = row.cells[colIndex + 1];
+    } else if (operation === "table-col-before" || operation === "table-col-after") {
+      const insertAt = colIndex + (operation === "table-col-after" ? 1 : 0);
+      for (const r of rows) {
+        const reference = r.cells[insertAt] || null;
+        const styleSource = r.cells[Math.min(colIndex, r.cells.length - 1)];
+        const inserted = emptyCell(styleSource.tagName.toLowerCase());
+        r.insertBefore(inserted, reference);
+        if (r === row) instance.activeCell = inserted;
+      }
     } else if (operation === "table-col-delete") {
       if (row.cells.length === 1) table.remove(); else for (const r of rows) r.deleteCell(colIndex);
       instance.activeCell = null;
+    } else if (operation === "table-header-toggle") {
+      const nextTag = Array.from(row.cells).every(c => c.tagName === "TH") ? "td" : "th";
+      for (const oldCell of Array.from(row.cells)) {
+        const replacement = document.createElement(nextTag);
+        for (const attribute of Array.from(oldCell.attributes)) replacement.setAttribute(attribute.name, attribute.value);
+        while (oldCell.firstChild) replacement.appendChild(oldCell.firstChild);
+        if (oldCell === cell) instance.activeCell = replacement;
+        oldCell.replaceWith(replacement);
+      }
+      message(instance, nextTag === "th" ? "Header row enabled." : "Header row removed.");
+    } else {
+      return;
     }
     instance.lastRange = null;
     changed(instance);
@@ -700,6 +864,7 @@
     if (next < 0 || next >= instance.history.length) return;
     instance.historyIndex = next;
     instance.canvas.innerHTML = instance.history[next];
+    setImageSelection(instance, null);
     instance.lastRange = null;
     setImageSelection(instance, null);
     instance.activeCell = null;
@@ -758,8 +923,9 @@
         const image = document.createElement("img");
         image.setAttribute("src", url);
         image.setAttribute("alt", file.name);
-        image.setAttribute("width", "480");
-        image.style.maxWidth = "100%";
+        // Original is the default. No width attribute means native image pixels;
+        // CSS max-width:100% keeps oversized images within the editor viewport.
+        if (instance.imageInsertSize?.value === "480") image.setAttribute("width", "480");
         paragraph.appendChild(image);
         insertAtSelection(instance, paragraph);
         setImageSelection(instance, image);
@@ -1068,6 +1234,7 @@
       if (value) updateTableBorders(instance, field, value);
       return;
     }
+    if (field === "imageInsertSize") return;
     if (field === "imageAlign") {
       if (value) alignImage(instance, value);
       return;
@@ -1112,6 +1279,7 @@
       return;
     }
     if (command === "image-delete") return deleteImage(instance);
+    if (command === "image-original") return restoreOriginalImageSize(instance);
     if (command.startsWith("table-") && command !== "table") return modifyTable(instance, command);
     if (command === "link") return openLinkPanel(instance);
     if (command === "unlink") return removeLink(instance);
@@ -1144,7 +1312,8 @@
       instance.characterPanel === element.querySelector("[data-chars-panel]") &&
       instance.signaturePanel === element.querySelector("[data-signature-panel]") &&
       instance.templatePanel === element.querySelector("[data-template-panel]") &&
-      instance.datePanel === element.querySelector("[data-date-panel]");
+      instance.datePanel === element.querySelector("[data-date-panel]") &&
+      instance.imageResizeHandle === element.querySelector("[data-image-resize-handle]");
   }
 
   function mount(id, dotNetReference) {
@@ -1176,6 +1345,9 @@
       linkText: element.querySelector("[data-link-text]"),
       linkUrl: element.querySelector("[data-link-url]"),
       imageWidth: element.querySelector("[data-image-width]"),
+      imageInsertSize: element.querySelector("[data-select=\"imageInsertSize\"]"),
+      imageResizeHandle: element.querySelector("[data-image-resize-handle]"),
+      imageResize: null,
       status: element.querySelector(".azunt-editor-message"),
       stats: element.querySelector("[data-editor-stats]"),
       findPanel: element.querySelector("[data-find-panel]"),
@@ -1185,7 +1357,9 @@
       characterPanel: element.querySelector("[data-chars-panel]"),
       signaturePanel: element.querySelector("[data-signature-panel]"),
       signatureCanvas: element.querySelector("[data-signature-canvas]"),
-      signatureContext: null, signatureHasInk: false, signatureDrawing: false,
+      signatureContext: null, signatureHasInk: false, signatureDrawing: false, signatureBounds: null,
+      signatureColor: element.querySelector("[data-signature-color]"),
+      signatureWidth: element.querySelector("[data-signature-width]"),
       templatePanel: element.querySelector("[data-template-panel]"),
       templateList: element.querySelector("[data-template-list]"),
       datePanel: element.querySelector("[data-date-panel]"),
@@ -1224,7 +1398,7 @@
       const target = event.target.closest("[data-select]");
       if (!target) return;
       runSelect(instance, target.dataset.select, target.value);
-      if (!["paper", "orientation", "margin"].includes(target.dataset.select) && target.type !== "color") target.selectedIndex = 0;
+      if (!["paper", "orientation", "margin", "imageInsertSize"].includes(target.dataset.select) && target.type !== "color") target.selectedIndex = 0;
     }, { signal });
     instance.linkPanel.querySelector("[data-link-apply]").addEventListener("click", () => applyLink(instance), { signal });
     instance.linkPanel.querySelector("[data-link-cancel]").addEventListener("click", () => {
@@ -1232,6 +1406,27 @@
       instance.editingLink = null;
     }, { signal });
     instance.imageWidth.addEventListener("change", () => resizeImage(instance), { signal });
+    if (instance.imageResizeHandle) {
+      const handle = instance.imageResizeHandle;
+      handle.addEventListener("pointerdown", event => beginImageResize(instance, event), { signal });
+      handle.addEventListener("pointermove", event => dragImageResize(instance, event), { signal });
+      handle.addEventListener("pointerup", event => finishImageResize(instance, event), { signal });
+      handle.addEventListener("pointercancel", event => finishImageResize(instance, event, true), { signal });
+      handle.addEventListener("lostpointercapture", event => finishImageResize(instance, event), { signal });
+      handle.addEventListener("keydown", event => {
+        if (!["ArrowLeft", "ArrowRight", "Escape"].includes(event.key)) return;
+        event.preventDefault();
+        if (event.key === "Escape") { finishImageResize(instance, null, true); handle.blur(); return; }
+        const image = selectedImage(instance);
+        if (!image) return;
+        const width = Math.round(image.getBoundingClientRect().width) + (event.key === "ArrowRight" ? 10 : -10);
+        setImagePixelWidth(instance, image, Math.max(24, Math.min(2500, width)));
+        changed(instance);
+      }, { signal });
+      instance.canvas.addEventListener("scroll", () => updateResizeHandle(instance), { passive: true, signal });
+      window.addEventListener("scroll", () => updateResizeHandle(instance), { capture: true, passive: true, signal });
+      window.addEventListener("resize", () => updateResizeHandle(instance), { passive: true, signal });
+    }
     if (instance.findPanel) {
       instance.findPanel.querySelector("[data-find-next]").addEventListener("click", () => findNext(instance), { signal });
       instance.findPanel.querySelector("[data-find-replace]").addEventListener("click", () => replaceMatch(instance), { signal });
@@ -1270,6 +1465,8 @@
         const point = signaturePoint(instance, event);
         instance.signatureDrawing = true;
         instance.signatureHasInk = true;
+        updateSignaturePen(instance);
+        recordSignaturePoint(instance, point);
         instance.signatureContext.beginPath();
         instance.signatureContext.moveTo(point.x, point.y);
         instance.signatureContext.lineTo(point.x + .01, point.y + .01);
@@ -1280,14 +1477,17 @@
         if (!instance.signatureDrawing) return;
         event.preventDefault();
         const point = signaturePoint(instance, event);
+        recordSignaturePoint(instance, point);
         instance.signatureContext.lineTo(point.x, point.y);
         instance.signatureContext.stroke();
       }, { signal });
       for (const type of ["pointerup", "pointercancel", "lostpointercapture"])
         canvas.addEventListener(type, () => { instance.signatureDrawing = false; }, { signal });
+      instance.signatureColor?.addEventListener("change", () => updateSignaturePen(instance), { signal });
+      instance.signatureWidth?.addEventListener("change", () => updateSignaturePen(instance), { signal });
       instance.signaturePanel.querySelector("[data-signature-clear]").addEventListener("click", () => clearSignature(instance), { signal });
       instance.signaturePanel.querySelector("[data-signature-insert]").addEventListener("click", () => insertSignature(instance), { signal });
-      instance.signaturePanel.querySelector("[data-signature-close]").addEventListener("click", () => { instance.signaturePanel.hidden = true; }, { signal });
+      instance.signaturePanel.querySelector("[data-signature-close]").addEventListener("click", () => { instance.signaturePanel.hidden = true; clearSignature(instance); }, { signal });
     }
     instance.canvas.addEventListener("input", () => changed(instance), { signal });
     instance.canvas.addEventListener("blur", () => {
@@ -1406,6 +1606,7 @@
   function unmount(id) {
     const instance = instances.get(id);
     if (!instance) return;
+    if (instance.imageResize) finishImageResize(instance, null, true);
     instance.controller.abort();
     instance.element.classList.remove("azunt-editor-fullscreen");
     instance.observer?.disconnect();

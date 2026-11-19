@@ -27,6 +27,9 @@ async def main():
             original = original.replace('<script src="../src/Azunt.Editor/wwwroot/js/azunt-editor.js"></script>', '')
             original = original.replace('  </div>\n  <div class="azunt-editor-link-panel"', '''    <button type="button" data-command="table-merge-right">Merge</button>
     <button type="button" data-command="table-split">Split</button>
+    <button type="button" data-command="table-row-before">Row before</button>
+    <button type="button" data-command="table-col-before">Col before</button>
+    <button type="button" data-command="table-header-toggle">Header</button>
     <button type="button" data-command="signature">Signature</button>
     <button type="button" data-command="datetime">Date/time</button>
     <button type="button" data-command="templates">Templates</button>
@@ -36,6 +39,8 @@ async def main():
   <div class="azunt-editor-link-panel"''')
             original = original.replace('  <div class="azunt-editor-canvas"', '''  <div class="azunt-editor-signature-panel" data-signature-panel hidden>
     <canvas data-signature-canvas width="640" height="180" style="width:640px;height:180px"></canvas>
+    <input type="color" data-signature-color value="#1e293b">
+    <select data-signature-width><option value="2">Fine</option><option value="3" selected>Normal</option><option value="5">Thick</option></select>
     <button data-signature-clear>Clear</button>
     <button data-signature-insert>Insert signature</button>
     <button data-signature-close>Cancel</button>
@@ -78,9 +83,21 @@ async def main():
             result = await html()
             assert 'colspan' not in result and len(await page.locator('.azunt-editor-canvas tr').first.locator('td').all()) == 3, result
 
+            # Directional insertion and semantic header toggle keep the table rectangular.
+            await page.locator('.azunt-editor-canvas tr').nth(1).locator('td').nth(1).click()
+            await cmd('table-row-before')
+            assert await page.locator('.azunt-editor-canvas tr').count() == 3
+            await cmd('table-col-before')
+            assert await page.locator('.azunt-editor-canvas tr').first.locator('td').count() == 4
+            await cmd('table-header-toggle')
+            assert await page.locator('.azunt-editor-canvas tr').nth(1).locator('th').count() == 4
+            assert '<th' in await html()
+
             # Native browser pointer event path for signature drawing and PNG insertion.
             await load('<p>Approved: </p>')
             await cmd('signature')
+            await page.locator('[data-signature-color]').fill('#cc2200')
+            await page.locator('[data-signature-width]').select_option('5')
             canvas = page.locator('[data-signature-canvas]')
             await canvas.scroll_into_view_if_needed()
             rect = await canvas.bounding_box()
@@ -92,6 +109,10 @@ async def main():
             result = await html()
             assert '<img' in result and 'alt="Signature"' in result and 'data:image/png;base64,' in result, result[:600]
             assert await page.locator('.azunt-editor-canvas img').count() == 1
+            # The inserted image should be cropped to the ink bounds, not full 640x180.
+            dimensions = await page.locator('.azunt-editor-canvas img').first.evaluate('(img) => ({w:img.naturalWidth,h:img.naturalHeight})')
+            assert 110 <= dimensions['w'] < 180 and 20 <= dimensions['h'] < 90, dimensions
+            assert 'width=' not in result[result.index('<img'):result.index('>', result.index('<img'))]
             await load(result)
             assert 'alt="Signature"' in await html(), 'Signature should survive save/restore'
 
@@ -117,7 +138,7 @@ async def main():
             await page.locator('[data-template-apply]').click()
             result = await html()
             assert 'Custom' in result and 'Safe text' in result and '<script' not in result, result
-            print('PASS: horizontal table merge/split, border styles, signature PNG, local date, template confirmation and registration')
+            print('PASS: table merge/split/row-before/col-before/header, border styles, cropped signature, date, templates')
         finally:
             await browser.close()
 

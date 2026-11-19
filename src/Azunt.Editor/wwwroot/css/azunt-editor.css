@@ -1,5 +1,6 @@
-/* Azunt.Editor 0.5 preview.2 — self-contained editor styles and writing tools. */
+/* Azunt.Editor 0.5.2 — self-contained editor styles and writing tools. */
 .azunt-editor {
+  position: relative;
   --azunt-line: #d8dee6;
   --azunt-text: #1e293b;
   --azunt-muted: #64748b;
@@ -230,3 +231,37 @@
 @media print {
   .azunt-editor-signature-panel,.azunt-editor-template-panel,.azunt-editor-date-panel { display:none!important; }
 }
+
+/* 0.5.2: keyboard-friendly signature pen controls and header cells. */
+.azunt-editor-signature-panel label { display: inline-flex; align-items: center; gap: 6px; font: 12px/1.4 system-ui, sans-serif; }
+.azunt-editor-signature-panel input[type="color"] { width: 36px; height: 30px; padding: 2px; border: 1px solid #cbd5e1; border-radius: 5px; cursor: pointer; }
+.azunt-editor-signature-panel select { min-height: 32px; border: 1px solid #cbd5e1; border-radius: 5px; padding: 4px 6px; background: white; }
+.azunt-editor-signature-panel :focus-visible { outline: 2px solid #2563eb; outline-offset: 2px; }
+.azunt-editor-canvas th { background: #f1f5f9; font-weight: 600; }
+
+/* 0.5.2 image sizing: native size, on-canvas drag resize, keyboard support. */
+.azunt-editor-canvas img { max-width: 100%; height: auto; }
+.azunt-editor-image-resize-handle {
+  position: absolute;
+  z-index: 10;
+  width: 18px;
+  height: 18px;
+  border: 2px solid #fff;
+  border-radius: 4px;
+  background: #2563eb;
+  box-shadow: 0 0 0 1px #1d4ed8, 0 2px 6px #0f172a55;
+  cursor: nwse-resize;
+  touch-action: none;
+  user-select: none;
+}
+.azunt-editor-image-resize-handle::after {
+  content: "";
+  position: absolute;
+  inset: 5px 3px 3px 5px;
+  border-right: 1.5px solid #fff;
+  border-bottom: 1.5px solid #fff;
+}
+.azunt-editor-image-resize-handle.is-resizing { background: #1d4ed8; }
+.azunt-editor-image-resize-handle:focus-visible { outline: 2px solid #f59e0b; outline-offset: 3px; }
+.azunt-editor-toolbar [data-select="imageInsertSize"] { max-width: 122px; }
+@media print { .azunt-editor-image-resize-handle { display: none !important; } }

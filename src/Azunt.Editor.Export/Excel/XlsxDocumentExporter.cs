@@ -187,7 +187,9 @@ internal static class XlsxDocumentExporter
                     imagePart.FeedData(imageStream);
 
                 var (sourceWidth, sourceHeight) = GetImageDimensions(data, mime);
-                var width = 480;
+                // Native insertion has no width attribute. Keep its original pixel
+                // dimensions unless the user explicitly resized the image.
+                var width = Math.Max(1, sourceWidth);
                 if (int.TryParse(node.Attribute("width"), out var requested) && requested is >= 24 and <= 2500)
                     width = requested;
                 width = Math.Clamp(width, 24, 600);

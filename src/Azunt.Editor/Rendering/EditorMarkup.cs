@@ -67,13 +67,16 @@ public static class EditorMarkup
 
         Group("Table");
         Button("table", "▦", "Insert 2 × 2 table");
+        Button("table-row-before", "↑ Row", "Insert row above current cell");
         Button("table-row-after", "+Row", "Insert row below current cell");
         Button("table-row-delete", "−Row", "Delete current row");
+        Button("table-col-before", "← Col", "Insert column before current cell");
         Button("table-col-after", "+Col", "Insert column after current cell");
         Button("table-col-delete", "−Col", "Delete current column");
         Button("table-delete", "×Tbl", "Delete table");
         Button("table-merge-right", "Merge →", "Merge selected cell with the cell to its right");
         Button("table-split", "Split", "Split horizontally merged cell");
+        Button("table-header-toggle", "Header", "Toggle current row between header and data cells");
         Color("tableBorderColor", "Table border color", "#aeb8c6");
         Select("tableBorderWidth", "Table border thickness", new[] {
             ("", "Border px"), ("1", "1 px"), ("2", "2 px"), ("3", "3 px"), ("4", "4 px")
@@ -82,9 +85,11 @@ public static class EditorMarkup
 
         Group("Image");
         Button("image", "▧", "Insert images");
-        w.Append("<label class=\"azunt-editor-input-label\" title=\"Selected image width in pixels\">W ")
+        Select("imageInsertSize", "New image insertion size", new[] { ("original", "Original size"), ("480", "480 px") });
+        Button("image-original", "1:1", "Restore selected image to its original dimensions");
+        w.Append("<label class=\"azunt-editor-input-label\" title=\"Selected image width in pixels (blank means original size)\">W ")
             .Append("<input class=\"azunt-editor-width\" data-image-width type=\"number\" min=\"24\" max=\"2500\" step=\"1\" ")
-            .Append("placeholder=\"px\" aria-label=\"Image width\" /></label>");
+            .Append("placeholder=\"original\" aria-label=\"Image width\" /></label>");
         Select("imageAlign", "Image alignment", new[] { ("", "Image align"), ("left", "Left"), ("center", "Center"), ("right", "Right") });
         Button("image-delete", "×Img", "Delete selected image");
         EndGroup();
@@ -137,6 +142,8 @@ public static class EditorMarkup
         w.Append("<div class=\"azunt-editor-signature-panel\" data-signature-panel hidden role=\"group\" aria-label=\"Draw signature\">")
             .Append("<span class=\"azunt-editor-panel-heading\">Draw your signature using mouse, pen or touch</span>")
             .Append("<canvas data-signature-canvas width=\"640\" height=\"180\" aria-label=\"Signature drawing surface\"></canvas>")
+            .Append("<label>Ink <input type=\"color\" data-signature-color value=\"#1e293b\" aria-label=\"Signature ink color\"></label>")
+            .Append("<label>Pen <select data-signature-width aria-label=\"Signature pen thickness\"><option value=\"2\">Fine</option><option value=\"3\" selected>Normal</option><option value=\"5\">Thick</option></select></label>")
             .Append("<button type=\"button\" data-signature-clear>Clear</button>")
             .Append("<button type=\"button\" data-signature-insert>Insert signature</button>")
             .Append("<button type=\"button\" data-signature-close>Cancel</button></div>");
@@ -160,6 +167,9 @@ public static class EditorMarkup
         w.Append("<div class=\"azunt-editor-canvas\" role=\"textbox\" aria-label=\"Document content\" aria-multiline=\"true\" contenteditable=\"")
             .Append(readOnly ? "false" : "true")
             .Append("\" style=\"min-height:").Append(safeHeight).Append("px\"></div>");
+        w.Append("<div class=\"azunt-editor-image-resize-handle\" data-image-resize-handle hidden "
+            + "role=\"button\" tabindex=\"0\" aria-label=\"Resize selected image by dragging the corner\" "
+            + "title=\"Drag to resize the selected image (aspect ratio preserved)\"></div>");
         w.Append("<textarea class=\"azunt-editor-source\" data-azunt-source hidden aria-label=\"HTML source\" spellcheck=\"false\" style=\"min-height:")
             .Append(safeHeight).Append("px\"></textarea>");
         w.Append("<textarea hidden class=\"azunt-editor-value\" data-azunt-value=\"true\" name=\"")

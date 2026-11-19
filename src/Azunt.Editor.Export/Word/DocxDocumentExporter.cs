@@ -249,10 +249,13 @@ internal static class DocxDocumentExporter
         if (!SafeEditorDocument.TryImage(node, out var mime, out var bytes)) return null;
         var part = main.AddImagePart(mime);
         using (var image = new MemoryStream(bytes, writable: false)) part.FeedData(image);
-        var width = 480;
+        var (sourceWidth, sourceHeight) = ImageSize(bytes, mime);
+        // If the editor saved an image without a width attribute, preserve its
+        // natural pixel width instead of the historical fixed 480px fallback.
+        // Clamp only to the page/table's available width, never upscale thumbnails.
+        var width = Math.Max(1, sourceWidth);
         if (int.TryParse(node.Attribute("width"), out var definedWidth) && definedWidth is >= 24 and <= 2500)
             width = definedWidth;
-        var (sourceWidth, sourceHeight) = ImageSize(bytes, mime);
         width = Math.Min(width, maxWidth);
         var height = Math.Clamp((int)Math.Round(width * (double)sourceHeight / Math.Max(1, sourceWidth)), 20, 1200);
         var cx = (long)width * 9525;

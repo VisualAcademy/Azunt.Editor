@@ -2,7 +2,7 @@
 
 A lightweight rich-text editor for ASP.NET Core MVC, Razor Pages, and Blazor Server.
 
-Version: **0.5.7** · .NET 10
+Version: **0.5.8** · .NET 10
 
 ## Projects
 - `src/Azunt.Editor` — shared editor components, JavaScript, and CSS
@@ -56,3 +56,13 @@ Blazor Server: `<AzuntEditor ToolbarMode="Classic" @bind-Value="Html" />`
 
 Custom buttons can be registered by the hosting application, including PDF, Word and Excel commands.
 See [toolbar configuration](docs/adaptive-toolbar.md).
+
+## Editor status messages
+
+Success notices disappear after 3 seconds, information after 4 seconds, and
+warnings after 5 seconds. Errors stay visible until another status replaces
+them. These messages are not part of the document HTML.
+
+Host applications can report a status with `AzuntEditor.showStatus(editorId,
+"Saved.", "success")`. The supported levels are `success`, `info`, `warning`,
+and `error`. Passing an empty message clears the status.

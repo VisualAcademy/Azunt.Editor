@@ -146,8 +146,42 @@
     return output.innerHTML;
   }
 
-  function message(instance, text) {
-    instance.status.textContent = text;
+  // Status notifications stay outside document HTML and do not change undo history.
+  const statusDuration = Object.freeze({ success: 3000, info: 4000, warning: 5000, error: 0 });
+
+  function clearMessage(instance) {
+    window.clearTimeout(instance.messageTimer);
+    instance.messageTimer = null;
+    instance.messageVersion = (instance.messageVersion || 0) + 1;
+    if (!instance.status) return;
+    instance.status.textContent = "";
+    delete instance.status.dataset.statusKind;
+    instance.status.setAttribute("role", "status");
+    instance.status.setAttribute("aria-live", "polite");
+  }
+
+  function message(instance, text, kind = "info") {
+    if (!instance.status) return;
+    clearMessage(instance);
+    const value = String(text ?? "");
+    if (!value) return;
+    const level = Object.hasOwn(statusDuration, kind) ? kind : "info";
+    instance.status.dataset.statusKind = level;
+    instance.status.setAttribute("role", level === "error" ? "alert" : "status");
+    instance.status.setAttribute("aria-live", level === "error" ? "assertive" : "polite");
+    instance.status.textContent = value;
+    if (statusDuration[level] > 0) {
+      const version = instance.messageVersion;
+      instance.messageTimer = window.setTimeout(() => {
+        // A newer message or a remounted editor must not be cleared by this timer.
+        if (instances.get(instance.element.id) === instance && instance.messageVersion === version)
+          clearMessage(instance);
+      }, statusDuration[level]);
+    }
+  }
+
+  function showStatus(id, text, kind = "info") {
+    message(getInstance(id), text, kind);
   }
 
   function readHtml(instance) {
@@ -184,11 +218,11 @@
         : instance.dotNetReference.invokeMethodAsync("OnHtmlStreamChanged", createHtmlStream(html), revision);
       operation.catch(error => {
         console.warn("Azunt.Editor Blazor synchronization failed:", error);
-        message(instance, "Blazor synchronization failed. Check the connection and browser console.");
+        message(instance, "Blazor synchronization failed. Check the connection and browser console.", "error");
       });
     } catch (error) {
       console.warn("Azunt.Editor Blazor synchronization failed:", error);
-      message(instance, String(error.message || error));
+      message(instance, String(error.message || error), "error");
     }
   }
 
@@ -274,7 +308,7 @@
   function inlineStyle(instance, tag) {
     const range = selectedRange(instance);
     if (range.collapsed) {
-      message(instance, "Select text before applying a style.");
+      message(instance, "Select text before applying a style.", "warning");
       return;
     }
     const wrapper = document.createElement(tag);
@@ -287,7 +321,7 @@
   function formatSpan(instance, property, value) {
     const range = selectedRange(instance);
     if (range.collapsed) {
-      message(instance, "Select text before applying this formatting.");
+      message(instance, "Select text before applying this formatting.", "warning");
       return;
     }
     const wrapper = document.createElement("span");
@@ -300,7 +334,7 @@
 
   function adjustIndent(instance, amount) {
     const block = nearestBlock(instance, selectedRange(instance));
-    if (!block) return message(instance, "Place the cursor inside a paragraph first.");
+    if (!block) return message(instance, "Place the cursor inside a paragraph first.", "warning");
     const old = parseInt(block.style.marginLeft || "0", 10) || 0;
     const next = Math.max(0, Math.min(240, old + amount));
     block.style.marginLeft = next ? `${next}px` : "";
@@ -331,7 +365,7 @@
   function applyLink(instance) {
     const rawUrl = instance.linkUrl.value.trim();
     const url = safeResourceUrl(rawUrl, false);
-    if (!url) return message(instance, "Enter a valid HTTPS, HTTP, mailto, or relative URL.");
+    if (!url) return message(instance, "Enter a valid HTTPS, HTTP, mailto, or relative URL.", "warning");
     const label = instance.linkText.value.trim();
     const active = instance.editingLink && instance.canvas.contains(instance.editingLink) ? instance.editingLink : null;
     if (active) {
@@ -354,7 +388,7 @@
 
   function removeLink(instance) {
     const active = editableAncestor(instance, ["A"]);
-    if (!active) return message(instance, "Place the cursor inside a link to remove it.");
+    if (!active) return message(instance, "Place the cursor inside a link to remove it.", "warning");
     const parent = active.parentNode;
     while (active.firstChild) parent.insertBefore(active.firstChild, active);
     active.remove();
@@ -380,7 +414,7 @@
       instance.canvas.hidden = false;
       instance.lastRange = null;
       changed(instance);
-      message(instance, "HTML source applied; unsupported markup was removed.");
+      message(instance, "HTML source applied; unsupported markup was removed.", "success");
     }
   }
 
@@ -445,7 +479,7 @@
 
   function restoreOriginalImageSize(instance) {
     const image = selectedImage(instance);
-    if (!image) return message(instance, "Click an image to select it first.");
+    if (!image) return message(instance, "Click an image to select it first.", "warning");
     image.removeAttribute("width");
     image.removeAttribute("height");
     image.style.removeProperty("width");
@@ -453,16 +487,16 @@
     instance.imageWidth.value = "";
     updateResizeHandle(instance);
     changed(instance);
-    message(instance, "Original image dimensions restored. Large images fit the editor width on screen.");
+    message(instance, "Original image dimensions restored. Large images fit the editor width on screen.", "success");
   }
 
   function resizeImage(instance) {
     const image = selectedImage(instance);
-    if (!image) return message(instance, "Click an image to select it first.");
+    if (!image) return message(instance, "Click an image to select it first.", "warning");
     if (instance.imageWidth.value.trim() === "") return restoreOriginalImageSize(instance);
     const width = Number(instance.imageWidth.value);
     if (!Number.isInteger(width) || width < 24 || width > 2500)
-      return message(instance, "Image width must be between 24 and 2500 pixels.");
+      return message(instance, "Image width must be between 24 and 2500 pixels.", "warning");
     setImagePixelWidth(instance, image, width);
     changed(instance);
   }
@@ -513,14 +547,14 @@
       instance.imageWidth.value = state.originalWidth || "";
     } else if (state.moved) {
       changed(instance); // Exactly one history snapshot and Blazor sync per drag.
-      message(instance, `Image resized to ${state.image.getAttribute("width")} px wide (aspect ratio preserved).`);
+      message(instance, `Image resized to ${state.image.getAttribute("width")} px wide (aspect ratio preserved).`, "success");
     }
     updateResizeHandle(instance);
   }
 
   function alignImage(instance, alignment) {
     const image = selectedImage(instance);
-    if (!image) return message(instance, "Click an image to select it first.");
+    if (!image) return message(instance, "Click an image to select it first.", "warning");
     let block = image.closest("p,div");
     if (!block || !instance.canvas.contains(block)) {
       block = document.createElement("p");
@@ -533,7 +567,7 @@
 
   function deleteImage(instance) {
     const image = selectedImage(instance);
-    if (!image) return message(instance, "Click an image to select it first.");
+    if (!image) return message(instance, "Click an image to select it first.", "warning");
     const parent = image.parentElement;
     setImageSelection(instance, null);
     image.remove();
@@ -549,12 +583,12 @@
 
   function mergeTableRight(instance) {
     const cell = activeTableCell(instance);
-    if (!cell) return message(instance, "Click a table cell first.");
+    if (!cell) return message(instance, "Click a table cell first.", "warning");
     const right = cell.nextElementSibling;
     if (!right || !["TD", "TH"].includes(right.tagName) || cell.rowSpan !== 1 || right.rowSpan !== 1)
-      return message(instance, "No adjacent cell available for merging.");
+      return message(instance, "No adjacent cell available for merging.", "warning");
     const width = cell.colSpan + right.colSpan;
-    if (width > 12) return message(instance, "Merged cell cannot exceed 12 columns.");
+    if (width > 12) return message(instance, "Merged cell cannot exceed 12 columns.", "warning");
     if (right.textContent?.trim() || right.querySelector("img")) {
       if (cell.textContent?.trim() || cell.querySelector("img")) cell.appendChild(document.createElement("br"));
       while (right.firstChild) cell.appendChild(right.firstChild);
@@ -564,14 +598,14 @@
     instance.activeCell = cell;
     instance.lastRange = null;
     changed(instance);
-    message(instance, `Merged ${width} columns. Split before adding/deleting rows or columns.`);
+    message(instance, `Merged ${width} columns. Split before adding/deleting rows or columns.`, "success");
   }
 
   function splitTableCell(instance) {
     const cell = activeTableCell(instance);
-    if (!cell) return message(instance, "Click a merged table cell first.");
+    if (!cell) return message(instance, "Click a merged table cell first.", "warning");
     const count = cell.colSpan;
-    if (count < 2) return message(instance, "This cell is not merged.");
+    if (count < 2) return message(instance, "This cell is not merged.", "warning");
     cell.removeAttribute("colspan");
     let after = cell;
     for (let i = 1; i < count; i++) {
@@ -586,12 +620,12 @@
     instance.activeCell = cell;
     instance.lastRange = null;
     changed(instance);
-    message(instance, `Split into ${count} cells. Content remains in the first cell.`);
+    message(instance, `Split into ${count} cells. Content remains in the first cell.`, "success");
   }
 
   function updateTableBorders(instance, field, value) {
     const cell = activeTableCell(instance);
-    if (!cell) return message(instance, "Click a table cell before setting its table border.");
+    if (!cell) return message(instance, "Click a table cell before setting its table border.", "warning");
     const table = cell.closest("table");
     if (!table) return;
     if (field === "tableBorderColor" && !cleanColor(value)) return;
@@ -638,7 +672,7 @@
     instance.signaturePanel.hidden = false;
     if (!instance.signatureContext) {
       const context = instance.signatureCanvas.getContext("2d", { willReadFrequently: true });
-      if (!context) return message(instance, "Signature canvas is unavailable.");
+      if (!context) return message(instance, "Signature canvas is unavailable.", "error");
       instance.signatureContext = context;
     }
     updateSignaturePen(instance);
@@ -690,10 +724,10 @@
   }
 
   function insertSignature(instance) {
-    if (!instance.signatureHasInk) return message(instance, "Draw a signature before inserting it.");
+    if (!instance.signatureHasInk) return message(instance, "Draw a signature before inserting it.", "warning");
     const result = signatureImage(instance);
     if (!result || !imageDataUrlPattern.test(result.dataUrl) || result.dataUrl.length > 2 * 1024 * 1024)
-      return message(instance, "Signature image is too large.");
+      return message(instance, "Signature image is too large.", "warning");
     const image = document.createElement("img");
     image.src = result.dataUrl;
     image.alt = "Signature";
@@ -701,7 +735,7 @@
     insertAtSelection(instance, image);
     instance.signaturePanel.hidden = true;
     clearSignature(instance);
-    message(instance, "Cropped signature inserted (image only, not a verified digital signature).");
+    message(instance, "Signature inserted.", "success");
   }
 
   function refreshTemplateOptions(instance) {
@@ -719,7 +753,7 @@
 
   function applyTemplate(instance) {
     const selected = templates.get(instance.templateList?.value);
-    if (!selected) return message(instance, "Choose a template first.");
+    if (!selected) return message(instance, "Choose a template first.", "warning");
     const existingText = (instance.canvas.textContent || "").trim();
     const hasContent = existingText.length > 0 || !!instance.canvas.querySelector("img,table,hr");
     if (hasContent && !window.confirm("Replace the current document with this template? Existing edits may be lost.")) return;
@@ -732,7 +766,7 @@
     setImageSelection(instance, null);
     instance.templatePanel.hidden = true;
     changed(instance);
-    message(instance, `Loaded template: ${selected.title}`);
+    message(instance, `Loaded template: ${selected.title}`, "success");
   }
 
   function registerTemplate(key, title, html) {
@@ -749,14 +783,14 @@
     if (operation === "table-merge-right") return mergeTableRight(instance);
     if (operation === "table-split") return splitTableCell(instance);
     const cell = activeTableCell(instance);
-    if (!cell) return message(instance, "Click a table cell first.");
+    if (!cell) return message(instance, "Click a table cell first.", "warning");
     const row = cell.closest("tr");
     const table = cell.closest("table");
     if (!row || !table) return;
     const rows = Array.from(table.rows);
     const colIndex = Array.from(row.cells).indexOf(cell);
     if (rows.some(r => r.cells.length !== row.cells.length || Array.from(r.cells).some(c => c.colSpan !== 1 || c.rowSpan !== 1))) {
-      return message(instance, "Split merged cells before changing rows, columns, or header status.");
+      return message(instance, "Split merged cells before changing rows, columns, or header status.", "warning");
     }
     const emptyCell = tag => {
       const result = document.createElement(tag);
@@ -795,7 +829,7 @@
         if (oldCell === cell) instance.activeCell = replacement;
         oldCell.replaceWith(replacement);
       }
-      message(instance, nextTag === "th" ? "Header row enabled." : "Header row removed.");
+      message(instance, nextTag === "th" ? "Header row enabled." : "Header row removed.", "success");
     } else {
       return;
     }
@@ -848,7 +882,7 @@
   function alignBlock(instance, alignment) {
     const block = nearestBlock(instance, selectedRange(instance));
     if (!block) {
-      message(instance, "Place the cursor in a paragraph to change alignment.");
+      message(instance, "Place the cursor in a paragraph to change alignment.", "warning");
       return;
     }
     block.style.textAlign = alignment;
@@ -1001,7 +1035,7 @@
     let inserted = 0;
     for (const file of images) {
       if (!supportedTypes.has(file.type) || file.size > maxImageBytes) {
-        message(instance, `Skipped ${file.name}: only PNG/JPEG/GIF/WebP up to 2 MB are supported.`);
+        message(instance, `Skipped ${file.name}: only PNG/JPEG/GIF/WebP up to 2 MB are supported.`, "warning");
         continue;
       }
       try {
@@ -1017,10 +1051,10 @@
         instance.lastRange = window.getSelection().getRangeAt(0).cloneRange();
         inserted++;
       } catch (error) {
-        message(instance, String(error.message || error));
+        message(instance, String(error.message || error), "error");
       }
     }
-    if (inserted) message(instance, `${inserted} image(s) inserted.`);
+    if (inserted) message(instance, `${inserted} image(s) inserted.`, "success");
   }
 
   function insertPlainText(instance, text) {
@@ -1063,7 +1097,7 @@
 
   function clearFormatting(instance) {
     const range = selectedRange(instance);
-    if (range.collapsed) return message(instance, "Select the text whose formatting you want to clear.");
+    if (range.collapsed) return message(instance, "Select the text whose formatting you want to clear.", "warning");
     const text = range.toString();
     range.deleteContents();
     const node = document.createTextNode(text);
@@ -1137,7 +1171,7 @@
         insertAtSelection(instance, rule);
       }
     }
-    message(instance, pageBreak ? "Page break inserted." : "Horizontal line inserted.");
+    message(instance, pageBreak ? "Page break inserted." : "Horizontal line inserted.", "success");
   }
 
   function toggleFullscreen(instance, enable = !instance.element.classList.contains("azunt-editor-fullscreen")) {
@@ -1185,9 +1219,9 @@
   }
 
   function findNext(instance) {
-    if (instance.sourceMode) return message(instance, "Apply HTML source before searching text.");
+    if (instance.sourceMode) return message(instance, "Apply HTML source before searching text.", "warning");
     const query = instance.findQuery?.value || "";
-    if (!query) return message(instance, "Enter a search term.");
+    if (!query) return message(instance, "Enter a search term.", "warning");
     const matches = findMatches(instance, query);
     const selection = window.getSelection();
     const active = selection?.rangeCount ? selection.getRangeAt(0) : null;
@@ -1268,7 +1302,7 @@
     const margin = allowedMargins[instance.page.margin] || allowedMargins.normal;
     // Open synchronously as part of the user's click to avoid popup blockers.
     const win = window.open("", "_blank", "width=1000,height=850");
-    if (!win) return message(instance, "Please allow popups to preview or print.");
+    if (!win) return message(instance, "Please allow popups to preview or print.", "warning");
     win.opener = null;
     const style = `@page{size:${paper} ${orientation};margin:${margin}}` +
       `*{box-sizing:border-box}body{font:12pt/1.5 Arial,sans-serif;color:#1e293b;margin:0}` +
@@ -1314,7 +1348,7 @@
       return;
     }
     if (instance.readOnly) return;
-    if (instance.sourceMode) return message(instance, "Apply HTML source before using formatting tools.");
+    if (instance.sourceMode) return message(instance, "Apply HTML source before using formatting tools.", "warning");
     if (field === "tableBorderColor" || field === "tableBorderWidth") {
       if (value) updateTableBorders(instance, field, value);
       return;
@@ -1349,7 +1383,7 @@
       if (instance.characterPanel) instance.characterPanel.hidden = !instance.characterPanel.hidden;
       return;
     }
-    if (instance.sourceMode) return message(instance, "Apply HTML source before using formatting tools.");
+    if (instance.sourceMode) return message(instance, "Apply HTML source before using formatting tools.", "warning");
     if (command === "clear-format") return clearFormatting(instance);
     if (command === "page-break") return insertRule(instance, true);
     if (command === "horizontal-rule") return insertRule(instance, false);
@@ -1492,14 +1526,15 @@
           editorId: instance.element.id, editor: instance.element,
           getHtml: () => getHtml(instance.element.id),
           getPageSettings: () => getPageSettings(instance.element.id),
-          setHtml: html => setHtml(instance.element.id, html)
+          setHtml: html => setHtml(instance.element.id, html),
+          showStatus: (text, kind = "info") => message(instance, text, kind)
         });
-        if (result && typeof result.catch === "function") result.catch(() => message(instance, "Command failed."));
+        if (result && typeof result.catch === "function") result.catch(() => message(instance, "Command failed.", "error"));
       } else if (def.blazor && instance.dotNetReference) {
         instance.dotNetReference.invokeMethodAsync("OnCustomCommand", id)
-          .catch(() => message(instance, "Command failed."));
+          .catch(() => message(instance, "Command failed.", "error"));
       }
-    } catch (_) { message(instance, "Command failed."); }
+    } catch (_) { message(instance, "Command failed.", "error"); }
   }
 
   function normalizeCommand(raw, isBlazor = false) {
@@ -1670,7 +1705,8 @@
       templateList: element.querySelector("[data-template-list]"),
       datePanel: element.querySelector("[data-date-panel]"),
       readOnly: element.dataset.readOnly === "true", uploadUrl: element.dataset.uploadUrl || null,
-      dotNetReference: dotNetReference || null, emitTimer: null, history: [], historyIndex: 0, lastRange: null,
+      dotNetReference: dotNetReference || null, emitTimer: null, messageTimer: null, messageVersion: 0,
+      history: [], historyIndex: 0, lastRange: null,
       revision: previous?.revision || 0, sourceMode: false,
       selectedImage: null, activeCell: null, editingLink: null,
       page: previous?.page || { paper: "A4", orientation: "portrait", margin: "normal" }
@@ -1974,6 +2010,7 @@
     instance.element.classList.remove("azunt-editor-fullscreen", "azunt-editor-image-drop-active");
     instance.observer?.disconnect();
     window.clearTimeout(instance.emitTimer);
+    window.clearTimeout(instance.messageTimer);
     instances.delete(id);
   }
 
@@ -1983,7 +2020,7 @@
     return { paperSize: instance.page.paper, orientation: instance.page.orientation, margin: instance.page.margin };
   }
 
-  window.AzuntEditor = Object.freeze({ mount, mountAll, getHtml, getHtmlStream, setHtml, getPageSettings, unmount, sanitizeHtml, registerTemplate, registerCommand, setCommands, setToolbarMode });
+  window.AzuntEditor = Object.freeze({ mount, mountAll, getHtml, getHtmlStream, setHtml, getPageSettings, showStatus, unmount, sanitizeHtml, registerTemplate, registerCommand, setCommands, setToolbarMode });
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", mountAll, { once: true });
   else mountAll();
 })();

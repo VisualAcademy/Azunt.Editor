@@ -183,6 +183,7 @@ public static class EditorMarkup
             .Append("<label>Ink <input type=\"color\" data-signature-color value=\"#1e293b\" aria-label=\"Signature ink color\"></label>")
             .Append("<label>Pen <select data-signature-width aria-label=\"Signature pen thickness\"><option value=\"2\">Fine</option><option value=\"3\" selected>Normal</option><option value=\"5\">Thick</option></select></label>")
             .Append("<button type=\"button\" data-signature-clear>Clear</button>")
+            .Append("<span class=\"azunt-editor-signature-note\">Handwritten image only; not a verified digital signature.</span>")
             .Append("<button type=\"button\" data-signature-insert>Insert signature</button>")
             .Append("<button type=\"button\" data-signature-close>Cancel</button></div>");
 
@@ -213,7 +214,7 @@ public static class EditorMarkup
         w.Append("<textarea hidden class=\"azunt-editor-value\" data-azunt-value=\"true\" name=\"")
             .Append(Encode(name)).Append("\">").Append(Encode(value)).Append("</textarea>");
         w.Append("<input hidden type=\"file\" accept=\"image/png,image/jpeg,image/gif,image/webp\" multiple data-azunt-images=\"true\" aria-label=\"Select images\" />");
-        w.Append("<div class=\"azunt-editor-footer\"><p class=\"azunt-editor-message\" role=\"status\" aria-live=\"polite\"></p>")
+        w.Append("<div class=\"azunt-editor-footer\"><p class=\"azunt-editor-message\" role=\"status\" aria-live=\"polite\" aria-atomic=\"true\"></p>")
             .Append("<span class=\"azunt-editor-stats\" data-editor-stats aria-live=\"off\">0 words · 0 characters</span></div>");
         w.Append("</div>");
         return w.ToString();

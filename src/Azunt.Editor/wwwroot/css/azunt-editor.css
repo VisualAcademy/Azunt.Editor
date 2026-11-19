@@ -132,7 +132,12 @@
 .azunt-editor-canvas table { width: 100%; border-collapse: collapse; margin: 12px 0; }
 .azunt-editor-canvas th, .azunt-editor-canvas td { min-width: 50px; border: 1px solid #aeb8c6; padding: 8px; vertical-align: top; }
 .azunt-editor-source { display: block; resize: vertical; width: 100%; min-width: 0; border: 0; padding: 18px 20px; background: #0f172a; color: #e2e8f0; font: 13px/1.6 Consolas, monospace; }
+/* Status messages are temporary (except errors). The footer keeps its height. */
 .azunt-editor-message { margin: 0; min-height: 22px; padding: 2px 12px 5px; font-size: 12px; color: var(--azunt-muted); }
+.azunt-editor-message[data-status-kind="success"] { color: #166534; }
+.azunt-editor-message[data-status-kind="warning"] { color: #9a3412; }
+.azunt-editor-message[data-status-kind="error"] { color: #b91c1c; }
+
 @media (max-width: 720px) {
   .azunt-editor-toolbar { gap: 4px; padding: 6px; }
   .azunt-editor-group { padding-top: 17px; gap: 2px; }
@@ -393,3 +398,5 @@
 }
 .azunt-editor-menu-panel { top: 92px; }
 .azunt-editor-narrow .azunt-editor-quick-group-optional { display: none; }
+
+.azunt-editor-signature-note { font-size: 12px; color: var(--azunt-muted); }

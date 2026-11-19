@@ -25,10 +25,13 @@ public sealed class AzuntEditorTagHelper : TagHelper
     [HtmlAttributeName("upload-url")]
     public string? UploadUrl { get; set; }
 
+    [HtmlAttributeName("toolbar-mode")]
+    public string ToolbarMode { get; set; } = "Compact";
+
     public override void Process(TagHelperContext context, TagHelperOutput output)
     {
         output.TagName = null;
         output.Content.SetHtmlContent(EditorMarkup.Render(
-            Id ?? $"azunt-editor-{Guid.NewGuid():N}", Name, Value, Height, ReadOnly, UploadUrl));
+            Id ?? $"azunt-editor-{Guid.NewGuid():N}", Name, Value, Height, ReadOnly, UploadUrl, ToolbarMode));
     }
 }

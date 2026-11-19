@@ -3,6 +3,8 @@
   "use strict";
 
   const instances = new Map();
+  const globalCommands = new Map();
+  const commandsByEditor = new Map();
   // Built-in templates are safe, deliberately small HTML examples. Host code can
   // register additional content via AzuntEditor.registerTemplate (no CDN/network).
   const templates = new Map([
@@ -1381,6 +1383,226 @@
     if (command === "redo") return undoOrRedo(instance, 1);
   }
 
+  // Compact toolbar. The original controls are moved into the open menu,
+  // rather than copied, so selects and color inputs retain their existing state.
+  const menuGroups = Object.freeze({
+    file: ["Document"], edit: ["Writing tools"], view: ["Document"],
+    insert: ["Link", "Image"], format: ["Text formatting", "Font and color", "Paragraph"],
+    table: ["Table"], image: ["Image"], link: ["Link"],
+    tools: ["Writing tools"], export: [],
+    more: ["Text formatting", "Font and color", "Paragraph", "Link", "Table", "Image", "Writing tools", "Document"]
+  });
+  const menuNames = new Set(Object.keys(menuGroups));
+
+  function closeMenu(instance) {
+    if (!instance.menuPanel) return;
+    for (const group of instance.originalGroups || []) instance.classicGroups.appendChild(group);
+    instance.menuPanel.replaceChildren();
+    instance.menuPanel.hidden = true;
+    instance.openMenu = null;
+    instance.toolbar.querySelectorAll("[data-azunt-menu]").forEach(button => {
+      button.setAttribute("aria-expanded", "false");
+    });
+  }
+
+  function createCustomButton(def, compact = false) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = compact ? "azunt-editor-button azunt-editor-quick-command" : "azunt-editor-button azunt-editor-custom-button";
+    button.dataset.customCommand = def.id;
+    button.title = def.label;
+    button.setAttribute("aria-label", def.label);
+    // Labels and icons are always text: no host-provided HTML is inserted.
+    button.textContent = compact ? (def.icon || def.label) : def.label;
+    return button;
+  }
+
+  function effectiveCommands(instance) {
+    const commands = new Map(globalCommands);
+    for (const [id, def] of commandsByEditor.get(instance.element.id) || []) commands.set(id, def);
+    for (const [id, def] of instance.blazorCommands || []) commands.set(id, def);
+    return commands;
+  }
+
+  function refreshQuickCommands(instance) {
+    if (!instance.quickCustom) return;
+    instance.quickCustom.replaceChildren();
+    for (const def of effectiveCommands(instance).values()) {
+      if (def.placement === "toolbar") instance.quickCustom.appendChild(createCustomButton(def, true));
+    }
+    if (instance.classicGroups) {
+      instance.classicGroups.querySelector("[data-classic-custom]")?.remove();
+      const defs = Array.from(effectiveCommands(instance).values());
+      if (defs.length) {
+        const group = document.createElement("div");
+        group.className = "azunt-editor-group";
+        group.dataset.groupLabel = "Custom commands";
+        group.dataset.classicCustom = "true";
+        group.setAttribute("role", "group");
+        group.setAttribute("aria-label", "Custom commands");
+        for (const def of defs) group.appendChild(createCustomButton(def));
+        instance.classicGroups.appendChild(group);
+      }
+    }
+    if (!instance.menuPanel?.hidden) openMenu(instance, instance.openMenu);
+  }
+
+  function appendCustomCommands(instance, key, target) {
+    const commands = Array.from(effectiveCommands(instance).values()).filter(def =>
+      key === "more" || def.group === key || (key === "file" && def.group === "export"));
+    if (!commands.length) return;
+    const group = document.createElement("div");
+    group.className = "azunt-editor-group azunt-editor-custom-group";
+    group.setAttribute("role", "group");
+    group.dataset.groupLabel = key === "more" ? "Custom commands" : "Commands";
+    group.setAttribute("aria-label", group.dataset.groupLabel);
+    for (const def of commands) group.appendChild(createCustomButton(def));
+    target.appendChild(group);
+  }
+
+  function openMenu(instance, key) {
+    if (!instance.menuPanel || !menuNames.has(key)) return;
+    closeMenu(instance);
+    instance.openMenu = key;
+    instance.menuPanel.hidden = false;
+    for (const label of menuGroups[key]) {
+      const group = instance.originalGroups.find(candidate => candidate.dataset.groupLabel === label);
+      if (group) instance.menuPanel.appendChild(group);
+    }
+    appendCustomCommands(instance, key, instance.menuPanel);
+    if (!instance.menuPanel.children.length) {
+      const note = document.createElement("span");
+      note.className = "azunt-editor-menu-empty";
+      note.textContent = key === "export" ? "Export commands are supplied by the host application." : "No commands available.";
+      instance.menuPanel.appendChild(note);
+    }
+    instance.toolbar.querySelectorAll("[data-azunt-menu]").forEach(button => {
+      button.setAttribute("aria-expanded", String(button.dataset.azuntMenu === key));
+    });
+    if (instance.contextTools) instance.contextTools.hidden = true;
+  }
+
+  function executeCustomCommand(instance, id) {
+    const def = effectiveCommands(instance).get(id);
+    if (!def) return;
+    if (instance.readOnly && def.requiresEdit) return;
+    try {
+      if (typeof def.execute === "function") {
+        const result = def.execute({
+          editorId: instance.element.id, editor: instance.element,
+          getHtml: () => getHtml(instance.element.id),
+          getPageSettings: () => getPageSettings(instance.element.id),
+          setHtml: html => setHtml(instance.element.id, html)
+        });
+        if (result && typeof result.catch === "function") result.catch(() => message(instance, "Command failed."));
+      } else if (def.blazor && instance.dotNetReference) {
+        instance.dotNetReference.invokeMethodAsync("OnCustomCommand", id)
+          .catch(() => message(instance, "Command failed."));
+      }
+    } catch (_) { message(instance, "Command failed."); }
+  }
+
+  function normalizeCommand(raw, isBlazor = false) {
+    if (!raw || typeof raw !== "object" || !/^[A-Za-z][A-Za-z0-9_-]{0,63}$/.test(raw.id || ""))
+      throw new Error("Custom command requires an alphanumeric id (up to 64 characters).");
+    if (typeof raw.label !== "string" || !raw.label.trim() || raw.label.length > 90)
+      throw new Error("Custom command requires a label (up to 90 characters).");
+    const group = String(raw.group || "tools").toLowerCase();
+    if (!menuNames.has(group) || group === "more") throw new Error("Unsupported command group.");
+    return {
+      id: raw.id, label: raw.label, icon: String(raw.icon || "").slice(0, 8), group,
+      placement: String(raw.placement || "menu").toLowerCase(),
+      requiresEdit: raw.requiresEdit === true, blazor: isBlazor,
+      execute: typeof raw.execute === "function" && !isBlazor ? raw.execute : undefined
+    };
+  }
+
+  // May be called before or after editor mount. editorId limits registration to one editor.
+  function registerCommand(definition, editorId) {
+    const def = normalizeCommand(definition);
+    if (editorId) {
+      let commands = commandsByEditor.get(editorId);
+      if (!commands) { commands = new Map(); commandsByEditor.set(editorId, commands); }
+      commands.set(def.id, def);
+    } else globalCommands.set(def.id, def);
+    for (const instance of instances.values()) {
+      if (!editorId || instance.element.id === editorId) refreshQuickCommands(instance);
+    }
+  }
+
+  function setCommands(id, definitions) {
+    const instance = getInstance(id);
+    instance.blazorCommands = new Map();
+    for (const raw of definitions || []) {
+      const def = normalizeCommand(raw, true);
+      instance.blazorCommands.set(def.id, def);
+    }
+    refreshQuickCommands(instance);
+  }
+
+  function updateContextTools(instance) {
+    const tools = instance.contextTools;
+    if (!tools || instance.element.dataset.toolbarMode !== "compact" || instance.readOnly || instance.sourceMode || !instance.menuPanel?.hidden) {
+      if (tools) tools.hidden = true;
+      return;
+    }
+    const image = selectedImage(instance);
+    const cell = image ? null : activeTableCell(instance);
+    const target = image || cell;
+    if (!target) { tools.hidden = true; return; }
+    const actions = image ? [
+      ["image-original", "Original size"], ["image-delete", "Delete image"], ["@image", "Image settings"]
+    ] : [
+      ["table-row-after", "+Row"], ["table-col-after", "+Column"],
+      ["table-merge-right", "Merge"], ["table-split", "Split"], ["@table", "Table settings"]
+    ];
+    tools.replaceChildren();
+    for (const [command, label] of actions) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.textContent = label;
+      button.className = "azunt-editor-button";
+      button.setAttribute("aria-label", label);
+      if (command.startsWith("@")) button.dataset.operateMenu = command.slice(1);
+      else button.dataset.quickCommand = command;
+      tools.appendChild(button);
+    }
+    const area = instance.element.getBoundingClientRect();
+    const rect = target.getBoundingClientRect();
+    if (!rect.width || !rect.height) { tools.hidden = true; return; }
+    // Position within the editor instead of behind the toolbar or outside the viewport.
+    tools.style.left = `${Math.max(6, Math.min(area.width - 320, rect.left - area.left))}px`;
+    tools.style.top = `${Math.max(6, rect.bottom - area.top + 8)}px`;
+    tools.hidden = false;
+  }
+
+  function setToolbarMode(id, mode) {
+    const instance = getInstance(id);
+    closeMenu(instance);
+    instance.element.dataset.toolbarMode = String(mode).toLowerCase() === "classic" ? "classic" : "compact";
+    updateContextTools(instance);
+  }
+
+  function initAdaptiveToolbar(instance) {
+    instance.classicGroups = instance.toolbar.querySelector("[data-classic-groups]");
+    instance.menuPanel = instance.toolbar.querySelector("[data-menu-panel]");
+    instance.contextTools = instance.toolbar.querySelector("[data-context-tools]");
+    instance.quickCustom = instance.toolbar.querySelector("[data-quick-custom]");
+    instance.originalGroups = instance.classicGroups
+      ? Array.from(instance.classicGroups.querySelectorAll(":scope > .azunt-editor-group")) : [];
+    instance.openMenu = null;
+    instance.blazorCommands = new Map();
+    refreshQuickCommands(instance);
+    if (window.ResizeObserver) {
+      instance.toolbarSizeObserver = new ResizeObserver(entries => {
+        const width = entries[0]?.contentRect.width || instance.element.clientWidth;
+        instance.element.classList.toggle("azunt-editor-narrow", width < 760);
+        instance.element.classList.toggle("azunt-editor-very-narrow", width < 515);
+      });
+      instance.toolbarSizeObserver.observe(instance.element);
+    }
+  }
+
   // Blazor can preserve the outer editor node while replacing its children.
   // The attached canvas/toolbar must be the nodes that are actually visible.
   function bindingIsCurrent(instance, element) {
@@ -1462,6 +1684,7 @@
     instance.value.value = readHtml(instance);
     instance.history = [instance.value.value];
     instances.set(element.id, instance);
+    initAdaptiveToolbar(instance);
     updateStats(instance);
 
     const signal = controller.signal;
@@ -1469,8 +1692,28 @@
       if (event.target.closest("button")) event.preventDefault();
     }, { signal });
     instance.toolbar.addEventListener("click", event => {
-      const button = event.target.closest("button[data-command]");
-      if (button) runCommand(instance, button.dataset.command);
+      const menu = event.target.closest("button[data-azunt-menu]");
+      if (menu) {
+        const key = menu.dataset.azuntMenu;
+        if (instance.openMenu === key) closeMenu(instance);
+        else openMenu(instance, key);
+        return;
+      }
+      const relatedMenu = event.target.closest("button[data-operate-menu]");
+      if (relatedMenu) { openMenu(instance, relatedMenu.dataset.operateMenu); return; }
+      const custom = event.target.closest("button[data-custom-command]");
+      if (custom) {
+        if (!instance.menuPanel?.hidden) closeMenu(instance);
+        executeCustomCommand(instance, custom.dataset.customCommand);
+        return;
+      }
+      const button = event.target.closest("button[data-command],button[data-quick-command]");
+      if (button) {
+        const command = button.dataset.command || button.dataset.quickCommand;
+        if (!instance.menuPanel?.hidden) closeMenu(instance);
+        runCommand(instance, command);
+        updateContextTools(instance);
+      }
     }, { signal });
     // Preserve the canvas selection before native selects and color pickers take focus.
     instance.toolbar.addEventListener("pointerdown", () => {
@@ -1585,6 +1828,7 @@
       setImageSelection(instance, image);
       const cell = event.target.closest("td,th");
       instance.activeCell = cell && instance.canvas.contains(cell) ? cell : null;
+      updateContextTools(instance);
     }, { signal });
     instance.canvas.addEventListener("mouseup", () => selectedRange(instance), { signal });
     instance.canvas.addEventListener("keyup", () => selectedRange(instance), { signal });
@@ -1625,8 +1869,13 @@
         event.clipboardData?.getData("text/plain") || "");
     }, { signal });
     document.addEventListener("keydown", event => {
-      if (event.key === "Escape" && instance.element.classList.contains("azunt-editor-fullscreen"))
-        toggleFullscreen(instance, false);
+      if (event.key === "Escape") {
+        if (!instance.menuPanel?.hidden) { closeMenu(instance); return; }
+        if (instance.element.classList.contains("azunt-editor-fullscreen")) toggleFullscreen(instance, false);
+      }
+    }, { signal });
+    document.addEventListener("pointerdown", event => {
+      if (!instance.toolbar.contains(event.target) && !instance.menuPanel?.hidden) closeMenu(instance);
     }, { signal });
     instance.canvas.addEventListener("keydown", event => {
       if (event.key === "Escape" && instance.element.classList.contains("azunt-editor-fullscreen")) {
@@ -1719,6 +1968,8 @@
     const instance = instances.get(id);
     if (!instance) return;
     if (instance.imageResize) finishImageResize(instance, null, true);
+    instance.toolbarSizeObserver?.disconnect();
+    closeMenu(instance);
     instance.controller.abort();
     instance.element.classList.remove("azunt-editor-fullscreen", "azunt-editor-image-drop-active");
     instance.observer?.disconnect();
@@ -1732,7 +1983,7 @@
     return { paperSize: instance.page.paper, orientation: instance.page.orientation, margin: instance.page.margin };
   }
 
-  window.AzuntEditor = Object.freeze({ mount, mountAll, getHtml, getHtmlStream, setHtml, getPageSettings, unmount, sanitizeHtml, registerTemplate });
+  window.AzuntEditor = Object.freeze({ mount, mountAll, getHtml, getHtmlStream, setHtml, getPageSettings, unmount, sanitizeHtml, registerTemplate, registerCommand, setCommands, setToolbarMode });
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", mountAll, { once: true });
   else mountAll();
 })();

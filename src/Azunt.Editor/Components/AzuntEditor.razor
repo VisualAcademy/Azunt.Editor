@@ -1,5 +1,6 @@
 @namespace Azunt.Editor.Components
 @using Azunt.Editor.Rendering
+@using Azunt.Editor.Models
 @using Microsoft.JSInterop
 @using System.IO
 @using System.Text
@@ -16,6 +17,9 @@
     [Parameter] public int Height { get; set; } = 320;
     [Parameter] public bool ReadOnly { get; set; }
     [Parameter] public string? UploadUrl { get; set; }
+    [Parameter] public string ToolbarMode { get; set; } = "Compact";
+    [Parameter] public IReadOnlyList<EditorCustomCommand>? CustomCommands { get; set; }
+    [Parameter] public EventCallback<string> CustomCommandInvoked { get; set; }
 
     private string _editorId = $"azunt-editor-{Guid.NewGuid():N}";
     private string _initialMarkup = string.Empty;
@@ -33,7 +37,7 @@
     {
         if (!string.IsNullOrWhiteSpace(Id)) _editorId = Id;
         // Hold stable markup across ValueChanged rerenders. JavaScript owns the live DOM.
-        _initialMarkup = EditorMarkup.Render(_editorId, Name, Value, Height, ReadOnly, UploadUrl);
+        _initialMarkup = EditorMarkup.Render(_editorId, Name, Value, Height, ReadOnly, UploadUrl, ToolbarMode);
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -51,8 +55,16 @@
         {
             await JS.InvokeVoidAsync("AzuntEditor.mount", _editorId, _reference);
             _mounted = true;
+            if (CustomCommands is { Count: > 0 })
+                await JS.InvokeVoidAsync("AzuntEditor.setCommands", _editorId, CustomCommands);
         }
     }
+
+    [JSInvokable]
+    public Task OnCustomCommand(string id) => CustomCommandInvoked.InvokeAsync(id);
+
+    public ValueTask SetToolbarModeAsync(string mode)
+        => JS.InvokeVoidAsync("AzuntEditor.setToolbarMode", _editorId, mode);
 
     [JSInvokable]
     public Task OnHtmlChanged(string html, long revision)

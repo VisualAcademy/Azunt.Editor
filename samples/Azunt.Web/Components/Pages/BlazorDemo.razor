@@ -1,6 +1,7 @@
 @page "/editor/blazor"
 @rendermode InteractiveServer
 @using Azunt.Editor.Components
+@using Azunt.Editor.Models
 @using Azunt.Editor.Export.Models
 @using Azunt.Editor.Export.Html
 @using Azunt.Web.Images
@@ -17,9 +18,11 @@
 <h1>Azunt.Editor — Blazor Server</h1>
 <p class="document-meta">Image mode: @(UseStoredImages ? "upload on insert" : UseDeferredImages ? "store on save" : "inline Base64") ·
     <a href="/editor/blazor">Inline</a> · <a href="/editor/blazor?images=stored">Upload on insert</a> · <a href="/editor/blazor?images=save">Store on Save</a></p>
-<p>Interactive Server component using the same JavaScript editor engine.</p>
+<p>Interactive Server component using the same JavaScript editor engine. ·
+    <a href="/editor/blazor">Compact toolbar</a> · <a href="/editor/blazor?toolbar=classic">Classic toolbar</a></p>
 
-<AzuntEditor @key="UseStoredImages" @ref="_editor" Id="azunt-blazor-demo" Name="BlazorHtml" @bind-Value="_html" Height="340" UploadUrl="@(UseStoredImages ? "/editor/demo-images" : null)" />
+<AzuntEditor @key="UseStoredImages" @ref="_editor" Id="azunt-blazor-demo" Name="BlazorHtml" @bind-Value="_html" Height="340" UploadUrl="@(UseStoredImages ? "/editor/demo-images" : null)"
+    ToolbarMode="@(UseClassic ? "Classic" : "Compact")" CustomCommands="EditorCommands" CustomCommandInvoked="HandleEditorCommand" />
 
 <div class="actions">
     <button class="primary" @onclick="SaveAsync">Save HTML</button>
@@ -39,6 +42,19 @@
 <pre class="source">@(_savedHtml.Length > 4000 ? _savedHtml[..4000] + "\n... (source preview truncated; full HTML remains saved in memory)" : _savedHtml)</pre>
 
 @code {
+    private bool UseClassic => new Uri(Navigation.Uri).Query.Contains("toolbar=classic", StringComparison.OrdinalIgnoreCase);
+    private static readonly IReadOnlyList<EditorCustomCommand> EditorCommands = new[] {
+        new EditorCustomCommand { Id = "downloadPdf", Label = "Download PDF", Group = "Export" },
+        new EditorCustomCommand { Id = "downloadWord", Label = "Download Word", Group = "Export" },
+        new EditorCustomCommand { Id = "downloadExcel", Label = "Download Excel", Group = "Export" }
+    };
+    private Task HandleEditorCommand(string id) => id switch {
+        "downloadPdf" => ExportAsync(EditorExportFormat.Pdf),
+        "downloadWord" => ExportAsync(EditorExportFormat.Docx),
+        "downloadExcel" => ExportAsync(EditorExportFormat.Xlsx),
+        _ => Task.CompletedTask
+    };
+
     private bool UseStoredImages => HostEnvironment.IsDevelopment() &&
         new Uri(Navigation.Uri).Query.Contains("images=stored", StringComparison.OrdinalIgnoreCase);
     private bool UseDeferredImages => HostEnvironment.IsDevelopment() &&

@@ -7,7 +7,7 @@ namespace Azunt.Editor.Rendering;
 public static class EditorMarkup
 {
     public static string Render(string id, string name, string? value = null, int height = 320,
-        bool readOnly = false, string? uploadUrl = null)
+        bool readOnly = false, string? uploadUrl = null, string toolbarMode = "Compact")
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(id);
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
@@ -19,8 +19,40 @@ public static class EditorMarkup
             .Append("\" data-read-only=\"").Append(readOnly ? "true" : "false").Append('"');
         if (!string.IsNullOrWhiteSpace(uploadUrl))
             w.Append(" data-upload-url=\"").Append(Encode(uploadUrl)).Append('"');
-        w.Append('>');
+        w.Append(" data-toolbar-mode=\"").Append(string.Equals(toolbarMode, "Classic", StringComparison.OrdinalIgnoreCase) ? "classic" : "compact").Append("\">");
         w.Append("<div class=\"azunt-editor-toolbar\" role=\"toolbar\" aria-label=\"Editor toolbar\">");
+        w.Append("<div class=\"azunt-editor-menu-row\" data-compact-menu role=\"menubar\" aria-label=\"Editor menus\">");
+        foreach (var key in new[] { "File", "Edit", "View", "Insert", "Format", "Table", "Tools", "Export" })
+            w.Append("<button type=\"button\" class=\"azunt-editor-menu-trigger\" data-azunt-menu=\"").Append(key.ToLowerInvariant())
+                .Append("\" aria-expanded=\"false\" aria-haspopup=\"true\">").Append(key).Append("</button>");
+        w.Append("</div><div class=\"azunt-editor-quick-row\" data-compact-quick role=\"group\" aria-label=\"Common formatting\">");
+        int quickIndex = 0;
+        foreach (var (command, label, title, optional) in new (string Command, string Label, string Title, bool Optional)[] {
+            ("undo", "↶", "Undo", false), ("redo", "↷", "Redo", false),
+            ("bold", "B", "Bold", false), ("italic", "I", "Italic", false), ("underline", "U", "Underline", false),
+            ("ul", "•", "Bulleted list", true), ("ol", "1.", "Numbered list", true),
+            ("link", "🔗", "Link", true), ("image", "▧", "Insert image", true), ("table", "▦", "Insert table", true),
+            ("find", "⌕", "Find", true) }) {
+            if (quickIndex is 0 or 2 or 5 or 7 or 10) {
+                if (quickIndex > 0) w.Append("</span></span>");
+                var labelText = quickIndex switch { 0 => "History", 2 => "Text formatting", 5 => "Lists", 7 => "Insert", _ => "Tools" };
+                w.Append("<span class=\"azunt-editor-quick-group")
+                    .Append(quickIndex >= 5 ? " azunt-editor-quick-group-optional" : "")
+                    .Append("\"><span class=\"azunt-editor-quick-label\">").Append(labelText)
+                    .Append("</span><span class=\"azunt-editor-quick-controls\">");
+            }
+            w.Append("<button type=\"button\" class=\"azunt-editor-button azunt-editor-quick-command")
+                .Append(optional ? " azunt-editor-quick-optional" : "")
+                .Append("\" data-quick-command=\"").Append(command).Append("\" title=\"").Append(Encode(title))
+                .Append("\" aria-label=\"").Append(Encode(title)).Append("\">");
+            w.Append(Icon(command) is { } icon ? "<span class=\"azunt-editor-button-icon\" aria-hidden=\"true\">" + icon + "</span>" : Encode(label));
+            w.Append("</button>");
+            quickIndex++;
+        }
+        w.Append("</span></span>");
+        w.Append("<span class=\"azunt-editor-quick-custom\" data-quick-custom></span>")
+            .Append("<button class=\"azunt-editor-menu-trigger azunt-editor-quick-more\" type=\"button\" data-azunt-menu=\"more\" aria-expanded=\"false\" aria-haspopup=\"true\" title=\"More editor commands\">More ⋯</button>");
+        w.Append("</div><div class=\"azunt-editor-classic-groups\" data-classic-groups>");
 
         Group("Text formatting");
         Button("bold", "B", "Bold", "Ctrl+B");
@@ -119,6 +151,9 @@ public static class EditorMarkup
         Select("orientation", "Page orientation", new[] { ("portrait", "Portrait"), ("landscape", "Landscape") });
         Select("margin", "Page margins", new[] { ("normal", "Normal margins"), ("narrow", "Narrow margins"), ("wide", "Wide margins") });
         EndGroup();
+        w.Append("</div>"); // Classic groups remain available to Compact menus.
+        w.Append("<div class=\"azunt-editor-menu-panel\" data-menu-panel hidden role=\"region\" aria-label=\"Editor menu commands\"></div>");
+        w.Append("<div class=\"azunt-editor-context-tools\" data-context-tools hidden role=\"toolbar\" aria-label=\"Selected item tools\"></div>");
         w.Append("</div>");
 
         w.Append("<div class=\"azunt-editor-link-panel\" data-link-panel hidden role=\"group\" aria-label=\"Edit hyperlink\">")

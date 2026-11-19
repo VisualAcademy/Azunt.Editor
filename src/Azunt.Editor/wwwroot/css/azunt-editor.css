@@ -277,3 +277,119 @@
   color: #1e40af; text-align: center; font: 600 13px system-ui, sans-serif;
 }
 @media print { .azunt-editor-image-drop-active .azunt-editor-canvas::after { display: none !important; } }
+
+/* 0.5.7: compact menu + quick tools. Classic retains the original grouped toolbar. */
+.azunt-editor[data-toolbar-mode="classic"] .azunt-editor-menu-row,
+.azunt-editor[data-toolbar-mode="classic"] .azunt-editor-quick-row { display: none; }
+.azunt-editor-classic-groups { display: contents; }
+.azunt-editor[data-toolbar-mode="compact"] .azunt-editor-toolbar {
+  position: static;
+  display: block;
+  padding: 0;
+  border-radius: 10px 10px 0 0;
+  flex-wrap: nowrap;
+}
+.azunt-editor[data-toolbar-mode="compact"] .azunt-editor-classic-groups { display: none; }
+.azunt-editor-menu-row,
+.azunt-editor-quick-row {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+  white-space: nowrap;
+  padding: 4px 8px;
+  height: 43px;
+  overflow: hidden;
+}
+.azunt-editor-menu-row { border-bottom: 1px solid #e2e8f0; }
+.azunt-editor-quick-row { gap: 3px; }
+.azunt-editor-menu-trigger {
+  min-height: 32px;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  padding: 4px 9px;
+  cursor: pointer;
+  background: transparent;
+  color: var(--azunt-text);
+  font: 13px/1.3 system-ui,-apple-system,"Segoe UI",sans-serif;
+  white-space: nowrap;
+}
+.azunt-editor-menu-trigger:hover,
+.azunt-editor-menu-trigger[aria-expanded="true"] { background: #e2e8f0; }
+.azunt-editor-menu-trigger:focus-visible,
+.azunt-editor-quick-command:focus-visible { outline: 2px solid var(--azunt-accent); outline-offset: 1px; }
+.azunt-editor-quick-row .azunt-editor-button { min-width: 32px; padding: 4px 7px; flex: 0 0 auto; }
+.azunt-editor-quick-more { margin-left: auto; background: white; border-color: #d8dee6; }
+.azunt-editor-quick-custom { display: inline-flex; align-items: center; gap: 3px; min-width: 0; overflow: hidden; }
+.azunt-editor-menu-panel {
+  position: absolute;
+  z-index: 90;
+  top: 86px;
+  left: 8px;
+  right: 8px;
+  display: flex;
+  flex-wrap: wrap;
+  align-content: start;
+  align-items: stretch;
+  gap: 8px;
+  max-height: min(60vh, 410px);
+  overflow-y: auto;
+  padding: 12px;
+  background: #fff;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  box-shadow: 0 12px 30px #0f172a26;
+}
+.azunt-editor-menu-panel .azunt-editor-group {
+  flex-wrap: wrap;
+  align-self: auto;
+  padding-bottom: 5px;
+  max-width: 100%;
+}
+.azunt-editor-menu-empty { font-size: 13px; color: var(--azunt-muted); padding: 8px; }
+.azunt-editor-context-tools {
+  position: absolute;
+  z-index: 30;
+  max-width: calc(100% - 12px);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 5px;
+  background: #fff;
+  border: 1px solid #94a3b8;
+  border-radius: 6px;
+  box-shadow: 0 5px 18px #0f172a26;
+}
+.azunt-editor-context-tools .azunt-editor-button { font-size: 12px; min-height: 30px; }
+.azunt-editor-narrow .azunt-editor-quick-optional { display: none; }
+.azunt-editor-very-narrow .azunt-editor-menu-row [data-azunt-menu="edit"],
+.azunt-editor-very-narrow .azunt-editor-menu-row [data-azunt-menu="view"],
+.azunt-editor-very-narrow .azunt-editor-menu-row [data-azunt-menu="table"],
+.azunt-editor-very-narrow .azunt-editor-menu-row [data-azunt-menu="tools"] { display: none; }
+.azunt-editor-very-narrow .azunt-editor-quick-custom { max-width: 110px; }
+@media (max-width: 540px) {
+  .azunt-editor-menu-trigger { padding: 4px 6px; font-size: 12px; }
+  .azunt-editor-menu-row, .azunt-editor-quick-row { padding: 4px; }
+}
+@media print {
+  .azunt-editor-menu-panel, .azunt-editor-context-tools { display: none !important; }
+}
+.azunt-editor-quick-row { height: 49px; }
+.azunt-editor-quick-group {
+  display: inline-flex;
+  flex: 0 0 auto;
+  flex-direction: column;
+  justify-content: center;
+  gap: 1px;
+  padding: 0 7px;
+  border-right: 1px solid #d8dee6;
+}
+.azunt-editor-quick-controls { display: inline-flex; align-items: center; gap: 2px; }
+.azunt-editor-quick-label {
+  color: var(--azunt-muted);
+  font: 600 9px/11px system-ui,-apple-system,"Segoe UI",sans-serif;
+  white-space: nowrap;
+}
+.azunt-editor-menu-panel { top: 92px; }
+.azunt-editor-narrow .azunt-editor-quick-group-optional { display: none; }

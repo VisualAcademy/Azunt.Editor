@@ -2,7 +2,7 @@
 
 A lightweight rich-text editor for ASP.NET Core MVC, Razor Pages, and Blazor Server.
 
-Version: **0.5.6** · .NET 10
+Version: **0.5.7** · .NET 10
 
 ## Projects
 - `src/Azunt.Editor` — shared editor components, JavaScript, and CSS
@@ -44,3 +44,15 @@ For integration details, see [image persistence](docs/image-persistence.md).
 
 ## License
 MIT. See [LICENSE](LICENSE).
+
+## Toolbar
+
+Compact mode (two rows) is enabled by default. Classic mode keeps the full grouped toolbar.
+Both modes use the same commands, document HTML and image handling.
+
+MVC / Razor Pages: `<azunt-editor toolbar-mode="Classic" name="Html" />`
+
+Blazor Server: `<AzuntEditor ToolbarMode="Classic" @bind-Value="Html" />`
+
+Custom buttons can be registered by the hosting application, including PDF, Word and Excel commands.
+See [toolbar configuration](docs/adaptive-toolbar.md).

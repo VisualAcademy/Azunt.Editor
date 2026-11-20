@@ -9,12 +9,12 @@
     <ProjectReference Include="../../src/Azunt.Editor/Azunt.Editor.csproj" />
   </ItemGroup>
   <ItemGroup Condition="'$(UseLocalEditorPackage)' == 'true'">
-    <PackageReference Include="Azunt.Editor" Version="0.7.2" />
+    <PackageReference Include="Azunt.Editor" Version="0.8.0" />
   </ItemGroup>
   <ItemGroup Condition="'$(UseLocalExportPackage)' != 'true'">
     <ProjectReference Include="../../src/Azunt.Editor.Export/Azunt.Editor.Export.csproj" />
   </ItemGroup>
   <ItemGroup Condition="'$(UseLocalExportPackage)' == 'true'">
-    <PackageReference Include="Azunt.Editor.Export" Version="0.7.2" />
+    <PackageReference Include="Azunt.Editor.Export" Version="0.8.0" />
   </ItemGroup>
 </Project>

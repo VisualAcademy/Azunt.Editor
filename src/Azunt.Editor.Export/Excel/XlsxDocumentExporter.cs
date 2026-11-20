@@ -28,6 +28,10 @@ internal static class XlsxDocumentExporter
         {
             var workbookPart = package.AddWorkbookPart();
             workbookPart.Workbook = new S.Workbook();
+            // All authored content remains editable, with a small, bounded style palette.
+            var stylesPart = workbookPart.AddNewPart<WorkbookStylesPart>();
+            stylesPart.Stylesheet = CreateStylesheet();
+            stylesPart.Stylesheet.Save();
             var worksheetPart = workbookPart.AddNewPart<WorksheetPart>();
             var sheetData = new S.SheetData();
             worksheetPart.Worksheet = new S.Worksheet(sheetData);
@@ -42,6 +46,7 @@ internal static class XlsxDocumentExporter
             // Collect bounded text widths while streaming rows. The Columns element
             // is inserted before SheetData to satisfy SpreadsheetML ordering.
             var textWidths = new double[100];
+            var resizedWidths = new double[100];
             uint rowNumber = 0;
             uint drawingId = 1;
             long totalImageBytes = 0;
@@ -54,12 +59,12 @@ internal static class XlsxDocumentExporter
             var columns = new S.Columns();
             for (var i = 0; i < textWidths.Length; i++)
             {
-                if (textWidths[i] <= 0) continue;
+                if (textWidths[i] <= 0 && resizedWidths[i] <= 0) continue;
                 columns.Append(new S.Column
                 {
                     Min = (uint)i + 1,
                     Max = (uint)i + 1,
-                    Width = Math.Clamp(textWidths[i] + 2.5, 14.0, 58.0),
+                    Width = Math.Clamp(Math.Max(textWidths[i] + 2.5, resizedWidths[i]), 14.0, 58.0),
                     CustomWidth = true
                 });
             }
@@ -88,6 +93,10 @@ internal static class XlsxDocumentExporter
             {
                 if (node.Name == "table")
                 {
+                    // Honor user-resized columns when the first unmerged row has
+                    // a complete, valid percentage distribution. Do not guess for spans.
+                    var firstRow = node.DescendantsAndSelf().FirstOrDefault(n => n.Name == "tr");
+                    if (firstRow is not null) CaptureColumnWidths(firstRow);
                     foreach (var tr in node.DescendantsAndSelf().Where(n => n.Name == "tr"))
                     {
                         var cells = tr.Children.Where(n => n.Name is "td" or "th")
@@ -108,7 +117,7 @@ internal static class XlsxDocumentExporter
                             rowImages.AddRange(cell.DescendantsAndSelf().Where(n => n.Name == "img")
                                 .Select(image => (Image: image, Column: firstColumn)));
                         }
-                        AppendRow(values.ToArray());
+                        AppendRow(values.ToArray(), cells.All(c => c.Name == "th") ? 1U : 0U);
                         var maxHeight = 0;
                         foreach (var (image, column) in rowImages)
                             maxHeight = Math.Max(maxHeight, AddImage(image, rowNumber - 1, column));
@@ -118,7 +127,22 @@ internal static class XlsxDocumentExporter
                     return;
                 }
 
-                if (node.Name is "h1" or "h2" or "h3" or "h4" or "p" or "li" or "blockquote" or "pre")
+                if (node.Name == "pre")
+                {
+                    // One spreadsheet row per source line, preserving indentation and
+                    // all text. Never place 100+ lines in a height-limited Excel cell.
+                    var code = node.Children.FirstOrDefault(child => child.Name == "code");
+                    var source = (code?.PlainText() ?? node.PlainText())
+                        .Replace("\r\n", "\n", StringComparison.Ordinal).Replace('\r', '\n');
+                    foreach (var line in source.Split('\n'))
+                    {
+                        if (line.Length == 0) { AppendRow([""], 2U); continue; }
+                        for (var offset = 0; offset < line.Length; offset += 32767)
+                            AppendRow([line.Substring(offset, Math.Min(32767, line.Length - offset))], 2U);
+                    }
+                    return;
+                }
+                if (node.Name is "h1" or "h2" or "h3" or "h4" or "p" or "li" or "blockquote")
                 {
                     WriteFlow(node);
                     return;
@@ -141,6 +165,26 @@ internal static class XlsxDocumentExporter
                     return;
                 }
                 foreach (var child in node.Children) WriteBlock(child);
+            }
+
+            void CaptureColumnWidths(SafeEditorDocument.Node firstRow)
+            {
+                var cells = firstRow.Children.Where(c => c.Name is "td" or "th").ToList();
+                if (cells.Count is < 2 or > 100 || cells.Any(c => c.Attribute("colspan").Length != 0)) return;
+                var percentages = new List<double>();
+                foreach (var cell in cells)
+                {
+                    var width = cell.Style("width");
+                    if (!width.EndsWith('%') ||
+                        !double.TryParse(width[..^1], NumberStyles.AllowDecimalPoint,
+                            CultureInfo.InvariantCulture, out var value) || value is < 1 or > 100) return;
+                    percentages.Add(value);
+                }
+                var sum = percentages.Sum();
+                if (sum is < 95 or > 105) return;
+                for (var index = 0; index < percentages.Count; index++)
+                    resizedWidths[index] = Math.Max(resizedWidths[index],
+                        Math.Clamp(60 * percentages[index] / sum, 10, 58));
             }
 
             void WriteFlow(SafeEditorDocument.Node node)
@@ -251,7 +295,7 @@ internal static class XlsxDocumentExporter
                 AppendRow([""]);
             }
 
-            void AppendRow(string[] cells)
+            void AppendRow(string[] cells, uint styleIndex = 0U)
             {
                 if (rowNumber >= MaxRows) throw new InvalidOperationException("Excel row limit for this export was exceeded.");
                 rowNumber++;
@@ -266,13 +310,15 @@ internal static class XlsxDocumentExporter
                     var longest = lines.Select(line => line.Sum(ch => ch > 0xFF ? 2 : 1)).DefaultIfEmpty(0).Max();
                     textWidths[col] = Math.Max(textWidths[col], Math.Min(55, longest));
                     // Inline strings also protect leading '=' and '+' from formula execution.
-                    row.Append(new S.Cell
+                    var cell = new S.Cell
                     {
                         CellReference = ColumnName(col) + rowNumber.ToString(CultureInfo.InvariantCulture),
                         DataType = S.CellValues.InlineString,
                         InlineString = new S.InlineString(new S.Text(cells[col])
                         { Space = SpaceProcessingModeValues.Preserve })
-                    });
+                    };
+                    if (styleIndex != 0U) cell.StyleIndex = styleIndex;
+                    row.Append(cell);
                 }
                 if (maxLines > 1)
                 {
@@ -283,6 +329,30 @@ internal static class XlsxDocumentExporter
             }
         }
         return buffer.ToArray();
+    }
+
+    private static S.Stylesheet CreateStylesheet()
+    {
+        // Format 0: default, 1: table header, 2: preformatted code.
+        // Open XML requires None and Gray125 fills to precede custom fills.
+        return new S.Stylesheet(
+            new S.Fonts(
+                new S.Font(),
+                new S.Font(new S.Bold()),
+                new S.Font(new S.FontName { Val = "Consolas" }, new S.FontSize { Val = 10D })),
+            new S.Fills(
+                new S.Fill(new S.PatternFill { PatternType = S.PatternValues.None }),
+                new S.Fill(new S.PatternFill { PatternType = S.PatternValues.Gray125 }),
+                new S.Fill(new S.PatternFill(
+                    new S.ForegroundColor { Rgb = "FFF1F5F9" },
+                    new S.BackgroundColor { Indexed = 64U }) { PatternType = S.PatternValues.Solid })),
+            new S.Borders(new S.Border()),
+            new S.CellStyleFormats(new S.CellFormat()),
+            new S.CellFormats(
+                new S.CellFormat { FontId = 0U, FillId = 0U, BorderId = 0U },
+                new S.CellFormat { FontId = 1U, FillId = 0U, BorderId = 0U, ApplyFont = true },
+                new S.CellFormat { FontId = 2U, FillId = 2U, BorderId = 0U,
+                    ApplyFont = true, ApplyFill = true }));
     }
 
     private static (int Width, int Height) GetImageDimensions(byte[] bytes, string mime)

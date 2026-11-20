@@ -132,6 +132,44 @@ using (var zip = new ZipArchive(new MemoryStream(advancedXlsx.Content), ZipArchi
         "Excel embeds signature PNG");
 }
 
+// 0.8.0: code keeps line boundaries, tabs, and literal text in Word and Excel.
+// Presentation markers must never modify the saved editor source HTML.
+var exportCodeHtml = EditorHtmlSanitizer.Sanitize(
+    "<pre class='az-code-block' data-language='csharp'><code>" +
+    "public class Example {&#10;\tstatic void Main() {&#10;" +
+    "    Console.WriteLine(&quot;&lt;safe&gt;&quot;);&#10;" +
+    "    // End of code&#10;}&#10;}</code></pre>" +
+    "<table style='table-layout:fixed'><tr>" +
+    "<th style='width:40.000%'>A</th><th style='width:60.000%'>B</th></tr>" +
+    "<tr><td>One</td><td>=SUM(1,2)</td></tr></table>");
+Require(exportCodeHtml.Contains("data-language=\"csharp\"") &&
+        exportCodeHtml.Contains("&lt;safe&gt;"), "Code block remains inert and encoded");
+var codeWord = await exporter.ExportAsync(exportCodeHtml, EditorExportFormat.Docx);
+using (var zip = new ZipArchive(new MemoryStream(codeWord.Content), ZipArchiveMode.Read))
+{
+    var xml = Read(zip, "word/document.xml");
+    Require(xml.Contains("Consolas") && xml.Contains("F1F5F9"), "Word code monospace and background");
+    Require(xml.Split("<w:br").Length >= 5 && xml.Contains("<w:tab"),
+        "Word code line breaks and indentation render as native elements");
+    Require(xml.Contains("&lt;safe&gt;") && !xml.Contains("<safe>"), "Word source code stays text");
+    Require(xml.Contains("<w:tcW") && xml.Contains("w:type=\"pct\""),
+        "Word preserves selected table column widths");
+}
+var codeExcel = await exporter.ExportAsync(exportCodeHtml, EditorExportFormat.Xlsx);
+using (var zip = new ZipArchive(new MemoryStream(codeExcel.Content), ZipArchiveMode.Read))
+{
+    var sheet = Read(zip, "xl/worksheets/sheet1.xml");
+    var styles = Read(zip, "xl/styles.xml");
+    Require(sheet.Contains("public class Example") && sheet.Contains("// End of code") &&
+        sheet.Contains("&lt;safe&gt;"), "Excel retains each code line as an editable text cell");
+    Require(sheet.Contains("s=\"2\"") && sheet.Contains("s=\"1\""),
+        "Excel applies code and table heading styles");
+    Require(styles.Contains("Consolas") && styles.Contains("FFF1F5F9"),
+        "Excel style palette includes code formatting");
+    Require(sheet.Contains("=SUM(1,2)") && !sheet.Contains("<f>"),
+        "Excel values resembling formulas remain inert inline text");
+}
+
 // 0.6.7: checked/unchecked native controls survive export sanitization
 // but other input types and event/host-form attributes are discarded.
 var safeControls = EditorHtmlSanitizer.Sanitize(

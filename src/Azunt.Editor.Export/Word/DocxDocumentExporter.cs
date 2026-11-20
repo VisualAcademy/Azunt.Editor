@@ -90,7 +90,17 @@ internal static class DocxDocumentExporter
                 "h4" => new Format(Bold: true, Size: 14),
                 _ => new Format()
             };
-            AppendInline(node, para, part, format, ref drawingId);
+            if (node.Name == "pre")
+            {
+                // Code is stored as plain text; do not generate syntax-markup in the file.
+                // Word requires explicit break/tab elements: newlines inside w:t are not rendered.
+                var properties = para.GetFirstChild<W.ParagraphProperties>();
+                properties?.Append(new W.Shading { Val = W.ShadingPatternValues.Clear, Fill = "F1F5F9" });
+                var code = node.Children.FirstOrDefault(child => child.Name == "code");
+                AppendPreformattedText(code?.PlainText() ?? node.PlainText(), para,
+                    new Format(Font: "Consolas", Size: 10, Color: "0F172A"));
+            }
+            else AppendInline(node, para, part, format, ref drawingId);
             body.Append(para);
             return;
         }
@@ -113,6 +123,23 @@ internal static class DocxDocumentExporter
             return;
         }
         foreach (var child in node.Children) AppendBlock(child, body, part, ref drawingId);
+    }
+
+    private static void AppendPreformattedText(string source, W.Paragraph paragraph, Format format)
+    {
+        source = source.Replace("\r\n", "\n", StringComparison.Ordinal).Replace('\r', '\n');
+        var offset = 0;
+        for (var index = 0; index < source.Length; index++)
+        {
+            var current = source[index];
+            if (current is not ('\n' or '\t')) continue;
+            if (index > offset) paragraph.Append(Run(source[offset..index], format));
+            if (current == '\n') paragraph.Append(new W.Run(new W.Break()));
+            else paragraph.Append(new W.Run(new W.TabChar()));
+            offset = index + 1;
+        }
+        if (offset < source.Length) paragraph.Append(Run(source[offset..], format));
+        if (source.Length == 0) paragraph.Append(Run("", format));
     }
 
     private static W.Paragraph Paragraph(SafeEditorDocument.Node node)
@@ -147,8 +174,11 @@ internal static class DocxDocumentExporter
             new W.RightBorder { Val = W.BorderValues.Single, Size = thickness, Color = color },
             new W.InsideHorizontalBorder { Val = W.BorderValues.Single, Size = thickness, Color = color },
             new W.InsideVerticalBorder { Val = W.BorderValues.Single, Size = thickness, Color = color });
-        var table = new W.Table(new W.TableProperties(
-            new W.TableWidth { Width = "5000", Type = W.TableWidthUnitValues.Pct }, borders));
+        var tableProperties = new W.TableProperties(
+            new W.TableWidth { Width = "5000", Type = W.TableWidthUnitValues.Pct }, borders);
+        if (node.Style("table-layout") == "fixed")
+            tableProperties.Append(new W.TableLayout { Type = W.TableLayoutValues.Fixed });
+        var table = new W.Table(tableProperties);
         foreach (var rowNode in node.DescendantsAndSelf().Where(e => e.Name == "tr"))
         {
             var row = new W.TableRow();
@@ -163,8 +193,16 @@ internal static class DocxDocumentExporter
             foreach (var cellNode in cells)
             {
                 var cell = new W.TableCell();
+                var cellProperties = new W.TableCellProperties();
+                if (TryPercentWidth(cellNode, out var percentage))
+                    cellProperties.Append(new W.TableCellWidth
+                    {
+                        Type = W.TableWidthUnitValues.Pct,
+                        Width = ((int)Math.Round(percentage * 50)).ToString(System.Globalization.CultureInfo.InvariantCulture)
+                    });
                 if (int.TryParse(cellNode.Attribute("colspan"), out var span) && span is >= 2 and <= 12)
-                    cell.Append(new W.TableCellProperties(new W.GridSpan { Val = span }));
+                    cellProperties.Append(new W.GridSpan { Val = span });
+                if (cellProperties.HasChildren) cell.Append(cellProperties);
                 var para = Paragraph(cellNode);
                 AppendInline(cellNode, para, part,
                     cellNode.Name == "th" ? new Format(Bold: true) : new Format(), ref drawingId, cellImageMaxWidth);
@@ -174,6 +212,16 @@ internal static class DocxDocumentExporter
             table.Append(row);
         }
         return table;
+    }
+
+    private static bool TryPercentWidth(SafeEditorDocument.Node cell, out double percentage)
+    {
+        percentage = 0;
+        var width = cell.Style("width");
+        return width.EndsWith('%') &&
+            double.TryParse(width[..^1], System.Globalization.NumberStyles.AllowDecimalPoint,
+                System.Globalization.CultureInfo.InvariantCulture, out percentage) &&
+            percentage is >= 1 and <= 100;
     }
 
     private static void AppendInline(SafeEditorDocument.Node node, W.Paragraph para, MainDocumentPart part,

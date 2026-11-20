@@ -61,8 +61,8 @@ internal sealed class PdfDocumentExporter : IDisposable
                   img{max-width:100%;height:auto;break-inside:avoid;page-break-inside:avoid}
                   p{orphans:2;widows:2}h1,h2,h3,h4{page-break-after:avoid}
                   pre{white-space:pre-wrap;overflow-wrap:anywhere}
-                  pre.az-code-block{font:10pt/1.5 Consolas,monospace;background:#f1f5f9;color:#0f172a;border:1px solid #94a3b8;border-radius:5px;padding:12px;break-inside:avoid}
-                  pre.az-code-block code{font:inherit;white-space:pre-wrap}blockquote{border-left:3px solid #cbd5e1;padding-left:15px;margin-left:0}
+                  pre.az-code-block{font:10pt/1.5 Consolas,monospace;background:#f1f5f9;color:#0f172a;border:1px solid #94a3b8;border-radius:5px;padding:12px;break-inside:auto;page-break-inside:auto;white-space:pre-wrap;overflow-wrap:anywhere}
+                  pre.az-code-block code{font:inherit;white-space:pre-wrap;overflow-wrap:anywhere}blockquote{border-left:3px solid #cbd5e1;padding-left:15px;margin-left:0}
                   a{color:#1d4ed8}hr{border:0;border-top:1px solid #cbd5e1}
                   hr[data-azunt-page-break="true"]{break-before:page;page-break-before:always;border:0;margin:0;height:0}
                 </style></head><body>{{safeHtml}}</body></html>

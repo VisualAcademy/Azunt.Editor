@@ -2,7 +2,7 @@
 
 A lightweight rich-text editor for ASP.NET Core MVC, Razor Pages, and Blazor Server.
 
-Version: **0.7.1** · .NET 10
+Version: **0.7.2** · .NET 10
 
 ## Projects
 - `src/Azunt.Editor` — shared editor components, JavaScript, and CSS
@@ -31,7 +31,15 @@ using `/editor/blazor?mode=view`. In 0.6.6,
 View content is emitted server-side through a restricted HTML allowlist, so
 initial viewing does not depend on the editor JavaScript or a SignalR circuit.
 
-## Programming code blocks (0.7.1)
+## Code block editing improvements (0.7.2)
+
+- Line numbers appear in Edit/View after JavaScript initialization without modifying saved HTML or copied code.
+- Long lines scroll horizontally, with a sticky number gutter. For blocks over 5,000 lines, the gutter is omitted to protect performance.
+- The code input supports Enter indentation, Tab indentation, Shift+Tab outdent and selecting multiple lines.
+- Improved token colors for C#, JavaScript, SQL, HTML and CSS. Print and PDF output wraps long source lines.
+- See `docs/code-blocks-072.md` for behavior, compatibility and test steps.
+
+## Programming code blocks (0.7.2)
 
 Use the **Code** split button in either toolbar (or the Insert menu) to add C#,
 JavaScript, SQL, HTML, or CSS snippets. A dedicated textarea edits the literal

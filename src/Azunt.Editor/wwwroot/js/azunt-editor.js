@@ -234,29 +234,46 @@
 
   // Small dependency-free lexer: color only, never executes user-provided code.
   // All token content enters through textContent, never through innerHTML.
-  function codeTokenType(language, word) {
-    if (/^(?:\/\/|\/\*|--|<!--[\s\S]*?-->)/.test(word)) return "comment";
-    if (/^['"`]/.test(word)) return "string";
-    if (/^\d/.test(word) || /^#[0-9a-f]{3,8}$/i.test(word)) return "number";
+  // The lexer is presentation-only. Match complete strings/comments first so
+  // words inside them are never recolored as keywords or HTML attributes.
+  // No eval/innerHTML or external syntax highlighter is used.
+  const codePatterns = {
+    csharp: /(?:\/\/[^\n]*|\/\*[\s\S]*?\*\/|@"(?:[^"]|"")*"|\$?"(?:\\[\s\S]|[^"\\])*"|'(?:\\.|[^'\\])*'|\b0x[0-9a-fA-F_]+\b|\b\d[\d_]*(?:\.[\d_]+)?\b|\b[A-Za-z_][\w]*\b)/g,
+    javascript: /(?:\/\/[^\n]*|\/\*[\s\S]*?\*\/|"(?:\\[\s\S]|[^"\\])*"|'(?:\\[\s\S]|[^'\\])*'|`(?:\\[\s\S]|[^`\\])*`|\b0x[0-9a-fA-F_]+\b|\b\d[\d_]*(?:\.[\d_]+)?\b|\b[A-Za-z_$][\w$]*\b)/g,
+    sql: /(?:--[^\n]*|\/\*[\s\S]*?\*\/|'(?:''|[^'])*'|"(?:""|[^"])*"|\b\d+(?:\.\d+)?\b|\b[A-Za-z_][\w]*\b)/g,
+    html: /(?:<!--[\s\S]*?-->|<\/?[A-Za-z][\w:-]*|\b[A-Za-z_:][\w:.-]*(?=\s*=)|"[^"]*"|'[^']*'|&(?:#[0-9]+|#x[0-9a-fA-F]+|[A-Za-z]+);)/g,
+    css: /(?:\/\*[\s\S]*?\*\/|"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|#[0-9a-fA-F]{3,8}\b|@[A-Za-z-]+|--[\w-]+|[A-Za-z-]+(?=\s*:)|\b\d+(?:\.\d+)?(?:px|rem|em|%|vh|vw|pt|s|ms)?\b|\b[A-Za-z_][\w-]*\b)/g
+  };
+  function codeTokenType(language, word, matchIndex, source) {
+    if ((language === "sql" && /^--/.test(word)) ||
+        (language !== "sql" && language !== "html" && /^\/\//.test(word)) ||
+        /^\/\*/.test(word) || /^<!--/.test(word)) return "comment";
+    if (/^(?:['"`]|@"|\$")/.test(word)) return "string";
+    if (/^\d/.test(word) || (language === "css" && /^#[0-9a-f]{3,8}$/i.test(word))) return "number";
     if (language === "html") {
-      if (/^<\/?[A-Za-z]/.test(word)) return "keyword";
+      if (/^<\/?[A-Za-z]/.test(word)) return "tag";
+      if (/^[A-Za-z_:][\w:.-]*$/.test(word)) return "property";
+      if (/^&/.test(word)) return "number";
       return "plain";
     }
+    if (language === "css") {
+      if (/^@/.test(word)) return "keyword";
+      if (/^--/.test(word) || /^[A-Za-z-]+$/.test(word) && /\s*:/.test(source.slice(matchIndex + word.length))) return "property";
+    }
     if (codeKeywords[language]?.has(language === "sql" ? word.toUpperCase() : word)) return "keyword";
+    if (language === "csharp" && /^[A-Z][A-Za-z0-9_]*$/.test(word)) return "type";
+    if (language === "javascript" && /^(?:console|document|window|Promise|Array|Object|Math|JSON)$/.test(word)) return "type";
     return "plain";
   }
 
-  function highlightCodeText(code, language, text) {
-    const tokens = language === "html"
-      ? /(<!--[\s\S]*?-->|<\/?[A-Za-z][\w:-]*|\b(?:class|id|href|src|type|style)\b|"(?:[^"]*)"|'(?:[^']*)')/g
-      : language === "sql"
-        ? /(--[^\n]*|\/\*[\s\S]*?\*\/|'(?:''|[^'])*'|\b\d+(?:\.\d+)?\b|\b[A-Za-z_][\w]*\b)/g
-        : /(\/\/[^\n]*|\/\*[\s\S]*?\*\/|"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|`(?:\\.|[^`\\])*`|#[0-9a-fA-F]{3,8}\b|\b\d+(?:\.\d+)?\b|\b[A-Za-z_$][\w$]*\b)/g;
+  function highlightCodeText(code, language, source) {
     const fragment = document.createDocumentFragment();
+    const tokens = codePatterns[language];
+    if (!tokens) { code.textContent = source; return; }
     let offset = 0;
-    for (const match of text.matchAll(tokens)) {
-      if (match.index > offset) fragment.appendChild(document.createTextNode(text.slice(offset, match.index)));
-      const type = codeTokenType(language, match[0]);
+    for (const match of source.matchAll(tokens)) {
+      if (match.index > offset) fragment.appendChild(document.createTextNode(source.slice(offset, match.index)));
+      const type = codeTokenType(language, match[0], match.index, source);
       if (type === "plain") fragment.appendChild(document.createTextNode(match[0]));
       else {
         const span = document.createElement("span");
@@ -266,8 +283,65 @@
       }
       offset = match.index + match[0].length;
     }
-    if (offset < text.length) fragment.appendChild(document.createTextNode(text.slice(offset)));
+    if (offset < source.length) fragment.appendChild(document.createTextNode(source.slice(offset)));
     code.replaceChildren(fragment);
+  }
+
+  // Line numbers are view-only siblings of <code>. Neither the stored document
+  // nor the Copy action ever includes them. Cap the gutter for very long files.
+  function updateCodeLineNumbers(block, source) {
+    const lines = source.split("\n").length;
+    const previous = block.querySelector(":scope > .az-code-line-numbers");
+    if (lines > 5000) {
+      previous?.remove();
+      block.dataset.codeLinesHidden = "true";
+      block.azCodeLineCount = lines;
+      return;
+    }
+    delete block.dataset.codeLinesHidden;
+    if (previous && block.azCodeLineCount === lines) return;
+    const gutter = previous || document.createElement("span");
+    gutter.className = "az-code-line-numbers";
+    gutter.setAttribute("aria-hidden", "true");
+    gutter.contentEditable = "false";
+    gutter.textContent = Array.from({ length: lines }, (_, index) => index + 1).join("\n");
+    gutter.style.minWidth = `${Math.max(3, String(lines).length + 1)}ch`;
+    if (!previous) block.insertBefore(gutter, block.querySelector("code"));
+    block.azCodeLineCount = lines;
+  }
+
+  function editCodeIndent(textarea, outdent) {
+    const value = textarea.value;
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+    const firstLineStart = value.lastIndexOf("\n", Math.max(0, start - 1)) + 1;
+    const hasMultipleLines = value.slice(start, end).includes("\n");
+    if (!outdent && !hasMultipleLines) {
+      textarea.setRangeText("    ", start, end, "end");
+      return;
+    }
+    // Exclude a trailing selected line when selection ends at column zero.
+    const effectiveEnd = end > firstLineStart && value[end - 1] === "\n" ? end - 1 : end;
+    const lastLineEnd = value.indexOf("\n", effectiveEnd);
+    const rangeEnd = lastLineEnd === -1 ? value.length : lastLineEnd;
+    const lines = value.slice(firstLineStart, rangeEnd).split("\n");
+    const changed = lines.map(line => outdent ? line.replace(/^(?: {1,4}|\t)/, "") : "    " + line);
+    const replacement = changed.join("\n");
+    const firstDifference = changed[0].length - lines[0].length;
+    const totalDifference = replacement.length - (rangeEnd - firstLineStart);
+    textarea.setRangeText(replacement, firstLineStart, rangeEnd, "preserve");
+    if (hasMultipleLines) textarea.setSelectionRange(firstLineStart, rangeEnd + totalDifference);
+    else textarea.setSelectionRange(Math.max(firstLineStart, start + firstDifference), Math.max(firstLineStart, start + firstDifference));
+  }
+
+  function insertCodeNewline(textarea) {
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+    const before = textarea.value.slice(0, start);
+    const currentLine = before.slice(before.lastIndexOf("\n") + 1);
+    const whitespace = /^\s*/.exec(currentLine)?.[0] || "";
+    const increase = /[{[(]\s*$/.test(currentLine) ? "    " : "";
+    textarea.setRangeText("\n" + whitespace + increase, start, end, "end");
   }
 
   function decorateCodeBlocks(instance) {
@@ -286,6 +360,7 @@
         block.azCodeRendered = value;
         block.azCodeLanguage = language;
       }
+      updateCodeLineNumbers(block, value);
       if (!block.querySelector('.az-code-actions')) {
         const actions = document.createElement("span");
         actions.className = "az-code-actions";
@@ -522,7 +597,7 @@
     // Code Copy/Edit UI is not part of the document and must not affect counts.
     if (!instance.sourceMode && instance.canvas.querySelector('.az-code-actions')) {
       const clone = instance.canvas.cloneNode(true);
-      clone.querySelectorAll('.az-code-actions').forEach(node => node.remove());
+      clone.querySelectorAll('.az-code-actions, .az-code-line-numbers').forEach(node => node.remove());
       text = clone.textContent || "";
     }
     const count = (text.match(/[\p{L}\p{N}]+(?:['’‐-―-][\p{L}\p{N}]+)*/gu) || []).length;
@@ -3072,9 +3147,15 @@
     instance.codePanel?.querySelector("[data-code-apply]")?.addEventListener("click", () => applyCodePanel(instance), { signal });
     instance.codePanel?.querySelector("[data-code-cancel]")?.addEventListener("click", () => closeCodePanel(instance), { signal });
     instance.codeText?.addEventListener("keydown", event => {
+      if (event.isComposing) return;
       if (event.key === "Escape") { event.preventDefault(); closeCodePanel(instance); }
-      if (event.key === "Tab") { event.preventDefault(); const pos = instance.codeText.selectionStart;
-        instance.codeText.setRangeText("    ", pos, instance.codeText.selectionEnd, "end"); }
+      else if (event.key === "Tab") {
+        event.preventDefault();
+        editCodeIndent(instance.codeText, event.shiftKey);
+      } else if (event.key === "Enter") {
+        event.preventDefault();
+        insertCodeNewline(instance.codeText);
+      }
     }, { signal });
     instance.linkPanel.querySelector("[data-link-apply]").addEventListener("click", () => applyLink(instance), { signal });
     instance.linkPanel.querySelector("[data-link-cancel]").addEventListener("click", () => {

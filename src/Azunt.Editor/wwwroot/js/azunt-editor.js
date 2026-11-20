@@ -14,12 +14,13 @@
     ["letter", { title: "Letter", html: "<p>Date: </p><p>To: </p><p>Subject: </p><p>Dear recipient,</p><p><br></p><p>Sincerely,</p><p>Your name</p>" }]
   ]);
   const allowedTags = new Set([
-    "p", "div", "h2", "h3", "strong", "b", "em", "i", "u", "s", "ul", "ol", "li",
-    "blockquote", "pre", "code", "sup", "sub", "table", "thead", "tbody", "tr", "td", "th", "br", "hr", "img", "a", "span", "input"
+    "p", "div", "h1", "h2", "h3", "h4", "strong", "b", "em", "i", "u", "s", "del", "strike", "ul", "ol", "li",
+    "blockquote", "pre", "code", "sup", "sub", "table", "thead", "tbody", "tfoot", "tr", "td", "th", "br", "hr", "img", "a", "span", "input"
   ]);
   const dropWithChildren = new Set([
     "script", "style", "iframe", "frame", "frameset", "object", "embed", "svg", "math", "template",
-    "form", "textarea", "button", "select", "option", "link", "meta", "base", "video", "audio"
+    "form", "textarea", "button", "select", "option", "link", "meta", "base", "video", "audio",
+    "head", "title", "noscript", "noembed", "noframes", "plaintext", "xmp"
   ]);
   const imageDataUrlPattern = /^data:image\/(?:png|jpeg|gif|webp);base64,[A-Za-z0-9+/]+={0,2}$/i;
   const supportedTypes = new Set(["image/png", "image/jpeg", "image/gif", "image/webp"]);
@@ -129,7 +130,7 @@
         }
       }
       // Only allow narrowly-validated formatting properties. Never carry arbitrary CSS.
-      if (tag === "span" || ["p", "div", "h2", "h3", "li", "td", "th"].includes(tag)) {
+      if (tag === "span" || ["p", "div", "h1", "h2", "h3", "h4", "li", "td", "th"].includes(tag)) {
         const family = (node.style.fontFamily || "").replace(/^['"]|['"]$/g, "");
         if (allowedFonts.has(family)) clean.style.fontFamily = family.includes(" ") ? `"${family}"` : family;
         const size = /^(\d{1,2})px$/.exec(node.style.fontSize || "");
@@ -139,7 +140,7 @@
         if (color) clean.style.color = color;
         if (background) clean.style.backgroundColor = background;
       }
-      if (["p", "div", "h2", "h3", "li", "td", "th", "blockquote"].includes(tag)) {
+      if (["p", "div", "h1", "h2", "h3", "h4", "li", "td", "th", "blockquote"].includes(tag)) {
         const align = (node.style.textAlign || "").toLowerCase();
         if (["left", "center", "right", "justify"].includes(align)) clean.style.textAlign = align;
         const margin = /^(\d{1,3})px$/.exec(node.style.marginLeft || "");
@@ -881,7 +882,7 @@
   function nearestBlock(instance, range) {
     let current = range.startContainer.nodeType === Node.ELEMENT_NODE ? range.startContainer : range.startContainer.parentElement;
     while (current && current !== instance.canvas) {
-      if (["P", "DIV", "H2", "H3", "LI", "BLOCKQUOTE"].includes(current.tagName)) return current;
+      if (["P", "DIV", "H1", "H2", "H3", "H4", "LI", "BLOCKQUOTE"].includes(current.tagName)) return current;
       current = current.parentElement;
     }
     return null;
@@ -1051,7 +1052,7 @@
     const range = selectedRange(instance);
     const block = nearestBlock(instance, range);
     if (block && block.parentElement === instance.canvas &&
-        ["P", "H2", "H3"].includes(block.tagName)) {
+        ["P", "H1", "H2", "H3", "H4"].includes(block.tagName)) {
       // A paragraph cannot legally contain another paragraph. Split it at
       // the caret so save/restore and DOCX export preserve the image position.
       range.deleteContents();
@@ -1118,24 +1119,129 @@
     changed(instance);
   }
 
-  // Paste only editor-approved elements; never append untrusted clipboard HTML
-  // directly. Formatting (headings, tables, links) survives without Office CSS.
-  function pasteCleanContent(instance, html, plainText) {
-    const clean = html && html.length <= maxDocumentBytes ? sanitizeHtml(html) : "";
-    if (!clean || !clean.trim()) return insertPlainText(instance, plainText || "");
+  // Word, Google Docs and web-page HTML can be entire documents or Windows
+  // CF_HTML data with StartFragment markers. Only the selected fragment belongs
+  // in the editor: never paste header metadata or a source page's <head>.
+  function clipboardFragmentHtml(html) {
+    if (typeof html !== "string" || html.length > maxDocumentBytes) return "";
+    const start = /<!--\s*StartFragment\s*-->/i.exec(html);
+    const end = /<!--\s*EndFragment\s*-->/i.exec(html);
+    if (start && end && end.index >= start.index + start[0].length)
+      return html.slice(start.index + start[0].length, end.index);
+    // Some native CF_HTML providers omit fragment markers but keep the header.
+    if (/^Version:\s*\d/i.test(html)) {
+      const firstTag = html.search(/<(?:html|body|p|div|table|h[1-6]|ul|ol|pre)\b/i);
+      return firstTag >= 0 ? html.slice(firstTag) : "";
+    }
+    return html;
+  }
+
+  // Translate only a few standard clipboard formatting declarations into
+  // semantic elements supported by the existing editor/viewer/export policies.
+  // No Office mso-* styles, classes, handlers, or arbitrary CSS are retained.
+  function normalizeClipboardFormatting(html) {
+    // Ordinary HTML without inline styles needs only the final sanitizer pass.
+    if (!/<font\b|\bstyle\s*=/i.test(html)) return html;
     const template = document.createElement("template");
-    template.innerHTML = clean;
-    const fragment = template.content;
-    // A caret marker remains in the DOM after the fragment moves, allowing
-    // insertion in the middle of a paragraph and subsequent typing.
+    template.innerHTML = html;
+    for (const element of Array.from(template.content.querySelectorAll("font"))) {
+      const span = document.createElement("span");
+      const face = (element.getAttribute("face") || "").replace(/^['"]|['"]$/g, "");
+      if (allowedFonts.has(face)) span.style.fontFamily = face;
+      const color = cleanColor(element.getAttribute("color"));
+      if (color) span.style.color = color;
+      const legacySize = Number(element.getAttribute("size"));
+      const sizes = [0, 10, 13, 16, 18, 24, 32, 48];
+      if (Number.isInteger(legacySize) && legacySize >= 1 && legacySize <= 7)
+        span.style.fontSize = `${sizes[legacySize]}px`;
+      while (element.firstChild) span.appendChild(element.firstChild);
+      element.replaceWith(span);
+    }
+    for (const element of Array.from(template.content.querySelectorAll("[style]"))) {
+      // Re-wrap children rather than carrying CSS properties through the
+      // sanitizer. It also works for Google Docs <span> and Word <p>.
+      const weight = element.style.fontWeight.trim().toLowerCase();
+      const italic = element.style.fontStyle.trim().toLowerCase();
+      const decoration = (element.style.textDecorationLine || element.style.textDecoration || "").toLowerCase();
+      const wrappers = [];
+      if (weight === "bold" || weight === "bolder" || /^(?:[6-9]00)$/.test(weight)) wrappers.push("strong");
+      if (italic === "italic" || italic === "oblique") wrappers.push("em");
+      if (/(?:^|\s)underline(?:\s|$)/.test(decoration)) wrappers.push("u");
+      if (/(?:^|\s)line-through(?:\s|$)/.test(decoration)) wrappers.push("s");
+      if (!wrappers.length) continue;
+      let content = document.createDocumentFragment();
+      while (element.firstChild) content.appendChild(element.firstChild);
+      for (const tag of wrappers) {
+        const wrapper = document.createElement(tag);
+        wrapper.appendChild(content);
+        content = document.createDocumentFragment();
+        content.appendChild(wrapper);
+      }
+      element.appendChild(content);
+    }
+    return template.innerHTML;
+  }
+
+  const clipboardBlockTags = new Set(["P", "DIV", "H1", "H2", "H3", "H4", "BLOCKQUOTE", "PRE", "UL", "OL", "TABLE", "HR"]);
+
+  // A rich fragment inserted into the middle of <p> must be a sibling of
+  // that paragraph, not a nested <p>/<table>. Keep surrounding text intact.
+  // Restrict splitting to a root-level text block; within tables and lists the
+  // browser's existing insertion behavior is retained for compatibility.
+  function insertClipboardFragment(instance, fragment) {
     const marker = document.createTextNode("");
     fragment.appendChild(marker);
     instance.canvas.focus();
     const range = selectedRange(instance);
+    const block = nearestBlock(instance, range);
+    const hasBlock = Array.from(fragment.childNodes).some(node =>
+      node.nodeType === Node.ELEMENT_NODE && clipboardBlockTags.has(node.tagName));
+    const canSplit = hasBlock && block?.parentElement === instance.canvas &&
+      ["P", "DIV", "H1", "H2", "H3", "H4"].includes(block.tagName) &&
+      block.contains(range.endContainer);
     range.deleteContents();
-    range.insertNode(fragment);
+    if (canSplit && block.isConnected && block.contains(range.startContainer)) {
+      const tailRange = document.createRange();
+      tailRange.setStart(range.startContainer, range.startOffset);
+      tailRange.setEnd(block, block.childNodes.length);
+      const right = block.cloneNode(false);
+      right.appendChild(tailRange.extractContents());
+      if (!right.hasChildNodes()) right.appendChild(document.createElement("br"));
+      if (!block.hasChildNodes()) block.appendChild(document.createElement("br"));
+      block.after(fragment, right);
+    } else {
+      range.insertNode(fragment);
+    }
     selectAfter(marker);
     changed(instance);
+  }
+
+  // Paste only approved HTML. Plain text is the safe fallback for empty or
+  // unsupported rich fragments; do not drop clipboard content silently.
+  function pasteCleanContent(instance, html, plainText) {
+    if (typeof plainText === "string" && new Blob([plainText]).size > maxDocumentBytes) {
+      message(instance, "The pasted text exceeds the 16 MB document limit.", "warning");
+      return;
+    }
+    if (typeof html === "string" && new Blob([html]).size > maxDocumentBytes) {
+      if (plainText) {
+        message(instance, "Rich clipboard content is too large; inserting plain text.", "warning");
+        return insertPlainText(instance, plainText);
+      }
+      message(instance, "The pasted HTML exceeds the 16 MB document limit.", "warning");
+      return;
+    }
+    const fragmentHtml = clipboardFragmentHtml(html);
+    const clean = fragmentHtml ? sanitizeHtml(normalizeClipboardFormatting(fragmentHtml)) : "";
+    if (!clean || !clean.trim()) return insertPlainText(instance, plainText || "");
+    const template = document.createElement("template");
+    template.innerHTML = clean;
+    // A rich clipboard fragment containing only stripped active content must
+    // never execute; if ordinary plain text is available, use that instead.
+    if (plainText && !template.content.textContent?.trim() &&
+        !template.content.querySelector("img,table,input,hr"))
+      return insertPlainText(instance, plainText);
+    insertClipboardFragment(instance, template.content);
   }
 
   function clearFormatting(instance) {
@@ -1177,7 +1283,7 @@
     if (pageBreak) rule.setAttribute("data-azunt-page-break", "true");
     const range = selectedRange(instance);
     const block = nearestBlock(instance, range);
-    if (block && block.parentElement === instance.canvas && ["P", "DIV", "H2", "H3"].includes(block.tagName)) {
+    if (block && block.parentElement === instance.canvas && ["P", "DIV", "H1", "H2", "H3", "H4"].includes(block.tagName)) {
       // Split a root-level paragraph around the caret. A page break is a
       // separate block, never an invalid <p><hr></p> nested structure.
       range.deleteContents();

@@ -2,7 +2,7 @@
 
 A lightweight rich-text editor for ASP.NET Core MVC, Razor Pages, and Blazor Server.
 
-Version: **0.6.8** · .NET 10
+Version: **0.7.0** · .NET 10
 
 ## Projects
 - `src/Azunt.Editor` — shared editor components, JavaScript, and CSS
@@ -30,6 +30,18 @@ mode on `/editor/blazor` without discarding the current document. Start in View
 using `/editor/blazor?mode=view`. In 0.6.6,
 View content is emitted server-side through a restricted HTML allowlist, so
 initial viewing does not depend on the editor JavaScript or a SignalR circuit.
+
+## HTML paste reliability (0.7.0)
+
+Pasting from Word, Google Docs, websites or plain text uses the same safe HTML
+allowlist as other editing operations. Clipboard fragment markers and document
+headers are removed. A narrow subset of inline weight/italic/underline/strike
+styles becomes semantic HTML without retaining Word's `mso-*` or other
+unapproved CSS. Pasting paragraphs or tables into the middle of an existing
+root-level paragraph splits the surrounding paragraph rather than nesting
+block elements inside it; surrounding text is preserved. This change affects
+clipboard paste/drop only; programmatic `setHtml` and document storage remain
+backwards compatible. See [paste behavior](docs/html-paste.md).
 
 ## Table dimension picker (0.6.8)
 

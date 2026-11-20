@@ -40,15 +40,15 @@ internal sealed class ViewerSafeEditorDocument
 
     private static readonly HashSet<string> Allowed = new(StringComparer.OrdinalIgnoreCase)
     {
-        "p", "div", "h2", "h3", "strong", "b", "em", "i", "u", "s",
+        "p", "div", "h1", "h2", "h3", "h4", "strong", "b", "em", "i", "u", "s", "del", "strike",
         "ul", "ol", "li", "blockquote", "pre", "code", "sup", "sub", "table", "thead", "tbody",
-        "tr", "td", "th", "br", "hr", "img", "a", "span", "input"
+        "tfoot", "tr", "td", "th", "br", "hr", "img", "a", "span", "input"
     };
     private static readonly HashSet<string> Omitted = new(StringComparer.OrdinalIgnoreCase)
     {
         "script", "style", "iframe", "frame", "frameset", "object", "embed", "svg", "math", "template",
         "form", "textarea", "button", "select", "option", "link", "meta", "base", "video", "audio",
-        "noscript", "noembed", "noframes", "plaintext", "xmp", "title"
+        "noscript", "noembed", "noframes", "plaintext", "xmp", "title", "head"
     };
     private static readonly HashSet<string> Void = new(StringComparer.OrdinalIgnoreCase) { "br", "hr", "img", "input" };
     // Standard HTML void elements have no end tag. They must never cause the

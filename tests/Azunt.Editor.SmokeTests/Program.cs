@@ -40,6 +40,19 @@ var rgbViewer = Azunt.Editor.Rendering.EditorViewerSanitizer.Sanitize(
     "<p style=\"color:rgb(18, 52, 86);background-color:rgba(255, 220, 10, 1)\">Colors</p>");
 Require(rgbViewer.Contains("#123456") && rgbViewer.Contains("#ffdc0a"), "Browser RGB colors survive server rendering");
 
+// 0.7.0: pasted heading/footer/strike markup has the same browser/Viewer
+// allowlist; remote active content and source-page metadata are not rendered.
+var pastedViewer = EditorViewerSanitizer.Sanitize(
+    "<head><title>Hidden metadata</title><style>body{color:red}</style></head>" +
+    "<h1>Title</h1><h4>Subtitle</h4><p><del>Removed</del><strike>Old</strike></p>" +
+    "<table><tfoot><tr><td>Summary</td></tr></tfoot></table>");
+Require(pastedViewer.Contains("<h1>Title</h1>"), "Pasted H1 survives Viewer");
+Require(pastedViewer.Contains("<h4>Subtitle</h4>"), "Pasted H4 survives Viewer");
+Require(pastedViewer.Contains("<del>Removed</del>"), "Pasted deletion formatting survives Viewer");
+Require(pastedViewer.Contains("<tfoot>"), "Pasted table footer survives Viewer");
+Require(!pastedViewer.Contains("Hidden metadata") && !pastedViewer.Contains("body{color:red}"),
+    "Source page head is not inserted into View");
+
 // 0.6.8: both toolbar modes expose the table split control and its grid picker.
 var tableToolbar = EditorMarkup.Render("table-palette", "Html");
 Require(tableToolbar.Contains("data-quick-command=\"table\""), "Quick default 2x2 table insertion retained");

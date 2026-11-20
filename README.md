@@ -31,6 +31,15 @@ using `/editor/blazor?mode=view`. In 0.6.6,
 View content is emitted server-side through a restricted HTML allowlist, so
 initial viewing does not depend on the editor JavaScript or a SignalR circuit.
 
+## Undo/Redo reliability (0.7.0 follow-up)
+
+- Restore the caret and selected text when undoing/redoing changes to visual HTML.
+- Group Korean/other IME composition updates into one history step.
+- Route supported browser-native history events through the same history stack.
+- Preserve form control states and Edit/View cycles with bounded history.
+
+See [Undo/Redo reliability](docs/undo-redo-stabilization.md) for limitations and tests.
+
 ## HTML paste reliability (0.7.0)
 
 Pasting from Word, Google Docs, websites or plain text uses the same safe HTML

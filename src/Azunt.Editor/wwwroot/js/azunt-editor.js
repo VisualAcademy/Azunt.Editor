@@ -247,11 +247,82 @@
     instance.emitTimer = window.setTimeout(() => emit(instance), 200);
   }
 
+  // Store DOM-relative endpoints separately from the HTML snapshots. A live
+  // Range cannot survive innerHTML replacement (Undo, View -> Edit, or paste).
+  // Paths are best-effort: sanitizing HTML may remove nodes, in which case we
+  // safely collapse at the end of the restored document instead of throwing.
+  function selectionEndpoint(instance, node, offset) {
+    const path = [];
+    for (let current = node; current && current !== instance.canvas; current = current.parentNode) {
+      const parent = current.parentNode;
+      if (!parent) return null;
+      path.unshift(Array.prototype.indexOf.call(parent.childNodes, current));
+    }
+    if (!node || (node !== instance.canvas && !instance.canvas.contains(node))) return null;
+    return { path, offset };
+  }
+
+  function captureHistorySelection(instance) {
+    const selection = window.getSelection();
+    let range = selection?.rangeCount ? selection.getRangeAt(0) : null;
+    if (!range || !instance.canvas.contains(range.commonAncestorContainer)) {
+      range = instance.lastRange && instance.canvas.contains(instance.lastRange.commonAncestorContainer)
+        ? instance.lastRange : null;
+    }
+    if (!range) return null;
+    const start = selectionEndpoint(instance, range.startContainer, range.startOffset);
+    const end = selectionEndpoint(instance, range.endContainer, range.endOffset);
+    return start && end ? { start, end } : null;
+  }
+
+  function rememberHistorySelection(instance) {
+    const position = captureHistorySelection(instance);
+    if (position) instance.historySelections[instance.historyIndex] = position;
+  }
+
+  function restoreHistorySelection(instance) {
+    const saved = instance.historySelections[instance.historyIndex];
+    const resolve = endpoint => {
+      let node = instance.canvas;
+      for (const index of endpoint.path) {
+        if (!node.childNodes || index >= node.childNodes.length) return null;
+        node = node.childNodes[index];
+      }
+      const limit = node.nodeType === Node.TEXT_NODE ? (node.textContent || "").length : node.childNodes.length;
+      return { node, offset: Math.max(0, Math.min(endpoint.offset, limit)) };
+    };
+    const range = document.createRange();
+    const start = saved && resolve(saved.start);
+    const end = saved && resolve(saved.end);
+    try {
+      if (start) {
+        range.setStart(start.node, start.offset);
+        if (end) range.setEnd(end.node, end.offset);
+        else range.collapse(true);
+      } else {
+        range.selectNodeContents(instance.canvas);
+        range.collapse(false);
+      }
+    } catch (_) {
+      range.selectNodeContents(instance.canvas);
+      range.collapse(false);
+    }
+    const selection = window.getSelection();
+    selection.removeAllRanges();
+    selection.addRange(range);
+    instance.lastRange = range.cloneRange();
+  }
+
   function remember(instance) {
     const html = readHtml(instance);
-    if (instance.history[instance.historyIndex] === html) return;
+    if (instance.history[instance.historyIndex] === html) {
+      rememberHistorySelection(instance);
+      return;
+    }
     instance.history = instance.history.slice(0, instance.historyIndex + 1);
+    instance.historySelections = instance.historySelections.slice(0, instance.historyIndex + 1);
     instance.history.push(html);
+    instance.historySelections.push(captureHistorySelection(instance));
     // Always retain at least the current snapshot, even if it alone exceeds
     // the history budget. Large image-rich documents intentionally have fewer
     // undo steps to avoid exhausting browser memory.
@@ -259,6 +330,7 @@
     while (instance.history.length > 1 &&
       (instance.history.length > maxHistoryEntries || totalBytes > maxHistoryBytes)) {
       totalBytes -= new Blob([instance.history.shift()]).size;
+      instance.historySelections.shift();
     }
     instance.historyIndex = instance.history.length - 1;
   }
@@ -288,12 +360,14 @@
       const range = selection.getRangeAt(0);
       if (instance.canvas.contains(range.commonAncestorContainer)) {
         instance.lastRange = range.cloneRange();
+        rememberHistorySelection(instance);
         return range;
       }
     }
     if (instance.lastRange && instance.canvas.contains(instance.lastRange.commonAncestorContainer)) {
       selection.removeAllRanges();
       selection.addRange(instance.lastRange);
+      rememberHistorySelection(instance);
       return instance.lastRange;
     }
     const range = document.createRange();
@@ -301,6 +375,7 @@
     range.collapse(false);
     selection.removeAllRanges();
     selection.addRange(range);
+    rememberHistorySelection(instance);
     return range;
   }
 
@@ -948,16 +1023,28 @@
   }
 
   function undoOrRedo(instance, delta) {
+    if (instance.readOnly || instance.sourceMode || instance.isComposing) return;
+    // Preserve the caret in the snapshot we are leaving. An unrecorded edit
+    // is committed first, so Undo never silently loses the latest keystroke.
     if (delta < 0) remember(instance);
+    else if (readHtml(instance) !== instance.history[instance.historyIndex]) {
+      remember(instance); // New content invalidates the previous Redo branch.
+      return;
+    }
+    rememberHistorySelection(instance);
     const next = instance.historyIndex + delta;
     if (next < 0 || next >= instance.history.length) return;
     instance.historyIndex = next;
     instance.canvas.innerHTML = instance.history[next];
     setImageSelection(instance, null);
     instance.lastRange = null;
-    setImageSelection(instance, null);
     instance.activeCell = null;
+    setDocumentControlsReadOnly(instance);
+    instance.canvas.focus();
+    restoreHistorySelection(instance);
     updateStats(instance);
+    updateFormattingState(instance);
+    updateContextTools(instance);
     queueEmit(instance);
   }
 
@@ -2173,8 +2260,8 @@
       uploadUrl: element.dataset.uploadUrl || null,
       dotNetReference: dotNetReference || null, blazorCommands: new Map(previousBlazorCommands || []),
       emitTimer: null, messageTimer: null, messageVersion: 0,
-      history: [], historyIndex: 0, lastRange: null,
-      revision: previous?.revision || 0, sourceMode: false,
+      history: [], historySelections: [], historyIndex: 0, lastRange: null,
+      revision: previous?.revision || 0, sourceMode: false, isComposing: false,
       selectedImage: null, activeCell: null, editingLink: null,
       page: previous?.page || { paper: "A4", orientation: "portrait", margin: "normal" }
     };
@@ -2189,6 +2276,8 @@
     // Switching modes retains undo history, but starts with the current sanitized HTML.
     const oldHistory = sameRoot && previous?.history;
     instance.history = oldHistory?.length ? oldHistory : [instance.value.value];
+    instance.historySelections = oldHistory?.length
+      ? (previous.historySelections || []).slice() : [null];
     instance.historyIndex = oldHistory?.length ? previous.historyIndex : 0;
     instances.set(element.id, instance);
     instance.canvas.contentEditable = instance.readOnly ? "false" : "true";
@@ -2429,7 +2518,32 @@
       instance.signaturePanel.querySelector("[data-signature-insert]").addEventListener("click", () => insertSignature(instance), { signal });
       instance.signaturePanel.querySelector("[data-signature-close]").addEventListener("click", () => { instance.signaturePanel.hidden = true; clearSignature(instance); }, { signal });
     }
-    instance.canvas.addEventListener("input", () => changed(instance), { signal });
+    // Intercept browser-native history (including Edit > Undo) so it cannot
+    // diverge from Azunt.Editor's snapshots. Group IME composition (notably
+    // Korean) into one undo step rather than one partial syllable per input.
+    instance.canvas.addEventListener("beforeinput", event => {
+      if (event.inputType === "historyUndo" || event.inputType === "historyRedo") {
+        if (!event.cancelable) return; // Never compete with a non-cancelable browser edit.
+        event.preventDefault();
+        undoOrRedo(instance, event.inputType === "historyUndo" ? -1 : 1);
+        return;
+      }
+      if (!instance.isComposing && !event.isComposing) rememberHistorySelection(instance);
+    }, { signal });
+    instance.canvas.addEventListener("compositionstart", () => {
+      rememberHistorySelection(instance);
+      instance.isComposing = true;
+    }, { signal });
+    instance.canvas.addEventListener("compositionend", () => {
+      instance.isComposing = false;
+      changed(instance);
+    }, { signal });
+    instance.canvas.addEventListener("input", () => {
+      if (instance.isComposing) {
+        updateStats(instance);
+        queueEmit(instance);
+      } else changed(instance);
+    }, { signal });
     instance.canvas.addEventListener("change", event => {
       const control = event.target;
       if (!control?.matches?.('input[type="checkbox"],input[type="radio"]') || !instance.canvas.contains(control)) return;
@@ -2440,6 +2554,7 @@
     }, { signal });
     instance.canvas.addEventListener("blur", () => {
       window.clearTimeout(instance.emitTimer);
+      instance.isComposing = false;
       remember(instance);
       emit(instance);
     }, { signal });
@@ -2524,7 +2639,8 @@
       if (event.key === "Escape" && instance.element.classList.contains("az-azunt-editor-fullscreen")) {
         event.preventDefault(); toggleFullscreen(instance, false); return;
       }
-      if (instance.readOnly || !(event.ctrlKey || event.metaKey)) return;
+      if (instance.readOnly || instance.isComposing || event.isComposing ||
+          !(event.ctrlKey || event.metaKey)) return;
       const key = event.key.toLowerCase();
       if (key === "f") { event.preventDefault(); runCommand(instance, "find"); }
       if (key === "z") { event.preventDefault(); undoOrRedo(instance, event.shiftKey ? 1 : -1); }
@@ -2636,6 +2752,7 @@
     setImageSelection(instance, null);
     instance.activeCell = null;
     instance.history = [readHtml(instance)];
+    instance.historySelections = [null];
     instance.historyIndex = 0;
     updateStats(instance);
     if (instance.mode === "edit") updateFormattingState(instance);

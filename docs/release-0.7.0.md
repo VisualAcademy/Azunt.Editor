@@ -24,3 +24,13 @@
 - .NET 10 build and real MVC/Razor Pages/Blazor Server host execution are **not verified** in this environment (no dotnet SDK). This patch does not constitute a successful export engine PDF/DOCX/XLSX file generation test.
 
 See [HTML paste handling](html-paste.md) for security boundaries and remaining limitations.
+
+## Second stabilization patch — Undo/Redo
+
+- Adds selection/caret recovery alongside the existing sanitized HTML history.
+- Groups IME composition into a single Undo step and consistently routes browser-native history shortcuts.
+- Preserves the existing bounded history policy and Edit/View, paste, forms, table, and image behavior.
+- Adds focused Chromium tests: `tests/editor-undo-070-browser.py`.
+- No C#/NuGet API changes; actual .NET 10 Release build and host execution remain unverified here.
+
+See [Undo/Redo stability](undo-redo-stabilization.md).

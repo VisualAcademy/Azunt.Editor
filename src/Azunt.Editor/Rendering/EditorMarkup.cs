@@ -70,7 +70,7 @@ public static class EditorMarkup
         }
         w.Append("</span></span>");
         w.Append("<span class=\"az-azunt-editor-form-split\" role=\"group\" aria-label=\"Insert HTML form control\">")
-            .Append("<button type=\"button\" class=\"az-azunt-editor-button az-azunt-editor-form-primary\" data-quick-command=\"form-checkbox\" title=\"Insert checkbox\" aria-label=\"Insert unchecked checkbox\">☐</button>")
+            .Append("<button type=\"button\" class=\"az-azunt-editor-button az-azunt-editor-form-primary\" data-quick-command=\"form-checkbox-checked\" title=\"Insert checked checkbox\" aria-label=\"Insert checked checkbox\">☑</button>")
             .Append("<button type=\"button\" class=\"az-azunt-editor-button az-azunt-editor-form-dropdown\" data-azunt-menu=\"controls\" aria-haspopup=\"dialog\" aria-expanded=\"false\" aria-label=\"Choose radio button or checkbox\" title=\"Choose form control\">▾</button></span>");
         w.Append("<span class=\"az-azunt-editor-quick-custom\" data-quick-custom></span>")
             .Append("<button class=\"az-azunt-editor-menu-trigger az-azunt-editor-quick-more\" type=\"button\" data-azunt-menu=\"more\" aria-expanded=\"false\" aria-haspopup=\"dialog\" title=\"More editor commands\" aria-label=\"More editor commands\">More ⋯</button>");
@@ -121,7 +121,7 @@ public static class EditorMarkup
 
         Group("Form controls");
         w.Append("<span class=\"az-azunt-editor-form-split\" role=\"group\" aria-label=\"Insert HTML form control\">")
-            .Append("<button type=\"button\" class=\"az-azunt-editor-button az-azunt-editor-form-primary\" data-command=\"form-checkbox\" title=\"Insert checkbox\" aria-label=\"Insert unchecked checkbox\">☐</button>")
+            .Append("<button type=\"button\" class=\"az-azunt-editor-button az-azunt-editor-form-primary\" data-command=\"form-checkbox-checked\" title=\"Insert checked checkbox\" aria-label=\"Insert checked checkbox\">☑</button>")
             .Append("<button type=\"button\" class=\"az-azunt-editor-button az-azunt-editor-form-dropdown\" data-azunt-menu=\"controls\" aria-haspopup=\"dialog\" aria-expanded=\"false\" aria-label=\"Choose radio button or checkbox\" title=\"Choose form control\">▾</button></span>");
         EndGroup();
 

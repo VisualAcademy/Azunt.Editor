@@ -33,9 +33,9 @@ initial viewing does not depend on the editor JavaScript or a SignalR circuit.
 
 ## HTML form control insertion (0.6.7)
 
-The Compact and Classic toolbars include a split button: **☐** inserts an unchecked
-checkbox, while **▾** opens four options: unchecked/checked radio buttons and
-unchecked/checked checkboxes. The Insert menu exposes the same options.
+The Compact and Classic toolbars include a split button: **☑** inserts a checked
+checkbox, while **▾** opens four options: checked/unchecked checkboxes and
+unchecked/checked radio buttons. The Insert menu exposes the same options.
 
 The saved HTML uses only `<input type="checkbox">`, `<input type="radio">`,
 and optional `checked`; generated inputs have no `name`, `value`, script or

@@ -13,7 +13,7 @@ FIXTURE = (ROOT / 'tests/editor-adaptive-browser.html').read_text(encoding='utf-
 
 def fixture():
     split = '''<span class="az-azunt-editor-form-split" role="group" aria-label="Insert HTML form control">
-      <button type="button" class="az-azunt-editor-button az-azunt-editor-form-primary" data-quick-command="form-checkbox">☐</button>
+      <button type="button" class="az-azunt-editor-button az-azunt-editor-form-primary" data-quick-command="form-checkbox-checked">☑</button>
       <button type="button" class="az-azunt-editor-button az-azunt-editor-form-dropdown" data-azunt-menu="controls" aria-expanded="false">▾</button></span>'''
     html = FIXTURE.replace('<span data-quick-custom=""></span>', split + '<span data-quick-custom=""></span>')
     return html
@@ -32,11 +32,29 @@ async def main():
             await page.add_script_tag(content=JS)
             canvas = page.locator('#browser-test .az-azunt-editor-canvas')
             assert await canvas.get_attribute('contenteditable') == 'true'
-            # Main split button always inserts a default unchecked checkbox.
+            # An empty document must not contain or automatically create any blue radio dot.
+            await page.evaluate('AzuntEditor.setHtml("browser-test", "")')
+            assert await canvas.locator('input').count() == 0
+            assert (await page.evaluate('AzuntEditor.getHtml("browser-test")')) == ''
+            # Preserve the original light/dark canvas focus border on mouse and keyboard focus.
+            # The small blue dot in Edge is a browser writing-assistance hint, not an editor DOM node.
             await canvas.click()
-            await page.locator('#browser-test [data-quick-command="form-checkbox"]').click()
+            assert '191, 219, 254' in await canvas.evaluate('(el) => getComputedStyle(el).boxShadow')
+            assert '2px inset' in await canvas.evaluate('(el) => getComputedStyle(el).boxShadow')
+            await page.keyboard.press('Tab')
+            await canvas.focus()
+            assert '191, 219, 254' in await canvas.evaluate('(el) => getComputedStyle(el).boxShadow')
+            await page.emulate_media(color_scheme='dark')
+            await canvas.click()
+            assert '96, 165, 250' in await canvas.evaluate('(el) => getComputedStyle(el).boxShadow')
+            await page.emulate_media(color_scheme='light')
+            assert not await page.locator('.az-azunt-editor-pointer-focus').count()
+            # Main split button always inserts a default checked checkbox.
+            await canvas.click()
+            await page.locator('#browser-test [data-quick-command="form-checkbox-checked"]').click()
             assert await canvas.locator('input[type="checkbox"]').count() == 1
-            assert 'checked' not in (await page.evaluate('AzuntEditor.getHtml("browser-test")')).split('>')[1]
+            assert await canvas.locator('input[type="checkbox"]').first.is_checked()
+            assert '<input type="checkbox" checked' in await page.evaluate('AzuntEditor.getHtml("browser-test")')
 
             # Arrow dropdown offers all four variants, not host custom commands.
             dropdown = page.locator('#browser-test [data-quick-row], #browser-test [data-compact-quick]')
@@ -45,20 +63,21 @@ async def main():
             assert await menu.is_visible()
             for key in ('form-radio', 'form-radio-checked', 'form-checkbox', 'form-checkbox-checked'):
                 assert await menu.locator(f'[data-command="{key}"]').count() == 1
+            assert await menu.locator('.az-azunt-editor-form-choice').first.get_attribute('data-command') == 'form-checkbox-checked'
             assert await page.locator('#browser-test [data-azunt-menu="controls"]').first.get_attribute('aria-expanded') == 'true'
             # Arrow and keyboard menu navigation work on the split dropdown.
             await page.keyboard.press('Escape')
             await page.locator('#browser-test [data-azunt-menu="controls"]').first.focus()
             await page.keyboard.press('ArrowDown')
             assert await menu.is_visible()
-            assert await page.locator('#browser-test [data-command="form-radio"]').evaluate("el => document.activeElement === el")
+            assert await page.locator('#browser-test [data-command="form-checkbox-checked"]').evaluate("el => document.activeElement === el")
             await page.keyboard.press('Escape')
             assert await menu.is_hidden()
             await page.locator('#browser-test [data-azunt-menu="controls"]').first.click()
             await menu.locator('[data-command="form-radio-checked"]').click()
             assert await menu.is_hidden()
             assert await canvas.locator('input[type="radio"][checked]').count() == 1
-            for command in ('form-radio', 'form-checkbox-checked'):
+            for command in ('form-radio', 'form-checkbox'):
                 await page.locator('#browser-test [data-azunt-menu="controls"]').first.click()
                 await menu.locator(f'[data-command="{command}"]').click()
             assert await canvas.locator('input[type="radio"]').count() == 2
@@ -68,11 +87,11 @@ async def main():
             # Native click toggles state; serializing HTML must reflect LIVE checked state.
             first_checkbox = canvas.locator('input[type="checkbox"]').first
             await first_checkbox.click()
-            assert await first_checkbox.is_checked()
+            assert not await first_checkbox.is_checked()
             saved = await page.evaluate('AzuntEditor.getHtml("browser-test")')
             assert saved.count('type="checkbox"') == 2
             assert saved.count('type="radio"') == 2
-            assert saved.count(' checked') == 3, saved
+            assert saved.count(' checked') == 1, saved
             # Sanitize removes non-whitelisted input types and unrelated attributes.
             unsafe = '''<p><input type="checkbox" name="payments" value="yes" onclick="alert(1)" checked>ok</p>
                 <input type="text" name="secret"><input type="hidden" value="123">
@@ -85,7 +104,7 @@ async def main():
 
             await page.evaluate('(h) => AzuntEditor.setHtml("browser-test", h)', saved)
             assert await canvas.locator('input').count() == 4
-            assert await canvas.locator('input[checked]').count() == 3
+            assert await canvas.locator('input[checked]').count() == 1
             await page.evaluate('AzuntEditor.setMode("browser-test", "View")')
             assert await canvas.get_attribute('contenteditable') == 'false'
             assert await canvas.locator('input:disabled').count() == 4
@@ -93,7 +112,7 @@ async def main():
             assert (await page.evaluate('AzuntEditor.getHtml("browser-test")')).count('<input') == 4
             await page.evaluate('AzuntEditor.setMode("browser-test", "Edit")')
             assert await canvas.locator('input:disabled').count() == 0
-            assert await canvas.locator('input[checked]').count() == 3
+            assert await canvas.locator('input[checked]').count() == 1
             assert saved == (await page.evaluate('AzuntEditor.getHtml("browser-test")'))
 
             # Existing Export command registration survives mode switching.

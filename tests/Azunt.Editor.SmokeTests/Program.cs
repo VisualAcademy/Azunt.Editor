@@ -42,8 +42,8 @@ Require(rgbViewer.Contains("#123456") && rgbViewer.Contains("#ffdc0a"), "Browser
 
 // 0.6.7: both toolbar modes expose the split form-control insertion button.
 var formToolbar = EditorMarkup.Render("forms", "Html");
-Require(formToolbar.Contains("data-quick-command=\"form-checkbox\""), "Quick checkbox insertion");
-Require(formToolbar.Contains("data-command=\"form-checkbox\""), "Classic checkbox insertion");
+Require(formToolbar.Contains("data-quick-command=\"form-checkbox-checked\""), "Quick checked checkbox insertion");
+Require(formToolbar.Contains("data-command=\"form-checkbox-checked\""), "Classic checked checkbox insertion");
 Require(formToolbar.Contains("data-azunt-menu=\"controls\""), "Split dropdown in both modes");
 var controlsView = EditorMarkup.Render("forms-view", "Html",
     "<p><input type='checkbox' checked onclick='bad()'> Checkbox <input type='radio'> Radio</p>",

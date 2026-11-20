@@ -1688,10 +1688,10 @@
     group.setAttribute("role", "group");
     group.setAttribute("aria-label", "Insert an HTML form control");
     for (const [command, label, glyph] of [
-      ["form-radio", "Radio button (unchecked)", "○"],
-      ["form-radio-checked", "Radio button (checked)", "◉"],
+      ["form-checkbox-checked", "Checkbox (checked)", "☑"],
       ["form-checkbox", "Checkbox (unchecked)", "☐"],
-      ["form-checkbox-checked", "Checkbox (checked)", "☑"]
+      ["form-radio", "Radio button (unchecked)", "○"],
+      ["form-radio-checked", "Radio button (checked)", "◉"]
     ]) {
       const button = document.createElement("button");
       button.type = "button";

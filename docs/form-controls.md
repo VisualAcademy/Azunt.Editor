@@ -1,15 +1,15 @@
 # Azunt.Editor 0.6.7 — HTML form controls
 
-The shared toolbar contains a compact split control: **☐** inserts an unchecked checkbox; **▾** opens four options:
+The shared toolbar contains a compact split control: **☑** inserts a checked checkbox; **▾** opens four options:
 
 | Menu item | Stored HTML |
 |---|---|
+| Checkbox (checked) | `<input type="checkbox" checked>` |
+| Checkbox (unchecked) | `<input type="checkbox">` |
 | Radio button (unchecked) | `<input type="radio">` |
 | Radio button (checked) | `<input type="radio" checked>` |
-| Checkbox (unchecked) | `<input type="checkbox">` |
-| Checkbox (checked) | `<input type="checkbox" checked>` |
 
-The same insertion commands are exposed in the **Insert** menu. The controls use the existing editing and document APIs; MVC, Razor Pages and Blazor Server need no API changes.
+Checkbox (checked) is the default primary action **and the first dropdown item**. The same insertion commands are exposed in the **Insert** menu. The editor does not create a form control in an empty document unless the user explicitly inserts one. Pointer focus no longer adds a bright blue frame around the canvas; keyboard-only focus has a neutral visible indicator. The controls use the existing editing and document APIs; MVC, Razor Pages and Blazor Server need no API changes.
 
 - Edit mode permits native checkbox/radio clicks; the current checked state is saved. Undo/Redo treats the control state as HTML.
 - View mode disables controls, including server-rendered View content without JavaScript.

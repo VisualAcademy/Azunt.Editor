@@ -217,7 +217,9 @@ public static class EditorMarkup
             .Append(readOnly || viewer ? "false" : "true")
             .Append('"');
         if (!viewer) w.Append(" style=\"min-height:").Append(safeHeight).Append("px\"");
-        w.Append("></div>");
+        w.Append(">");
+        if (viewer) w.Append(EditorViewerSanitizer.Sanitize(value));
+        w.Append("</div>");
         w.Append("<div class=\"az-azunt-editor-image-resize-handle\" data-image-resize-handle hidden "
             + "role=\"button\" tabindex=\"0\" aria-label=\"Resize selected image by dragging the corner\" "
             + "title=\"Drag to resize the selected image (aspect ratio preserved)\"></div>");

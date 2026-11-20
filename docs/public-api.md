@@ -29,12 +29,25 @@ edits, without replacing the editor root. In View mode `setHtml` / `GetHtmlAsync
 remain available; changes are made programmatically, not by typing. The hidden
 textarea is disabled for HTML form submission while View is active.
 
-**Rendering and security:** View uses the same browser-side, allowlist-based
-HTML cleanup as Edit. The displayed HTML appears after `azunt-editor.js` mounts.
-It is **not** a standalone static SSR renderer (planned separately), and it is
-**not a substitute** for server-side sanitation of untrusted stored HTML. Hosts
-must authorize access, validate stored HTML and protect image URLs. Never
-render raw user HTML through `MarkupString` in application code.
+**Rendering and security (0.6.6):** View HTML is now rendered on the server
+through `EditorViewerSanitizer` before JavaScript initializes. MVC/Razor Pages
+can show the document with JavaScript disabled; Blazor prerendering/Static SSR
+can show it before a SignalR connection is available. The full Edit/View
+component still includes the editor DOM so it can switch modes interactively;
+with JavaScript disabled the View is display-only and cannot switch modes.
+
+Only supported tags and safe attributes/styles/URLs are emitted as HTML, and
+text is encoded. The client continues to sanitize on mount. For manually
+rendering viewer fragments, use `EditorViewerSanitizer.Sanitize(html)`, **not**
+`new MarkupString(html)` on untrusted input. The built-in sanitizer is tailored
+to Azunt.Editor HTML, not arbitrary webpage HTML, and not an authentication
+or authorization boundary. Hosts must also validate on save, authorize stored
+content and image access, and apply CSP as appropriate. Rendering a remote
+image URL can contact an external server from the visitor's browser.
+
+`Azunt.Editor.Export.Html.EditorHtmlSanitizer` remains the stricter export/storage
+sanitizer when using the optional Export package; its default policy disallows
+external images. Store and viewer policy should be chosen deliberately.
 
 ## Toolbar
 

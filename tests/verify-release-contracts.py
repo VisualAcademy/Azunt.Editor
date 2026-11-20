@@ -3,7 +3,7 @@ from pathlib import Path
 from xml.etree import ElementTree
 
 root = Path(__file__).resolve().parents[1]
-version = '0.6.5'
+version = '0.6.6'
 for item in ['src/Azunt.Editor/Azunt.Editor.csproj', 'src/Azunt.Editor.Export/Azunt.Editor.Export.csproj',
              'samples/Azunt.Web/Azunt.Web.csproj']:
     doc = ElementTree.parse(root / item)
@@ -47,4 +47,4 @@ for token in ['Icon { get; set; }', 'RequiresEdit { get; set; }']:
 assert 'SetCustomCommandsAsync' in component
 for token in ['function unregisterCommand(', 'Duplicate custom command id:', 'previousBlazorCommands']:
     assert token in editor_js, f'Missing command lifecycle feature: {token}'
-print('PASS: Azunt.Editor 0.6.5 release contracts, sources are application-agnostic')
+print('PASS: Azunt.Editor 0.6.6 release contracts, sources are application-agnostic')

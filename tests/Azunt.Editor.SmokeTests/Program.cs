@@ -13,6 +13,33 @@ Require(!malicious.Contains("</textarea><script>", StringComparison.OrdinalIgnor
 Require(!malicious.Contains("id=\"x\" onmouseover", StringComparison.Ordinal), "ID safely encoded");
 Require(malicious.Contains("&lt;script&gt;"), "Script text encoded");
 
+// 0.6.6 View is safe and visible in the server response before JavaScript runs.
+var initialViewer = EditorMarkup.Render("view", "Html", "<h2>Stored heading</h2><p>Formatted <strong>text</strong></p>",
+    mode: Azunt.Editor.Models.EditorMode.View);
+Require(initialViewer.Contains("data-editor-mode=\"view\""), "View marker");
+Require(initialViewer.Contains("<h2>Stored heading</h2>"), "View HTML rendered on server");
+Require(initialViewer.Contains("<strong>text</strong>"), "View bold retained");
+Require(initialViewer.Contains("name=\"Html\" disabled"), "View value cannot be submitted");
+Require(initialViewer.Contains("role=\"document\""), "View accessibility role");
+var dangerousViewer = EditorMarkup.Render("safe", "Html",
+    "<p onclick=\"alert(1)\">Safe</p><script>alert('evil')</script>" +
+    "<a href=\"javascript:alert(1)\">link</a><img src=\"javascript:alert(1)\" onerror=\"alert(2)\">" +
+    "<span style=\"color:red;position:fixed\">inline</span>",
+    mode: Azunt.Editor.Models.EditorMode.View);
+var displayedViewerHtml = dangerousViewer.Split("class=\"az-azunt-editor-canvas\"", 2)[1].Split("</div>", 2)[0];
+Require(displayedViewerHtml.Contains("<p>Safe</p>"), "Viewer removes event handlers");
+Require(!displayedViewerHtml.Contains("<script", StringComparison.OrdinalIgnoreCase), "Viewer removes script tags");
+Require(!displayedViewerHtml.Contains("javascript:", StringComparison.OrdinalIgnoreCase), "Viewer rejects dangerous URLs");
+Require(!displayedViewerHtml.Contains("<img", StringComparison.OrdinalIgnoreCase), "Viewer rejects dangerous images");
+Require(!displayedViewerHtml.Contains("position:fixed", StringComparison.OrdinalIgnoreCase), "Viewer rejects unsupported CSS");
+var inlineViewer = Azunt.Editor.Rendering.EditorViewerSanitizer.Sanitize(
+    "<pre><code>Console.WriteLine(&quot;Hello&quot;);</code></pre><table><tr><td colspan=\"2\">Cell</td></tr></table>");
+Require(inlineViewer.Contains("<pre><code>"), "Code blocks survive viewer sanitizer");
+Require(inlineViewer.Contains("colspan=\"2\""), "Table colspan survives viewer sanitizer");
+var rgbViewer = Azunt.Editor.Rendering.EditorViewerSanitizer.Sanitize(
+    "<p style=\"color:rgb(18, 52, 86);background-color:rgba(255, 220, 10, 1)\">Colors</p>");
+Require(rgbViewer.Contains("#123456") && rgbViewer.Contains("#ffdc0a"), "Browser RGB colors survive server rendering");
+
 var clamped = EditorMarkup.Render("e2", "Html", height: 999999);
 Require(clamped.Contains("min-height:1400px"), "Height clamped");
 

@@ -54,6 +54,10 @@
   function safeResourceUrl(raw, isImage) {
     if (!raw || typeof raw !== "string") return null;
     const value = raw.trim();
+    // A protocol-relative URL bypassed the local-path check and was previously
+    // accepted after URL() resolved it against the host. Reject this ambiguous
+    // form (and backslashes/control characters) consistently with server View.
+    if (value.startsWith("//") || value.includes("\\") || /[\u0000-\u001f\u007f]/.test(value)) return null;
     if (isImage && imageDataUrlPattern.test(value)) return value;
     if (/^\/(?!\/)[^\\\r\n]*$/.test(value) || /^(?!\/)[A-Za-z0-9][^:\\]*$/.test(value) || /^#[A-Za-z][A-Za-z0-9_-]*$/.test(value)) {
       return value;
@@ -2261,7 +2265,18 @@
       throw new Error("Editor mode must be Edit or View.");
     const instance = getInstance(id);
     if (instance.mode === desired) return;
+    // A mode switch can happen before the 200ms Blazor change notification.
+    // Flush the pending edit before unmount() cancels its timer. This keeps
+    // @bind-Value in sync without broadcasting an event for a mere mode change.
+    if (instance.mode === "edit" && instance.emitTimer !== null) {
+      window.clearTimeout(instance.emitTimer);
+      instance.emitTimer = null;
+      emit(instance);
+    }
     const html = readHtml(instance);
+    // The source textarea can have unsaved changes not yet in the undo stack.
+    // Record them so switching back to Edit does not lose the final snapshot.
+    if (instance.mode === "edit") remember(instance);
     instance.canvas.innerHTML = html;
     instance.value.value = html;
     instance.sourceMode = false;

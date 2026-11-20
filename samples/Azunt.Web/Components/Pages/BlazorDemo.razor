@@ -21,7 +21,7 @@
 <p>Interactive Server component using the same JavaScript editor engine. ·
     <a href="/editor/blazor">Compact toolbar</a> · <a href="/editor/blazor?toolbar=classic">Classic toolbar</a></p>
 
-<p class="document-meta">Mode: <button type="button" @onclick="ToggleModeAsync">
+<p class="document-meta">Mode: <a href="/editor/blazor?mode=view">Start in View</a> · <button type="button" @onclick="ToggleModeAsync">
     @(_demoMode == EditorMode.Edit ? "Switch to View" : "Switch to Edit")
 </button></p>
 
@@ -65,6 +65,13 @@
         new Uri(Navigation.Uri).Query.Contains("images=save", StringComparison.OrdinalIgnoreCase);
     private AzuntEditor? _editor;
     private EditorMode _demoMode = EditorMode.Edit;
+
+    protected override void OnInitialized()
+    {
+        // Allows View to appear in the initial server response, before SignalR/JS.
+        if (new Uri(Navigation.Uri).Query.Contains("mode=view", StringComparison.OrdinalIgnoreCase))
+            _demoMode = EditorMode.View;
+    }
 
     private async Task ToggleModeAsync()
     {

@@ -1,0 +1,353 @@
+using System.Net;
+using System.Text;
+using System.Text.Encodings.Web;
+using System.Text.RegularExpressions;
+
+namespace Azunt.Editor.Rendering;
+
+/// <summary>
+/// Dependency-free parser for the narrow editor HTML subset used by server-rendered View mode.
+/// The host still owns storage validation and access control.
+/// </summary>
+internal sealed class ViewerSafeEditorDocument
+{
+    internal sealed class Node(string name = "#root", string text = "")
+    {
+        public string Name { get; } = name;
+        public string Text { get; } = text;
+        public List<Node> Children { get; } = [];
+        public Dictionary<string, string> Attributes { get; } = new(StringComparer.OrdinalIgnoreCase);
+        public string Attribute(string key) => Attributes.TryGetValue(key, out var value) ? value : "";
+        public string Style(string key)
+        {
+            var style = Attribute("style");
+            foreach (var declaration in style.Split(';', StringSplitOptions.RemoveEmptyEntries))
+            {
+                var colon = declaration.IndexOf(':');
+                if (colon > 0 && declaration[..colon].Trim().Equals(key, StringComparison.OrdinalIgnoreCase))
+                    return declaration[(colon + 1)..].Trim();
+            }
+            return "";
+        }
+        public IEnumerable<Node> DescendantsAndSelf()
+        {
+            yield return this;
+            foreach (var child in Children)
+                foreach (var descendant in child.DescendantsAndSelf()) yield return descendant;
+        }
+        public string PlainText() => Name == "#text" ? Text : string.Concat(Children.Select(c => c.PlainText()));
+    }
+
+    private static readonly HashSet<string> Allowed = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "p", "div", "h2", "h3", "strong", "b", "em", "i", "u", "s",
+        "ul", "ol", "li", "blockquote", "pre", "code", "sup", "sub", "table", "thead", "tbody",
+        "tr", "td", "th", "br", "hr", "img", "a", "span"
+    };
+    private static readonly HashSet<string> Omitted = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "script", "style", "iframe", "frame", "frameset", "object", "embed", "svg", "math", "template",
+        "form", "input", "textarea", "button", "select", "option", "link", "meta", "base", "video", "audio",
+        "noscript", "noembed", "noframes", "plaintext", "xmp", "title"
+    };
+    private static readonly HashSet<string> Void = new(StringComparer.OrdinalIgnoreCase) { "br", "hr", "img" };
+    // Standard HTML void elements have no end tag. They must never cause the
+    // remainder of an otherwise valid document to be discarded.
+    private static readonly HashSet<string> OmittedVoid = new(StringComparer.OrdinalIgnoreCase)
+    { "input", "link", "meta", "base" };
+    private const int MaxElementDepth = 128;
+    private static readonly HashSet<string> Fonts = new(StringComparer.OrdinalIgnoreCase)
+    { "Arial", "Georgia", "Times New Roman", "Verdana", "Segoe UI", "Noto Sans KR", "Malgun Gothic" };
+    private static readonly Regex AttrPattern = new(@"(?<key>[A-Za-z][A-Za-z0-9_-]*)(?:\s*=\s*(?:""(?<double>[^""]*)""|'(?<single>[^']*)'|(?<bare>[^\s>]+)))?", RegexOptions.Compiled | RegexOptions.CultureInvariant, TimeSpan.FromSeconds(1));
+    private static readonly Regex HexColor = new(@"^#[0-9a-fA-F]{6}$", RegexOptions.Compiled);
+    private static readonly Regex Pixel = new(@"^(?<value>\d{1,4})px$", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+
+    public Node Root { get; } = new();
+
+    public static ViewerSafeEditorDocument Parse(string html)
+    {
+        ArgumentNullException.ThrowIfNull(html);
+        if (html.Length > 12_000_000)
+            throw new ArgumentException("HTML exceeds the 12-million-character viewer limit.", nameof(html));
+
+        var doc = new ViewerSafeEditorDocument();
+        var stack = new Stack<Node>();
+        stack.Push(doc.Root);
+        var skip = new Stack<string>();
+        var count = 0;
+        var offset = 0;
+
+        while (offset < html.Length)
+        {
+            if (++count > 120_000) throw new ArgumentException("HTML is too complex to render.", nameof(html));
+            var begin = html.IndexOf('<', offset);
+            if (begin < 0)
+            {
+                AddText(html[offset..]);
+                break;
+            }
+            if (begin > offset) AddText(html[offset..begin]);
+            if (html.AsSpan(begin).StartsWith("<!--", StringComparison.Ordinal))
+            {
+                var commentEnd = html.IndexOf("-->", begin + 4, StringComparison.Ordinal);
+                offset = commentEnd < 0 ? html.Length : commentEnd + 3;
+                continue;
+            }
+            var end = FindTagEnd(html, begin + 1);
+            if (end < 0) { AddText("<"); offset = begin + 1; continue; }
+            var token = html[(begin + 1)..end].Trim();
+            offset = end + 1;
+            if (token.Length == 0 || token[0] is '!' or '?') continue;
+            var closing = token[0] == '/';
+            if (closing) token = token[1..].TrimStart();
+            var nameEnd = 0;
+            while (nameEnd < token.Length && (char.IsLetterOrDigit(token[nameEnd]) || token[nameEnd] == '-')) nameEnd++;
+            if (nameEnd == 0) continue;
+            var tag = token[..nameEnd].ToLowerInvariant();
+            if (skip.Count > 0)
+            {
+                if (Omitted.Contains(tag) && !closing && !OmittedVoid.Contains(tag) && !token.EndsWith('/'))
+                    skip.Push(tag);
+                else if (closing && tag == skip.Peek()) skip.Pop();
+                continue;
+            }
+            if (Omitted.Contains(tag))
+            {
+                if (!closing && !OmittedVoid.Contains(tag) && !token.EndsWith('/'))
+                    skip.Push(tag);
+                continue;
+            }
+            if (!Allowed.Contains(tag)) continue;
+            if (closing)
+            {
+                // Pop only a matching open element to recover from malformed editor HTML.
+                if (stack.Any(n => n.Name == tag))
+                    while (stack.Count > 1 && stack.Pop().Name != tag) { }
+                continue;
+            }
+            var node = new Node(tag);
+            foreach (Match match in AttrPattern.Matches(token[nameEnd..]))
+            {
+                var key = match.Groups["key"].Value;
+                if (key is not ("src" or "href" or "alt" or "width" or "height" or "style" or "data-azunt-page-break" or "colspan")) continue;
+                var value = match.Groups["double"].Success ? match.Groups["double"].Value
+                    : match.Groups["single"].Success ? match.Groups["single"].Value
+                    : match.Groups["bare"].Value;
+                node.Attributes[key] = WebUtility.HtmlDecode(value);
+            }
+            stack.Peek().Children.Add(node);
+            if (!Void.Contains(tag) && !token.EndsWith('/'))
+            {
+                if (stack.Count >= MaxElementDepth)
+                    throw new ArgumentException("HTML nesting exceeds the supported viewer limit.", nameof(html));
+                stack.Push(node);
+            }
+        }
+        return doc;
+
+        void AddText(string raw)
+        {
+            if (skip.Count > 0 || raw.Length == 0) return;
+            stack.Peek().Children.Add(new Node("#text", WebUtility.HtmlDecode(raw)));
+        }
+    }
+
+    private static int FindTagEnd(string html, int start)
+    {
+        char quote = '\0';
+        for (int i = start; i < html.Length; i++)
+        {
+            var current = html[i];
+            if (quote == '\0')
+            {
+                if (current is '\'' or '"') quote = current;
+                else if (current == '>') return i;
+            }
+            else if (current == quote) quote = '\0';
+        }
+        return -1;
+    }
+
+    public string ToSafeHtml()
+    {
+        var sb = new StringBuilder();
+        foreach (var child in Root.Children) Append(child, sb);
+        return sb.ToString();
+    }
+
+    private static void Append(Node node, StringBuilder output)
+    {
+        if (node.Name == "#text") { output.Append(HtmlEncoder.Default.Encode(node.Text)); return; }
+        if (node.Name == "img")
+        {
+            var src = node.Attribute("src");
+            if (!TrySafeImageUrl(src))
+                return; // Reject unsupported sources and unsafe URL schemes.
+        }
+        output.Append('<').Append(node.Name);
+        if (node.Name == "img")
+        {
+            output.Append(" src=\"").Append(HtmlEncoder.Default.Encode(node.Attribute("src"))).Append('"');
+            output.Append(" alt=\"").Append(HtmlEncoder.Default.Encode(node.Attribute("alt")[..Math.Min(200, node.Attribute("alt").Length)])).Append('"');
+            foreach (var dimension in new[] { "width", "height" })
+                if (int.TryParse(node.Attribute(dimension), out var size) && size is >= 1 and <= 2500)
+                    output.Append(' ').Append(dimension).Append("=\"").Append(size).Append('"');
+        }
+        if ((node.Name is "td" or "th") && int.TryParse(node.Attribute("colspan"), out var span) && span is >= 2 and <= 12)
+            output.Append(" colspan=\"").Append(span).Append('"');
+        if (node.Name == "hr" && node.Attribute("data-azunt-page-break") == "true")
+            output.Append(" data-azunt-page-break=\"true\"");
+        if (node.Name == "a" && TryLink(node.Attribute("href"), out var href))
+            output.Append(" href=\"").Append(HtmlEncoder.Default.Encode(href)).Append("\" rel=\"noopener noreferrer\"");
+        var style = SafeStyle(node);
+        if (style.Length > 0) output.Append(" style=\"").Append(HtmlEncoder.Default.Encode(style)).Append('"');
+        output.Append('>');
+        if (Void.Contains(node.Name)) return;
+        foreach (var child in node.Children) Append(child, output);
+        output.Append("</").Append(node.Name).Append('>');
+    }
+
+    private static bool TrySafeImageUrl(string raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw) || raw.Length > 8 * 1024 * 1024 ||
+            raw.Any(char.IsControl)) return false;
+        var src = raw.Trim();
+        if (src.StartsWith("data:", StringComparison.OrdinalIgnoreCase))
+        {
+            var image = new Node("img");
+            image.Attributes["src"] = src;
+            return TryInlineImage(image, out _, out _);
+        }
+        if (src.Contains('\\') || src.StartsWith("//", StringComparison.Ordinal)) return false;
+        if (src.StartsWith("/", StringComparison.Ordinal))
+            return Regex.IsMatch(src, @"^/[A-Za-z0-9/_~!$&'()*+,;=.?%#-]*$", RegexOptions.CultureInvariant);
+        if (Regex.IsMatch(src, @"^[A-Za-z0-9][A-Za-z0-9/_~!$&'()*+,;=.?%#-]*$", RegexOptions.CultureInvariant))
+            return true;
+        if (!Uri.TryCreate(src, UriKind.Absolute, out var uri) || uri.UserInfo.Length != 0) return false;
+        return uri.Scheme is "http" or "https";
+    }
+
+    /// <summary>
+    /// Accept safe inline raster image formats. Only data bytes are validated;
+    /// the server-side viewer never performs remote image requests.
+    /// </summary>
+    public static bool TryInlineImage(Node node, out string mime, out byte[] bytes)
+    {
+        mime = ""; bytes = [];
+        var src = node.Attribute("src");
+        var comma = src.IndexOf(',');
+        if (comma <= 0 || comma >= src.Length - 1) return false;
+        var prefix = src[..comma].ToLowerInvariant();
+        mime = prefix switch
+        {
+            "data:image/png;base64" => "image/png",
+            "data:image/jpeg;base64" => "image/jpeg",
+            "data:image/gif;base64" => "image/gif",
+            "data:image/webp;base64" => "image/webp",
+            _ => ""
+        };
+        if (mime.Length == 0 || src.Length - comma - 1 > 8 * 1024 * 1024) return false;
+        try
+        {
+            bytes = Convert.FromBase64String(src[(comma + 1)..]);
+            if (bytes.Length == 0 || bytes.Length > 6 * 1024 * 1024) return false;
+            return mime switch
+            {
+                "image/png" => bytes.AsSpan().StartsWith(new byte[] { 137, 80, 78, 71, 13, 10, 26, 10 }),
+                "image/jpeg" => bytes.Length > 3 && bytes[0] == 0xff && bytes[1] == 0xd8,
+                "image/gif" => bytes.AsSpan().StartsWith("GIF87a"u8) || bytes.AsSpan().StartsWith("GIF89a"u8),
+                "image/webp" => bytes.Length >= 12 && bytes.AsSpan().StartsWith("RIFF"u8) &&
+                    bytes.AsSpan(8).StartsWith("WEBP"u8),
+                _ => false
+            };
+        }
+        catch (FormatException) { return false; }
+    }
+
+    public static bool TryLink(string raw, out string safe)
+    {
+        safe = "";
+        if (string.IsNullOrWhiteSpace(raw) || raw.Length > 2048 || raw.Any(char.IsControl)) return false;
+        var candidate = raw.Trim();
+        if (candidate.Contains('\\') || candidate.StartsWith("//", StringComparison.Ordinal)) return false;
+        // Preserve the same ordinary link forms supported by the browser editor.
+        if (Regex.IsMatch(candidate, @"^#[A-Za-z][A-Za-z0-9_-]*$", RegexOptions.CultureInvariant))
+        {
+            safe = candidate;
+            return true;
+        }
+        if (candidate.StartsWith("/", StringComparison.Ordinal) &&
+            Regex.IsMatch(candidate, @"^/[A-Za-z0-9/_~!$&'()*+,;=.?%#-]*$", RegexOptions.CultureInvariant))
+        {
+            safe = candidate;
+            return true;
+        }
+        if (Regex.IsMatch(candidate, @"^[A-Za-z0-9][A-Za-z0-9/_~!$&'()*+,;=.?%#-]*$", RegexOptions.CultureInvariant))
+        {
+            safe = candidate;
+            return true;
+        }
+        if (!Uri.TryCreate(candidate, UriKind.Absolute, out var uri) || !string.IsNullOrEmpty(uri.UserInfo)) return false;
+        if (uri.Scheme is not ("https" or "http" or "mailto")) return false;
+        safe = uri.AbsoluteUri;
+        return true;
+    }
+
+    // The editing engine serializes browser-selected colors as rgb(...) rather
+    // than hex. Preserve these when SSR sanitizes View, instead of losing saved
+    // formatting on a subsequent View -> Edit transition.
+    private static bool TryColor(string source, out string color)
+    {
+        color = "";
+        var raw = source.Trim();
+        if (HexColor.IsMatch(raw)) { color = raw.ToLowerInvariant(); return true; }
+        var match = Regex.Match(raw,
+            @"^rgba?\(\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})(?:\s*,\s*1(?:\.0+)?)?\s*\)$",
+            RegexOptions.IgnoreCase | RegexOptions.CultureInvariant, TimeSpan.FromSeconds(1));
+        if (!match.Success) return false;
+        var rgb = Enumerable.Range(1, 3).Select(i => int.Parse(match.Groups[i].Value)).ToArray();
+        if (rgb.Any(n => n > 255)) return false;
+        color = $"#{rgb[0]:x2}{rgb[1]:x2}{rgb[2]:x2}";
+        return true;
+    }
+
+    private static string SafeStyle(Node node)
+    {
+        var styles = new List<string>();
+        var family = node.Style("font-family").Trim(' ', '\'', '"');
+        if (Fonts.Contains(family)) styles.Add($"font-family:'{family}'");
+        var fontSize = Pixel.Match(node.Style("font-size"));
+        if (fontSize.Success && int.TryParse(fontSize.Groups["value"].Value, out var pixels) && pixels is >= 8 and <= 72)
+            styles.Add($"font-size:{pixels}px");
+        foreach (var colorStyle in new[] { "color", "background-color" })
+        {
+            var color = node.Style(colorStyle);
+            if (TryColor(color, out var normalized)) styles.Add($"{colorStyle}:{normalized}");
+        }
+        var align = node.Style("text-align").ToLowerInvariant();
+        if (align is "left" or "right" or "center" or "justify") styles.Add($"text-align:{align}");
+        if (node.Name is "table" or "td" or "th")
+        {
+            var borderColor = node.Style("border-color");
+            if (TryColor(borderColor, out var normalizedBorder)) styles.Add($"border-color:{normalizedBorder}");
+            var width = node.Style("border-width");
+            if (width is "1px" or "2px" or "3px" or "4px") styles.Add($"border-width:{width}");
+            if (styles.Any(s => s.StartsWith("border-", StringComparison.Ordinal))) styles.Add("border-style:solid");
+        }
+        var indent = Pixel.Match(node.Style("margin-left"));
+        if (indent.Success && int.TryParse(indent.Groups["value"].Value, out var px) && px <= 240 && px % 24 == 0)
+            styles.Add($"margin-left:{px}px");
+        return string.Join(';', styles);
+    }
+}
+
+/// <summary>
+/// HTML allowlist for server-side rendering of Azunt.Editor View documents.
+/// Does not fetch images; it is not a universal HTML sanitizer or a host authorization boundary.
+/// </summary>
+public static class EditorViewerSanitizer
+{
+    /// <summary>Returns safe markup in the editor's supported subset for server-rendered View mode.</summary>
+    public static string Sanitize(string? html)
+        => ViewerSafeEditorDocument.Parse(html ?? string.Empty).ToSafeHtml();
+}

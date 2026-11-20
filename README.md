@@ -190,6 +190,12 @@ the existing streaming path. See [public API](docs/public-api.md).
 In Compact mode, the More menu uses a width-limited grid. The layout is
 shared by MVC, Razor Pages and Blazor Server, including wide host forms.
 
+The Table, checked Checkbox and Code buttons are grouped under **Insert** in
+Compact mode. Their adjacent dropdown arrows are part of the same split control:
+select a table size, form-control variation or code language without changing
+the primary button behavior. Classic mode uses the same control heights.
+See [split toolbar controls](docs/toolbar-split-controls-0.8.0.md).
+
 ### CSS namespace (`az-` prefix)
 
 Starting with **0.6.3**, all CSS class names owned by `Azunt.Editor` and

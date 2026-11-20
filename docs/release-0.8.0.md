@@ -19,3 +19,14 @@
 
 - Run `dotnet test` / `dotnet run --project tests/Azunt.Editor.Export.SmokeTests` and test a real PDF browser on the target operating system. To include the opt-in PDF smoke path, set `AZUNT_TEST_PDF=1` and install the matching Playwright browser.
 - Run existing editor Chromium regressions as in README. Build and packaging must be checked with .NET 10 SDK in the host environment.
+
+## Toolbar layout follow-up (0.8.0)
+
+- Visually joined the table icon and its size-picker arrow into a split button.
+- Moved the checked-checkbox and code split controls into Compact's Insert group.
+- Normalized the height and adjacent dropdown styling of Table, Form and Code
+  in Compact and Classic toolbars, including dark mode and touch targets.
+- Kept all existing command handlers, HTML storage, and export API unchanged.
+- Added `tests/editor-toolbar-split-080-browser.py` for layout and UI command regressions.
+
+See [toolbar split controls](toolbar-split-controls-0.8.0.md).

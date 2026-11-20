@@ -62,6 +62,8 @@ public static class EditorMarkup
                 // Keep the existing 2x2 shortcut while exposing a CKEditor-style
                 // grid picker directly beneath the toolbar button.
                 TableSplit(compact: true);
+                FormSplit(compact: true);
+                CodeSplit(compact: true);
                 quickIndex++;
                 continue;
             }
@@ -76,12 +78,6 @@ public static class EditorMarkup
             quickIndex++;
         }
         w.Append("</span></span>");
-        w.Append("<span class=\"az-azunt-editor-form-split\" role=\"group\" aria-label=\"Insert HTML form control\">")
-            .Append("<button type=\"button\" class=\"az-azunt-editor-button az-azunt-editor-form-primary\" data-quick-command=\"form-checkbox-checked\" title=\"Insert checked checkbox\" aria-label=\"Insert checked checkbox\">☑</button>")
-            .Append("<button type=\"button\" class=\"az-azunt-editor-button az-azunt-editor-form-dropdown\" data-azunt-menu=\"controls\" aria-haspopup=\"dialog\" aria-expanded=\"false\" aria-label=\"Choose radio button or checkbox\" title=\"Choose form control\">▾</button></span>");
-        w.Append("<span class=\"az-code-toolbar\" role=\"group\" aria-label=\"Insert code block\">")
-            .Append("<button type=\"button\" class=\"az-azunt-editor-button\" data-quick-command=\"code-block\" title=\"Insert C# code block\">&lt;/&gt;</button>")
-            .Append("<button type=\"button\" class=\"az-azunt-editor-button\" data-azunt-menu=\"codepicker\" aria-haspopup=\"dialog\" aria-expanded=\"false\" aria-label=\"Choose code language\">▾</button></span>");
         w.Append("<span class=\"az-azunt-editor-quick-custom\" data-quick-custom></span>")
             .Append("<button class=\"az-azunt-editor-menu-trigger az-azunt-editor-quick-more\" type=\"button\" data-azunt-menu=\"more\" aria-expanded=\"false\" aria-haspopup=\"dialog\" title=\"More editor commands\" aria-label=\"More editor commands\">More ⋯</button>");
         w.Append("</div><div class=\"az-azunt-editor-classic-groups\" data-classic-groups>");
@@ -130,9 +126,7 @@ public static class EditorMarkup
         EndGroup();
 
         Group("Form controls");
-        w.Append("<span class=\"az-azunt-editor-form-split\" role=\"group\" aria-label=\"Insert HTML form control\">")
-            .Append("<button type=\"button\" class=\"az-azunt-editor-button az-azunt-editor-form-primary\" data-command=\"form-checkbox-checked\" title=\"Insert checked checkbox\" aria-label=\"Insert checked checkbox\">☑</button>")
-            .Append("<button type=\"button\" class=\"az-azunt-editor-button az-azunt-editor-form-dropdown\" data-azunt-menu=\"controls\" aria-haspopup=\"dialog\" aria-expanded=\"false\" aria-label=\"Choose radio button or checkbox\" title=\"Choose form control\">▾</button></span>");
+        FormSplit(compact: false);
         EndGroup();
 
         Group("Table");
@@ -168,8 +162,7 @@ public static class EditorMarkup
         EndGroup();
 
         Group("Writing tools");
-        Button("code-block", "Code", "Insert code block");
-        w.Append("<button type=\"button\" class=\"az-azunt-editor-button\" data-azunt-menu=\"codepicker\" aria-haspopup=\"dialog\" aria-expanded=\"false\" aria-label=\"Choose code language\">▾</button>");
+        CodeSplit(compact: false);
         Button("find", "Find", "Find and replace", "Ctrl+F");
         Button("clear-format", "Tx", "Remove formatting from selected text");
         Button("horizontal-rule", "―", "Insert horizontal line");
@@ -288,15 +281,40 @@ public static class EditorMarkup
         {
             var commandAttribute = compact ? "data-quick-command" : "data-command";
             var quickClass = compact ? " az-azunt-editor-quick-optional" : "";
-            w.Append("<span class=\"az-azunt-editor-table-split")
+            w.Append("<span class=\"az-azunt-editor-tool-split az-azunt-editor-table-split")
                 .Append(quickClass).Append("\" role=\"group\" aria-label=\"Insert table\">")
                 .Append("<button type=\"button\" class=\"az-azunt-editor-button az-azunt-editor-table-primary")
                 .Append(compact ? " az-azunt-editor-quick-command" : "")
                 .Append("\" ").Append(commandAttribute)
-                .Append("=\"table\" title=\"Insert 2 × 2 table\" aria-label=\"Insert 2 by 2 table\">▦</button>")
+                .Append("=\"table\" title=\"Insert 2 × 2 table\" aria-label=\"Insert 2 by 2 table\">")
+                .Append("<span class=\"az-azunt-editor-button-icon\" aria-hidden=\"true\">")
+                .Append(Icon("table")).Append("</span></button>")
                 .Append("<button type=\"button\" class=\"az-azunt-editor-button az-azunt-editor-table-dropdown\" ")
                 .Append("data-azunt-menu=\"tablepicker\" aria-haspopup=\"dialog\" aria-expanded=\"false\" ")
                 .Append("aria-label=\"Choose table rows and columns\" title=\"Choose table size\">▾</button></span>");
+        }
+
+        void FormSplit(bool compact)
+        {
+            var commandAttribute = compact ? "data-quick-command" : "data-command";
+            w.Append("<span class=\"az-azunt-editor-tool-split az-azunt-editor-form-split\" role=\"group\" aria-label=\"Insert HTML form control\">")
+                .Append("<button type=\"button\" class=\"az-azunt-editor-button az-azunt-editor-form-primary\" ")
+                .Append(commandAttribute).Append("=\"form-checkbox-checked\" title=\"Insert checked checkbox\" ")
+                .Append("aria-label=\"Insert checked checkbox\">☑</button>")
+                .Append("<button type=\"button\" class=\"az-azunt-editor-button az-azunt-editor-form-dropdown\" ")
+                .Append("data-azunt-menu=\"controls\" aria-haspopup=\"dialog\" aria-expanded=\"false\" ")
+                .Append("aria-label=\"Choose radio button or checkbox\" title=\"Choose form control\">▾</button></span>");
+        }
+
+        void CodeSplit(bool compact)
+        {
+            var commandAttribute = compact ? "data-quick-command" : "data-command";
+            w.Append("<span class=\"az-azunt-editor-tool-split az-code-toolbar\" role=\"group\" aria-label=\"Insert code block\">")
+                .Append("<button type=\"button\" class=\"az-azunt-editor-button az-code-toolbar-primary\" ")
+                .Append(commandAttribute).Append("=\"code-block\" title=\"Insert C# code block\" aria-label=\"Insert C# code block\">&lt;/&gt;</button>")
+                .Append("<button type=\"button\" class=\"az-azunt-editor-button az-code-toolbar-dropdown\" ")
+                .Append("data-azunt-menu=\"codepicker\" aria-haspopup=\"dialog\" aria-expanded=\"false\" ")
+                .Append("aria-label=\"Choose code language\" title=\"Choose code language\">▾</button></span>");
         }
 
         void Group(string label) => w.Append("<div class=\"az-azunt-editor-group\" role=\"group\" data-group-label=\"").Append(Encode(label)).Append("\" aria-label=\"").Append(Encode(label)).Append("\">");

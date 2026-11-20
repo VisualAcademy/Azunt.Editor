@@ -930,12 +930,14 @@
     changed(instance);
   }
 
-  function insertTable(instance) {
+  function insertTable(instance, rows = 2, columns = 2) {
+    if (instance.readOnly || instance.sourceMode || !Number.isInteger(rows) || !Number.isInteger(columns) ||
+        rows < 1 || columns < 1 || rows > 10 || columns > 10) return;
     const table = document.createElement("table");
     const body = table.createTBody();
-    for (let rowNumber = 0; rowNumber < 2; rowNumber++) {
+    for (let rowNumber = 0; rowNumber < rows; rowNumber++) {
       const row = body.insertRow();
-      for (let columnNumber = 0; columnNumber < 2; columnNumber++) {
+      for (let columnNumber = 0; columnNumber < columns; columnNumber++) {
         const cell = row.insertCell();
         cell.appendChild(document.createElement("br"));
       }
@@ -1464,7 +1466,7 @@
   const menuGroups = Object.freeze({
     file: ["Document"], edit: ["Writing tools"], view: ["Document"],
     insert: ["Link", "Image"], format: ["Text formatting", "Font and color", "Paragraph"],
-    table: ["Table"], image: ["Image"], link: ["Link"], controls: [],
+    table: ["Table"], tablepicker: [], image: ["Image"], link: ["Link"], controls: [],
     tools: ["Writing tools"], export: [],
     more: ["Text formatting", "Font and color", "Paragraph", "Link", "Table", "Image", "Writing tools", "Document"]
   });
@@ -1552,6 +1554,23 @@
   function positionMenu(instance) {
     if (!instance.menuPanel || instance.menuPanel.hidden) return;
     const viewport = visibleViewport();
+    if (instance.openMenu === "tablepicker" && instance.menuOpener) {
+      const trigger = instance.menuOpener.getBoundingClientRect();
+      // Unlike full-width command menus, the table palette hugs its toolbar
+      // button while staying inside the visual viewport on mobile/touch.
+      const width = Math.min(296, viewport.right - viewport.left - 16);
+      const menuHeight = Math.min(instance.menuPanel.scrollHeight, 340);
+      const below = viewport.bottom - trigger.bottom - 8;
+      const above = trigger.top - viewport.top - 8;
+      const placeAbove = below < menuHeight && above > below;
+      instance.menuPanel.style.position = "fixed";
+      instance.menuPanel.style.width = `${width}px`;
+      instance.menuPanel.style.left = `${Math.max(viewport.left + 8, Math.min(trigger.left, viewport.right - width - 8))}px`;
+      instance.menuPanel.style.maxHeight = `${Math.max(1, Math.min(placeAbove ? above : below, menuHeight))}px`;
+      instance.menuPanel.style.top = placeAbove ? "auto" : `${Math.max(viewport.top + 8, trigger.bottom + 4)}px`;
+      instance.menuPanel.style.bottom = placeAbove ? `${Math.max(0, window.innerHeight - trigger.top + 4)}px` : "auto";
+      return;
+    }
     const editor = instance.element.getBoundingClientRect();
     const contextOpener = instance.menuOpener?.closest("[data-context-tools]");
     const anchor = contextOpener && instance.menuAnchorRect
@@ -1627,6 +1646,8 @@
     for (const group of instance.originalGroups || []) instance.classicGroups.appendChild(group);
     instance.menuPanel.replaceChildren();
     instance.menuPanel.hidden = true;
+    instance.menuPanel.classList.remove("az-azunt-editor-table-picker");
+    instance.menuPanel.style.position = "";
     instance.openMenu = null;
     instance.menuAnchorRect = null;
     instance.toolbar.querySelectorAll("[data-azunt-menu]").forEach(button => {
@@ -1681,6 +1702,50 @@
     if (!instance.menuPanel?.hidden) openMenu(instance, instance.openMenu);
   }
 
+  // A 10x10 palette. Buttons (rather than canvas drawing) make each size
+  // accessible on touch and by keyboard, without introducing HTML into saves.
+  function previewTableSize(instance, rows, columns) {
+    if (instance.openMenu !== "tablepicker") return;
+    const picker = instance.menuPanel.querySelector("[data-table-grid]");
+    if (!picker) return;
+    picker.querySelectorAll("[data-table-rows]").forEach(button => {
+      const selected = Number(button.dataset.tableRows) <= rows &&
+        Number(button.dataset.tableColumns) <= columns;
+      button.classList.toggle("az-azunt-editor-table-cell-selected", selected);
+      button.setAttribute("aria-pressed", selected ? "true" : "false");
+    });
+    const status = instance.menuPanel.querySelector("[data-table-size]");
+    if (status) status.textContent = `${columns} × ${rows}`;
+  }
+
+  function appendTablePicker(instance, target) {
+    const grid = document.createElement("div");
+    grid.className = "az-azunt-editor-table-grid";
+    grid.dataset.tableGrid = "true";
+    grid.setAttribute("role", "group");
+    grid.setAttribute("aria-label", "Select columns and rows. Use arrow keys, then Enter.");
+    for (let rows = 1; rows <= 10; rows++) {
+      for (let columns = 1; columns <= 10; columns++) {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "az-azunt-editor-table-cell";
+        button.dataset.tableRows = String(rows);
+        button.dataset.tableColumns = String(columns);
+        button.tabIndex = rows === 1 && columns === 1 ? 0 : -1;
+        button.title = `${columns} columns × ${rows} rows`;
+        button.setAttribute("aria-label", `Insert ${columns} columns by ${rows} rows table`);
+        grid.appendChild(button);
+      }
+    }
+    const size = document.createElement("div");
+    size.className = "az-azunt-editor-table-size";
+    size.dataset.tableSize = "true";
+    size.setAttribute("aria-live", "off");
+    size.textContent = "1 × 1";
+    target.append(grid, size);
+    previewTableSize(instance, 1, 1);
+  }
+
   function appendFormControlChoices(target) {
     const group = document.createElement("div");
     group.className = "az-azunt-editor-group az-azunt-editor-form-choices";
@@ -1719,6 +1784,15 @@
 
   function openMenu(instance, key, opener = null) {
     if (!instance.menuPanel || !menuNames.has(key)) return;
+    // A table dropdown in the Compact "Table" command menu is moved back
+    // into a hidden Classic group on close. Anchor the picker to the visible
+    // top-level Table / More trigger instead of a now-hidden DOM element.
+    if (key === "tablepicker" && instance.element.dataset.toolbarMode === "compact" &&
+        opener && instance.originalGroups?.some(group => group.contains(opener))) {
+      const tableMenu = instance.toolbar.querySelector('[data-compact-menu] [data-azunt-menu="table"]');
+      opener = tableMenu?.getClientRects().length
+        ? tableMenu : instance.toolbar.querySelector('[data-azunt-menu="more"]') || opener;
+    }
     const oldOpener = instance.menuOpener;
     closeMenu(instance);
     instance.menuOpener = opener || instance.toolbar.querySelector(`[data-azunt-menu="${key}"]`) || oldOpener;
@@ -1729,6 +1803,10 @@
     for (const label of menuGroups[key]) {
       const group = instance.originalGroups.find(candidate => candidate.dataset.groupLabel === label);
       if (group) instance.menuPanel.appendChild(group);
+    }
+    if (key === "tablepicker") {
+      instance.menuPanel.classList.add("az-azunt-editor-table-picker");
+      appendTablePicker(instance, instance.menuPanel);
     }
     if (key === "controls" || key === "insert" || key === "more") appendFormControlChoices(instance.menuPanel);
     appendCustomCommands(instance, key, instance.menuPanel);
@@ -2028,6 +2106,13 @@
       if (event.target.closest("button")) event.preventDefault();
     }, { signal });
     instance.toolbar.addEventListener("keydown", event => {
+      const pickerTrigger = event.target.closest('button[data-azunt-menu="tablepicker"]');
+      if (pickerTrigger && ["ArrowDown", "ArrowUp"].includes(event.key)) {
+        event.preventDefault();
+        if (instance.openMenu !== "tablepicker") openMenu(instance, "tablepicker", pickerTrigger);
+        focusMenuItem(instance);
+        return;
+      }
       const formDropdown = event.target.closest('button[data-azunt-menu="controls"]');
       if (formDropdown && ["ArrowDown", "ArrowUp"].includes(event.key)) {
         event.preventDefault();
@@ -2056,6 +2141,25 @@
         return;
       }
       if (instance.menuPanel?.hidden || !instance.menuPanel.contains(event.target)) return;
+      const tableCell = event.target.closest("button[data-table-rows][data-table-columns]");
+      if (tableCell && instance.openMenu === "tablepicker" &&
+          ["ArrowRight", "ArrowLeft", "ArrowUp", "ArrowDown", "Home", "End"].includes(event.key)) {
+        event.preventDefault();
+        let rows = Number(tableCell.dataset.tableRows);
+        let columns = Number(tableCell.dataset.tableColumns);
+        if (event.key === "ArrowRight") columns = Math.min(10, columns + 1);
+        if (event.key === "ArrowLeft") columns = Math.max(1, columns - 1);
+        if (event.key === "ArrowDown") rows = Math.min(10, rows + 1);
+        if (event.key === "ArrowUp") rows = Math.max(1, rows - 1);
+        if (event.key === "Home") { rows = 1; columns = 1; }
+        if (event.key === "End") { rows = 10; columns = 10; }
+        const next = instance.menuPanel.querySelector(`[data-table-rows="${rows}"][data-table-columns="${columns}"]`);
+        tableCell.tabIndex = -1;
+        next.tabIndex = 0;
+        next.focus({ preventScroll: true });
+        previewTableSize(instance, rows, columns);
+        return;
+      }
       // Native inputs/selects own their arrows and text editing shortcuts.
       if (event.target.matches("input, select, textarea")) return;
       if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) return;
@@ -2073,7 +2177,25 @@
           closeMenu(instance);
       });
     }, { signal });
+    instance.toolbar.addEventListener("pointerover", event => {
+      const cell = event.target.closest("button[data-table-rows][data-table-columns]");
+      if (cell) previewTableSize(instance, Number(cell.dataset.tableRows), Number(cell.dataset.tableColumns));
+    }, { signal });
+    instance.toolbar.addEventListener("focusin", event => {
+      const cell = event.target.closest("button[data-table-rows][data-table-columns]");
+      if (cell) previewTableSize(instance, Number(cell.dataset.tableRows), Number(cell.dataset.tableColumns));
+    }, { signal });
     instance.toolbar.addEventListener("click", event => {
+      const cell = event.target.closest("button[data-table-rows][data-table-columns]");
+      if (cell && instance.openMenu === "tablepicker") {
+        const rows = Number(cell.dataset.tableRows);
+        const columns = Number(cell.dataset.tableColumns);
+        closeMenu(instance);
+        if (!instance.readOnly && !instance.sourceMode) insertTable(instance, rows, columns);
+        updateContextTools(instance);
+        updateFormattingState(instance);
+        return;
+      }
       const menu = event.target.closest("button[data-azunt-menu]");
       if (menu) {
         const key = menu.dataset.azuntMenu;

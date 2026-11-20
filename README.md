@@ -2,7 +2,7 @@
 
 A lightweight rich-text editor for ASP.NET Core MVC, Razor Pages, and Blazor Server.
 
-Version: **0.6.7** · .NET 10
+Version: **0.6.8** · .NET 10
 
 ## Projects
 - `src/Azunt.Editor` — shared editor components, JavaScript, and CSS
@@ -30,6 +30,19 @@ mode on `/editor/blazor` without discarding the current document. Start in View
 using `/editor/blazor?mode=view`. In 0.6.6,
 View content is emitted server-side through a restricted HTML allowlist, so
 initial viewing does not depend on the editor JavaScript or a SignalR circuit.
+
+## Table dimension picker (0.6.8)
+
+In Compact and Classic toolbars, the table split button inserts a 2 × 2
+HTML table when the grid icon is pressed (unchanged behavior). Press **▾**
+to open a compact palette immediately below that button and choose from
+**1–10 columns × 1–10 rows**. Hover/focus previews dimensions before insert.
+Use arrow keys and Enter for keyboard insertion, or Escape to dismiss.
+The palette stays in the visual viewport, including narrow screens, and the
+HTML saved is the same ordinary `<table>` / `<tr>` / `<td>` structure.
+Existing table row/column and merge/split tools remain available.
+
+See [table picker](docs/table-picker.md) for details and limitations.
 
 ## HTML form control insertion (0.6.7)
 

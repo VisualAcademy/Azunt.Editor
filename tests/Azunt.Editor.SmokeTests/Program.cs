@@ -40,6 +40,12 @@ var rgbViewer = Azunt.Editor.Rendering.EditorViewerSanitizer.Sanitize(
     "<p style=\"color:rgb(18, 52, 86);background-color:rgba(255, 220, 10, 1)\">Colors</p>");
 Require(rgbViewer.Contains("#123456") && rgbViewer.Contains("#ffdc0a"), "Browser RGB colors survive server rendering");
 
+// 0.6.8: both toolbar modes expose the table split control and its grid picker.
+var tableToolbar = EditorMarkup.Render("table-palette", "Html");
+Require(tableToolbar.Contains("data-quick-command=\"table\""), "Quick default 2x2 table insertion retained");
+Require(tableToolbar.Contains("data-command=\"table\""), "Classic default 2x2 table insertion retained");
+Require(tableToolbar.Split("data-azunt-menu=\"tablepicker\"").Length == 3, "Table grid dropdown on both toolbars");
+
 // 0.6.7: both toolbar modes expose the split form-control insertion button.
 var formToolbar = EditorMarkup.Render("forms", "Html");
 Require(formToolbar.Contains("data-quick-command=\"form-checkbox-checked\""), "Quick checked checkbox insertion");

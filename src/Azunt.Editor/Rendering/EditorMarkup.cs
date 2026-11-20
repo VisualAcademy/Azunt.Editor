@@ -58,6 +58,13 @@ public static class EditorMarkup
                     .Append("\"><span class=\"az-azunt-editor-quick-label\">").Append(labelText)
                     .Append("</span><span class=\"az-azunt-editor-quick-controls\">");
             }
+            if (command == "table") {
+                // Keep the existing 2x2 shortcut while exposing a CKEditor-style
+                // grid picker directly beneath the toolbar button.
+                TableSplit(compact: true);
+                quickIndex++;
+                continue;
+            }
             w.Append("<button type=\"button\" class=\"az-azunt-editor-button az-azunt-editor-quick-command")
                 .Append(optional ? " az-azunt-editor-quick-optional" : "")
                 .Append("\" data-quick-command=\"").Append(command).Append("\" title=\"").Append(Encode(title))
@@ -126,7 +133,7 @@ public static class EditorMarkup
         EndGroup();
 
         Group("Table");
-        Button("table", "▦", "Insert 2 × 2 table");
+        TableSplit(compact: false);
         Button("table-row-before", "↑ Row", "Insert row above current cell");
         Button("table-row-after", "+Row", "Insert row below current cell");
         Button("table-row-delete", "−Row", "Delete current row");
@@ -257,6 +264,21 @@ public static class EditorMarkup
             .Append("<span class=\"az-azunt-editor-stats\" data-editor-stats aria-live=\"off\">0 words · 0 characters</span></div>");
         w.Append("</div>");
         return w.ToString();
+
+        void TableSplit(bool compact)
+        {
+            var commandAttribute = compact ? "data-quick-command" : "data-command";
+            var quickClass = compact ? " az-azunt-editor-quick-optional" : "";
+            w.Append("<span class=\"az-azunt-editor-table-split")
+                .Append(quickClass).Append("\" role=\"group\" aria-label=\"Insert table\">")
+                .Append("<button type=\"button\" class=\"az-azunt-editor-button az-azunt-editor-table-primary")
+                .Append(compact ? " az-azunt-editor-quick-command" : "")
+                .Append("\" ").Append(commandAttribute)
+                .Append("=\"table\" title=\"Insert 2 × 2 table\" aria-label=\"Insert 2 by 2 table\">▦</button>")
+                .Append("<button type=\"button\" class=\"az-azunt-editor-button az-azunt-editor-table-dropdown\" ")
+                .Append("data-azunt-menu=\"tablepicker\" aria-haspopup=\"dialog\" aria-expanded=\"false\" ")
+                .Append("aria-label=\"Choose table rows and columns\" title=\"Choose table size\">▾</button></span>");
+        }
 
         void Group(string label) => w.Append("<div class=\"az-azunt-editor-group\" role=\"group\" data-group-label=\"").Append(Encode(label)).Append("\" aria-label=\"").Append(Encode(label)).Append("\">");
         void EndGroup() => w.Append("</div>");

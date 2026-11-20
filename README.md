@@ -2,7 +2,7 @@
 
 A lightweight rich-text editor for ASP.NET Core MVC, Razor Pages, and Blazor Server.
 
-Version: **0.7.0** · .NET 10
+Version: **0.7.1** · .NET 10
 
 ## Projects
 - `src/Azunt.Editor` — shared editor components, JavaScript, and CSS
@@ -30,6 +30,21 @@ mode on `/editor/blazor` without discarding the current document. Start in View
 using `/editor/blazor?mode=view`. In 0.6.6,
 View content is emitted server-side through a restricted HTML allowlist, so
 initial viewing does not depend on the editor JavaScript or a SignalR circuit.
+
+## Programming code blocks (0.7.1)
+
+Use the **Code** split button in either toolbar (or the Insert menu) to add C#,
+JavaScript, SQL, HTML, or CSS snippets. A dedicated textarea edits the literal
+source code. Existing blocks can be edited by double-clicking or selecting Edit;
+Copy copies the original source, not the syntax-coloring markup.
+
+Stored HTML uses only `<pre class="az-code-block" data-language="csharp"><code>…</code></pre>`.
+The code text is HTML-encoded and cannot execute. Color spans and Copy/Edit
+buttons are **display-only** and are never saved to HTML or exported. View mode
+shows the same code with syntax colors when JavaScript is enabled, while the
+server-rendered initial document displays safe, monospaced code without JS.
+PDF export has a readable monospaced style; Word and Excel preserve plain code
+text, not exact highlighted colors. [Details and limitations](docs/code-blocks.md).
 
 ## Undo/Redo reliability (0.7.0 follow-up)
 

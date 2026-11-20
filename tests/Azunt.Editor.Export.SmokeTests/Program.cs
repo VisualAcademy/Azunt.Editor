@@ -74,6 +74,14 @@ Require(EditorHtmlSanitizer.Sanitize("<a href='https://example.org/'>External</a
     "Safe HTTPS links are retained after persistence");
 Require(EditorHtmlSanitizer.Sanitize("<p title=\"ignored\">&lt;ok&gt;</p>").Contains("&lt;ok&gt;"),
     "Text entities remain encoded after HTML normalization");
+// 0.7.1: code blocks retain only a validated language and encoded source.
+var exportedCode = EditorHtmlSanitizer.Sanitize(
+    "<pre data-language='javascript' onclick='bad()'><code>&lt;img src=x onerror=alert(1)&gt;</code></pre>");
+Require(exportedCode.Contains("data-language=\"javascript\""), "Code language survives export sanitizer");
+Require(exportedCode.Contains("&lt;img src=x onerror=alert(1)&gt;"), "Source code is exported as text, not markup");
+Require(!exportedCode.Contains("onclick") && !exportedCode.Contains("<img"), "Code markup is inert during export");
+Require(!EditorHtmlSanitizer.Sanitize("<pre data-language='invalid'><code>text</code></pre>")
+    .Contains("data-language"), "Unsupported code languages are dropped on export");
 var gif = "R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==";
 Require(EditorHtmlSanitizer.Sanitize($"<p><img src=\"data:image/gif;base64,{gif}\"></p>")
     .Contains("data:image/gif;base64,"), "Valid GIF image must survive sanitized HTML storage");

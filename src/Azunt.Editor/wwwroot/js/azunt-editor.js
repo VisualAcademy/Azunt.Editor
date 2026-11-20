@@ -36,6 +36,15 @@
   const maxHistoryEntries = 60;
   const allowedFonts = new Set(["Arial", "Georgia", "Times New Roman", "Verdana", "Segoe UI", "Noto Sans KR", "Malgun Gothic"]);
   const hexColor = /^#[0-9a-f]{6}$/i;
+  const codeLanguages = Object.freeze(["csharp", "javascript", "sql", "html", "css"]);
+  const maxCodeCharacters = 100000;
+  const codeKeywords = {
+    csharp: new Set("abstract as async await base bool break byte case catch char checked class const continue decimal default delegate do double else enum event explicit extern false finally fixed float for foreach goto if implicit in int interface internal is lock long namespace new null object operator out override params partial private protected public readonly record ref return sbyte sealed short sizeof static string struct switch this throw true try typeof uint ulong unchecked unsafe ushort using var virtual void volatile while yield get set init required global file".split(" ")),
+    javascript: new Set("async await break case catch class const continue debugger default delete do else export extends false finally for from function get if import in instanceof let new null of return set static super switch this throw true try typeof undefined var void while with yield".split(" ")),
+    sql: new Set("ADD ALL ALTER AND AS ASC BEGIN BETWEEN BY CASE CAST CHECK COLUMN COMMIT CONSTRAINT COUNT CREATE CROSS DATABASE DEFAULT DELETE DESC DISTINCT DROP ELSE END EXISTS FALSE FOREIGN FROM FULL GROUP HAVING IN INDEX INNER INSERT INTO IS JOIN KEY LEFT LIKE LIMIT NOT NULL ON OR ORDER OUTER PRIMARY REFERENCES RIGHT ROLLBACK SELECT SET TABLE THEN TOP TRUE UNION UNIQUE UPDATE VALUES VIEW WHEN WHERE WITH".split(" ")),
+    css: new Set("inherit initial unset revert important auto none block flex grid inline solid absolute relative fixed sticky var calc rgb rgba url display position color background border margin padding width height font transform transition content".split(" ")),
+    html: new Set()
+  };
   const allowedPageSizes = new Set(["A4", "Letter", "Legal"]);
   const allowedOrientations = new Set(["portrait", "landscape"]);
   const allowedMargins = { normal: "16mm", narrow: "8mm", wide: "25mm" };
@@ -95,6 +104,21 @@
       // not introduce text/password/file inputs or submit host application forms.
       if (tag === "input" && !["checkbox", "radio"].includes((node.getAttribute("type") || "").toLowerCase())) return;
       const clean = document.createElement(tag);
+      if (tag === "pre" && codeLanguages.includes(node.getAttribute("data-language"))) {
+        const source = Array.from(node.children).find(child => child.localName === "code");
+        if (source) {
+          const raw = source.textContent || "";
+          if (raw.length <= maxCodeCharacters) {
+            clean.className = "az-code-block";
+            clean.setAttribute("data-language", node.getAttribute("data-language"));
+            const code = document.createElement("code");
+            code.textContent = raw;
+            clean.appendChild(code);
+            destination.appendChild(clean);
+            return;
+          }
+        }
+      }
       if (tag === "input") {
         clean.setAttribute("type", node.getAttribute("type").toLowerCase());
         // Read the live property so user toggles survive HTML serialization,
@@ -205,6 +229,152 @@
 
   function showStatus(id, text, kind = "info") {
     message(getInstance(id), text, kind);
+  }
+
+
+  // Small dependency-free lexer: color only, never executes user-provided code.
+  // All token content enters through textContent, never through innerHTML.
+  function codeTokenType(language, word) {
+    if (/^(?:\/\/|\/\*|--|<!--[\s\S]*?-->)/.test(word)) return "comment";
+    if (/^['"`]/.test(word)) return "string";
+    if (/^\d/.test(word) || /^#[0-9a-f]{3,8}$/i.test(word)) return "number";
+    if (language === "html") {
+      if (/^<\/?[A-Za-z]/.test(word)) return "keyword";
+      return "plain";
+    }
+    if (codeKeywords[language]?.has(language === "sql" ? word.toUpperCase() : word)) return "keyword";
+    return "plain";
+  }
+
+  function highlightCodeText(code, language, text) {
+    const tokens = language === "html"
+      ? /(<!--[\s\S]*?-->|<\/?[A-Za-z][\w:-]*|\b(?:class|id|href|src|type|style)\b|"(?:[^"]*)"|'(?:[^']*)')/g
+      : language === "sql"
+        ? /(--[^\n]*|\/\*[\s\S]*?\*\/|'(?:''|[^'])*'|\b\d+(?:\.\d+)?\b|\b[A-Za-z_][\w]*\b)/g
+        : /(\/\/[^\n]*|\/\*[\s\S]*?\*\/|"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|`(?:\\.|[^`\\])*`|#[0-9a-fA-F]{3,8}\b|\b\d+(?:\.\d+)?\b|\b[A-Za-z_$][\w$]*\b)/g;
+    const fragment = document.createDocumentFragment();
+    let offset = 0;
+    for (const match of text.matchAll(tokens)) {
+      if (match.index > offset) fragment.appendChild(document.createTextNode(text.slice(offset, match.index)));
+      const type = codeTokenType(language, match[0]);
+      if (type === "plain") fragment.appendChild(document.createTextNode(match[0]));
+      else {
+        const span = document.createElement("span");
+        span.className = `az-code-token-${type}`;
+        span.textContent = match[0];
+        fragment.appendChild(span);
+      }
+      offset = match.index + match[0].length;
+    }
+    if (offset < text.length) fragment.appendChild(document.createTextNode(text.slice(offset)));
+    code.replaceChildren(fragment);
+  }
+
+  function decorateCodeBlocks(instance) {
+    instance.canvas.querySelectorAll('pre[data-language]').forEach(block => {
+      const language = block.getAttribute("data-language");
+      if (!codeLanguages.includes(language)) return;
+      const code = Array.from(block.children).find(child => child.localName === "code");
+      if (!code) return;
+      block.classList.add("az-code-block");
+      // Atomic in Edit: double-click or Edit button opens the accessible textarea.
+      block.contentEditable = "false";
+      const value = code.textContent || "";
+      if (value.length > maxCodeCharacters) return;
+      if (block.azCodeRendered !== value || block.azCodeLanguage !== language) {
+        highlightCodeText(code, language, value);
+        block.azCodeRendered = value;
+        block.azCodeLanguage = language;
+      }
+      if (!block.querySelector('.az-code-actions')) {
+        const actions = document.createElement("span");
+        actions.className = "az-code-actions";
+        actions.contentEditable = "false";
+        const label = document.createElement("span");
+        label.className = "az-code-language";
+        label.textContent = language === "csharp" ? "C#" : language === "javascript" ? "JavaScript" : language.toUpperCase();
+        actions.appendChild(label);
+        if (!instance.readOnly) {
+          const edit = document.createElement("button");
+          edit.type = "button";
+          edit.dataset.codeAction = "edit";
+          edit.textContent = "Edit";
+          edit.setAttribute("aria-label", "Edit code block");
+          actions.appendChild(edit);
+        }
+        const copy = document.createElement("button");
+        copy.type = "button";
+        copy.dataset.codeAction = "copy";
+        copy.textContent = "Copy";
+        copy.setAttribute("aria-label", "Copy code block");
+        actions.appendChild(copy);
+        block.insertBefore(actions, code);
+      }
+    });
+  }
+
+  function openCodePanel(instance, language = "csharp", block = null) {
+    if (instance.readOnly || instance.sourceMode || !instance.codePanel) return;
+    const validLanguage = codeLanguages.includes(language) ? language : "csharp";
+    instance.editingCodeBlock = block && instance.canvas.contains(block) ? block : null;
+    instance.codeLanguage.value = validLanguage;
+    instance.codeText.value = instance.editingCodeBlock?.querySelector("code")?.textContent || "";
+    instance.codePanel.hidden = false;
+    instance.codeText.focus();
+  }
+
+  function closeCodePanel(instance) {
+    if (!instance.codePanel) return;
+    instance.codePanel.hidden = true;
+    instance.editingCodeBlock = null;
+  }
+
+  function applyCodePanel(instance) {
+    const text = instance.codeText.value;
+    if (text.length > maxCodeCharacters) return message(instance, "Code block exceeds 100,000 characters.", "warning");
+    const language = instance.codeLanguage.value;
+    if (!codeLanguages.includes(language)) return;
+    const existing = instance.editingCodeBlock;
+    closeCodePanel(instance);
+    if (existing && instance.canvas.contains(existing)) {
+      existing.setAttribute("data-language", language);
+      const code = existing.querySelector("code");
+      code.textContent = text;
+      existing.azCodeRendered = null;
+      changed(instance);
+      decorateCodeBlocks(instance);
+    } else {
+      const pre = document.createElement("pre");
+      pre.setAttribute("data-language", language);
+      pre.className = "az-code-block";
+      const code = document.createElement("code");
+      code.textContent = text || "// Enter code here";
+      pre.appendChild(code);
+      const fragment = document.createDocumentFragment();
+      fragment.appendChild(pre);
+      insertClipboardFragment(instance, fragment);
+      decorateCodeBlocks(instance);
+    }
+  }
+
+  function handleCodeAction(instance, event) {
+    const button = event.target.closest('button[data-code-action]');
+    if (!button) return false;
+    const block = button.closest('pre[data-language]');
+    if (!block || !instance.canvas.contains(block)) return false;
+    event.preventDefault();
+    event.stopPropagation();
+    const code = block.querySelector('code');
+    if (!code) return true;
+    if (button.dataset.codeAction === "edit") openCodePanel(instance, block.dataset.language, block);
+    else if (button.dataset.codeAction === "copy") {
+      const text = code.textContent || "";
+      if (navigator.clipboard?.writeText) navigator.clipboard.writeText(text)
+        .then(() => message(instance, "Code copied.", "success"))
+        .catch(() => message(instance, "Copy unavailable. Select and copy the code manually.", "warning"));
+      else message(instance, "Clipboard unavailable in this browser context.", "warning");
+    }
+    return true;
   }
 
   function readHtml(instance) {
@@ -346,15 +516,22 @@
     if (!instance.stats) return;
     // textContent excludes image Base64 and HTML markup. Do not treat code or
     // attributes as words, and do not persist view-only counters into HTML.
-    const text = instance.sourceMode
+    let text = instance.sourceMode
       ? (() => { const node = document.createElement("div"); node.innerHTML = sanitizeHtml(instance.source.value); return node.textContent || ""; })()
       : instance.canvas.innerText || instance.canvas.textContent || "";
+    // Code Copy/Edit UI is not part of the document and must not affect counts.
+    if (!instance.sourceMode && instance.canvas.querySelector('.az-code-actions')) {
+      const clone = instance.canvas.cloneNode(true);
+      clone.querySelectorAll('.az-code-actions').forEach(node => node.remove());
+      text = clone.textContent || "";
+    }
     const count = (text.match(/[\p{L}\p{N}]+(?:['’‐-―-][\p{L}\p{N}]+)*/gu) || []).length;
     instance.stats.textContent = `${count} word${count === 1 ? "" : "s"} · ${Array.from(text).length} characters`;
   }
 
   function changed(instance) {
     remember(instance);
+    decorateCodeBlocks(instance);
     updateStats(instance);
     updateResizeHandle(instance);
     updateFormattingState(instance);
@@ -520,6 +697,7 @@
   }
 
   function toggleSource(instance) {
+    closeCodePanel(instance);
     if (instance.readOnly) return;
     // Mode transitions must never persist a half-completed pointer gesture.
     finishTableMove(instance, null, true);
@@ -539,6 +717,7 @@
     } else {
       const clean = sanitizeHtml(instance.source.value);
       instance.canvas.innerHTML = clean;
+      decorateCodeBlocks(instance);
       instance.sourceMode = false;
       instance.source.hidden = true;
       instance.canvas.hidden = false;
@@ -1384,6 +1563,7 @@
     if (next < 0 || next >= instance.history.length) return;
     instance.historyIndex = next;
     instance.canvas.innerHTML = instance.history[next];
+    decorateCodeBlocks(instance);
     setImageSelection(instance, null);
     instance.lastRange = null;
     instance.activeCell = null;
@@ -2029,6 +2209,9 @@
       if (instance.datePanel) instance.datePanel.hidden = !instance.datePanel.hidden;
       return;
     }
+    if (command === "code-block") return openCodePanel(instance);
+    if (command.startsWith("code-block-") && codeLanguages.includes(command.slice("code-block-".length)))
+      return openCodePanel(instance, command.slice("code-block-".length));
     if (command === "signature") return showSignature(instance);
     if (command === "templates") {
       refreshTemplateOptions(instance);
@@ -2060,7 +2243,7 @@
   const menuGroups = Object.freeze({
     file: ["Document"], edit: ["Writing tools"], view: ["Document"],
     insert: ["Link", "Image"], format: ["Text formatting", "Font and color", "Paragraph"],
-    table: ["Table"], tablepicker: [], image: ["Image"], link: ["Link"], controls: [],
+    table: ["Table"], tablepicker: [], image: ["Image"], link: ["Link"], controls: [], codepicker: [],
     tools: ["Writing tools"], export: [],
     more: ["Text formatting", "Font and color", "Paragraph", "Link", "Table", "Image", "Writing tools", "Document"]
   });
@@ -2364,6 +2547,24 @@
     target.appendChild(group);
   }
 
+
+  function appendCodeChoices(target) {
+    const group = document.createElement("div");
+    group.className = "az-azunt-editor-group az-code-choices";
+    group.dataset.groupLabel = "Code blocks";
+    group.setAttribute("role", "group");
+    for (const [language, label] of [["csharp", "C#"], ["javascript", "JavaScript"], ["sql", "SQL"], ["html", "HTML"], ["css", "CSS"]]) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "az-azunt-editor-button";
+      button.dataset.command = `code-block-${language}`;
+      button.textContent = label;
+      button.setAttribute("aria-label", `Insert ${label} code block`);
+      group.appendChild(button);
+    }
+    target.appendChild(group);
+  }
+
   function appendCustomCommands(instance, key, target) {
     const commands = Array.from(effectiveCommands(instance).values()).filter(def =>
       key === "more" || def.group === key || (key === "file" && def.group === "export"));
@@ -2404,6 +2605,7 @@
       appendTablePicker(instance, instance.menuPanel);
     }
     if (key === "controls" || key === "insert" || key === "more") appendFormControlChoices(instance.menuPanel);
+    if (key === "codepicker" || key === "insert" || key === "more") appendCodeChoices(instance.menuPanel);
     appendCustomCommands(instance, key, instance.menuPanel);
     if (!instance.menuPanel.children.length) {
       const note = document.createElement("span");
@@ -2637,6 +2839,10 @@
       value: element.querySelector("[data-azunt-value]"),
       images: element.querySelector("[data-azunt-images]"),
       source: element.querySelector("[data-azunt-source]"),
+      codePanel: element.querySelector("[data-code-panel]"),
+      codeLanguage: element.querySelector("[data-code-language]"),
+      codeText: element.querySelector("[data-code-text]"),
+      editingCodeBlock: null,
       linkPanel: element.querySelector("[data-link-panel]"),
       linkText: element.querySelector("[data-link-text]"),
       linkUrl: element.querySelector("[data-link-url]"),
@@ -2677,6 +2883,7 @@
     const startingHtml = visibleHtml.trim() ? visibleHtml
       : (sameRoot ? pendingHtml : instance.value.value);
     instance.canvas.innerHTML = sanitizeHtml(startingHtml);
+    decorateCodeBlocks(instance);
     setDocumentControlsReadOnly(instance);
     instance.value.value = readHtml(instance);
     // Switching modes retains undo history, but starts with the current sanitized HTML.
@@ -2687,6 +2894,11 @@
     instance.historyIndex = oldHistory?.length ? previous.historyIndex : 0;
     instances.set(element.id, instance);
     instance.canvas.contentEditable = instance.readOnly ? "false" : "true";
+    instance.canvas.addEventListener("click", event => handleCodeAction(instance, event), { signal: controller.signal });
+    instance.canvas.addEventListener("dblclick", event => {
+      const block = event.target.closest?.('pre[data-language]');
+      if (block && !instance.readOnly) { event.preventDefault(); openCodePanel(instance, block.dataset.language, block); }
+    }, { signal: controller.signal });
     instance.value.disabled = instance.mode === "view";
     if (instance.mode === "view") {
       instance.canvas.setAttribute("role", "document");
@@ -2856,6 +3068,13 @@
       runSelect(instance, target.dataset.select, target.value);
       if (!["paper", "orientation", "margin", "imageInsertSize"].includes(target.dataset.select) && target.type !== "color") target.selectedIndex = 0;
       updateFormattingState(instance);
+    }, { signal });
+    instance.codePanel?.querySelector("[data-code-apply]")?.addEventListener("click", () => applyCodePanel(instance), { signal });
+    instance.codePanel?.querySelector("[data-code-cancel]")?.addEventListener("click", () => closeCodePanel(instance), { signal });
+    instance.codeText?.addEventListener("keydown", event => {
+      if (event.key === "Escape") { event.preventDefault(); closeCodePanel(instance); }
+      if (event.key === "Tab") { event.preventDefault(); const pos = instance.codeText.selectionStart;
+        instance.codeText.setRangeText("    ", pos, instance.codeText.selectionEnd, "end"); }
     }, { signal });
     instance.linkPanel.querySelector("[data-link-apply]").addEventListener("click", () => applyLink(instance), { signal });
     instance.linkPanel.querySelector("[data-link-cancel]").addEventListener("click", () => {
@@ -3168,6 +3387,7 @@
       throw new Error("Editor mode must be Edit or View.");
     const instance = getInstance(id);
     if (instance.mode === desired) return;
+    closeCodePanel(instance);
     // Cancel a partially completed image drag BEFORE sending any pending HTML.
     // Otherwise Blazor can receive a transient width that View then rolls back.
     if (instance.imageResize) finishImageResize(instance, null, true);
@@ -3226,6 +3446,7 @@
 
   function setHtml(id, html) {
     const instance = getInstance(id);
+    closeCodePanel(instance);
     // Replacing a document must invalidate any pending asynchronous image read.
     instance.imageInsertGeneration++;
     if (instance.imageResize) finishImageResize(instance, null, true);
@@ -3235,6 +3456,7 @@
     instance.source.hidden = true;
     instance.canvas.hidden = false;
     instance.canvas.innerHTML = sanitizeHtml(html);
+    decorateCodeBlocks(instance);
     setDocumentControlsReadOnly(instance);
     instance.lastRange = null;
     setImageSelection(instance, null);

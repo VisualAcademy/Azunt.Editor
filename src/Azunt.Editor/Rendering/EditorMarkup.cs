@@ -79,6 +79,9 @@ public static class EditorMarkup
         w.Append("<span class=\"az-azunt-editor-form-split\" role=\"group\" aria-label=\"Insert HTML form control\">")
             .Append("<button type=\"button\" class=\"az-azunt-editor-button az-azunt-editor-form-primary\" data-quick-command=\"form-checkbox-checked\" title=\"Insert checked checkbox\" aria-label=\"Insert checked checkbox\">☑</button>")
             .Append("<button type=\"button\" class=\"az-azunt-editor-button az-azunt-editor-form-dropdown\" data-azunt-menu=\"controls\" aria-haspopup=\"dialog\" aria-expanded=\"false\" aria-label=\"Choose radio button or checkbox\" title=\"Choose form control\">▾</button></span>");
+        w.Append("<span class=\"az-code-toolbar\" role=\"group\" aria-label=\"Insert code block\">")
+            .Append("<button type=\"button\" class=\"az-azunt-editor-button\" data-quick-command=\"code-block\" title=\"Insert C# code block\">&lt;/&gt;</button>")
+            .Append("<button type=\"button\" class=\"az-azunt-editor-button\" data-azunt-menu=\"codepicker\" aria-haspopup=\"dialog\" aria-expanded=\"false\" aria-label=\"Choose code language\">▾</button></span>");
         w.Append("<span class=\"az-azunt-editor-quick-custom\" data-quick-custom></span>")
             .Append("<button class=\"az-azunt-editor-menu-trigger az-azunt-editor-quick-more\" type=\"button\" data-azunt-menu=\"more\" aria-expanded=\"false\" aria-haspopup=\"dialog\" title=\"More editor commands\" aria-label=\"More editor commands\">More ⋯</button>");
         w.Append("</div><div class=\"az-azunt-editor-classic-groups\" data-classic-groups>");
@@ -165,6 +168,8 @@ public static class EditorMarkup
         EndGroup();
 
         Group("Writing tools");
+        Button("code-block", "Code", "Insert code block");
+        w.Append("<button type=\"button\" class=\"az-azunt-editor-button\" data-azunt-menu=\"codepicker\" aria-haspopup=\"dialog\" aria-expanded=\"false\" aria-label=\"Choose code language\">▾</button>");
         Button("find", "Find", "Find and replace", "Ctrl+F");
         Button("clear-format", "Tx", "Remove formatting from selected text");
         Button("horizontal-rule", "―", "Insert horizontal line");
@@ -191,6 +196,13 @@ public static class EditorMarkup
         w.Append("<div class=\"az-azunt-editor-context-tools\" data-context-tools hidden role=\"toolbar\" aria-label=\"Selected item tools\"></div>");
         w.Append("</div>");
 
+        w.Append("<div class=\"az-code-panel\" data-code-panel hidden role=\"group\" aria-label=\"Insert or edit code block\">")
+            .Append("<label>Language <select data-code-language aria-label=\"Code language\">")
+            .Append("<option value=\"csharp\">C#</option><option value=\"javascript\">JavaScript</option>")
+            .Append("<option value=\"sql\">SQL</option><option value=\"html\">HTML</option><option value=\"css\">CSS</option>")
+            .Append("</select></label><label>Code <textarea data-code-text rows=\"9\" maxlength=\"100000\" spellcheck=\"false\" aria-label=\"Code text\"></textarea></label>")
+            .Append("<div class=\"az-code-panel-actions\"><button type=\"button\" data-code-apply>Apply code</button>")
+            .Append("<button type=\"button\" data-code-cancel>Cancel</button></div></div>");
         w.Append("<div class=\"az-azunt-editor-link-panel\" data-link-panel hidden role=\"group\" aria-label=\"Edit hyperlink\">")
             .Append("<label>Text <input type=\"text\" data-link-text maxlength=\"250\" autocomplete=\"off\"></label>")
             .Append("<label>URL <input type=\"url\" data-link-url placeholder=\"https://example.com\" maxlength=\"2048\" autocomplete=\"off\"></label>")

@@ -64,6 +64,20 @@ Require(pastedViewer.Contains("<tfoot>"), "Pasted table footer survives Viewer")
 Require(!pastedViewer.Contains("Hidden metadata") && !pastedViewer.Contains("body{color:red}"),
     "Source page head is not inserted into View");
 
+// 0.7.1: code blocks remain inert in SSR, with a validated language and encoded source.
+var codeToolbar = EditorMarkup.Render("code-ui", "Html");
+Require(codeToolbar.Contains("data-quick-command=\"code-block\""), "Compact code action");
+Require(codeToolbar.Contains("data-command=\"code-block\""), "Classic code action");
+Require(codeToolbar.Contains("data-azunt-menu=\"codepicker\""), "Code language picker available");
+Require(codeToolbar.Contains("data-code-text") && codeToolbar.Contains("data-code-apply"), "Code editor textarea and Apply action");
+var codeViewer = EditorViewerSanitizer.Sanitize(
+    "<pre data-language='html' onclick='alert(1)'><code>&lt;script&gt;alert(1)&lt;/script&gt;</code></pre>");
+Require(codeViewer.Contains("class=\"az-code-block\" data-language=\"html\""), "Safe code language survives View");
+Require(codeViewer.Contains("&lt;script&gt;alert(1)&lt;/script&gt;"), "Code is always encoded as text");
+Require(!codeViewer.Contains("onclick") && !codeViewer.Contains("<script>"), "View code never executes as HTML");
+Require(!EditorViewerSanitizer.Sanitize("<pre data-language='unknown'><code>x</code></pre>")
+    .Contains("data-language"), "Unknown code languages are not persisted");
+
 // 0.6.8: both toolbar modes expose the table split control and its grid picker.
 var tableToolbar = EditorMarkup.Render("table-palette", "Html");
 Require(tableToolbar.Contains("data-table-move-handle"), "Table movement grip is host-rendered");

@@ -129,7 +129,7 @@ internal sealed class ViewerSafeEditorDocument
             foreach (Match match in AttrPattern.Matches(token[nameEnd..]))
             {
                 var key = match.Groups["key"].Value;
-                if (key is not ("src" or "href" or "alt" or "width" or "height" or "style" or "data-azunt-page-break" or "colspan" or "type" or "checked")) continue;
+                if (key is not ("src" or "href" or "alt" or "width" or "height" or "style" or "data-azunt-page-break" or "data-language" or "colspan" or "type" or "checked")) continue;
                 var value = match.Groups["double"].Success ? match.Groups["double"].Value
                     : match.Groups["single"].Success ? match.Groups["single"].Value
                     : match.Groups["bare"].Value;
@@ -175,6 +175,10 @@ internal sealed class ViewerSafeEditorDocument
         return sb.ToString();
     }
 
+    private static bool IsCodeBlock(Node node)
+        => node.Name == "pre" && (node.Attribute("data-language") is "csharp" or "javascript" or "sql" or "html" or "css")
+           && node.Children.Any(child => child.Name == "code" && child.PlainText().Length <= 100_000);
+
     private static void Append(Node node, StringBuilder output)
     {
         if (node.Name == "#text") { output.Append(HtmlEncoder.Default.Encode(node.Text)); return; }
@@ -187,6 +191,8 @@ internal sealed class ViewerSafeEditorDocument
                 return; // Reject unsupported sources and unsafe URL schemes.
         }
         output.Append('<').Append(node.Name);
+        if (node.Name == "pre" && IsCodeBlock(node))
+            output.Append(" class=\"az-code-block\" data-language=\"").Append(node.Attribute("data-language")).Append('"');
         if (node.Name == "input")
         {
             output.Append(" type=\"").Append(inputType).Append('"');
@@ -212,7 +218,12 @@ internal sealed class ViewerSafeEditorDocument
         if (style.Length > 0) output.Append(" style=\"").Append(HtmlEncoder.Default.Encode(style)).Append('"');
         output.Append('>');
         if (Void.Contains(node.Name)) return;
-        foreach (var child in node.Children) Append(child, output);
+        if (node.Name == "pre" && IsCodeBlock(node))
+        {
+            var source = node.Children.First(child => child.Name == "code");
+            output.Append("<code>").Append(HtmlEncoder.Default.Encode(source.PlainText())).Append("</code>");
+        }
+        else foreach (var child in node.Children) Append(child, output);
         output.Append("</").Append(node.Name).Append('>');
     }
 

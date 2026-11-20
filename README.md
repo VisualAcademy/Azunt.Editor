@@ -52,6 +52,16 @@ block elements inside it; surrounding text is preserved. This change affects
 clipboard paste/drop only; programmatic `setHtml` and document storage remain
 backwards compatible. See [paste behavior](docs/html-paste.md).
 
+## Table editing reliability (0.7.0 follow-up)
+
+Merge/split, row/column changes and header toggle preserve the editing caret and
+content. A right-hand cell containing only a checkbox, radio button or image is
+no longer dropped by Merge Right. `Tab` / `Shift+Tab` move between existing table
+cells; browser focus behavior remains unchanged at the table boundaries.
+Rectangular multi-cell selection is not included.
+
+See [Table editing stability](docs/table-editing-stabilization.md).
+
 ## Table dimension picker (0.6.8)
 
 In Compact and Classic toolbars, the table split button inserts a 2 × 2

@@ -692,10 +692,73 @@
     changed(instance);
   }
 
+  function cellAtNode(instance, node) {
+    let current = node?.nodeType === Node.ELEMENT_NODE ? node : node?.parentElement;
+    while (current && current !== instance.canvas) {
+      if ((current.tagName === "TD" || current.tagName === "TH") &&
+          current.closest("table")?.closest(".az-azunt-editor-canvas") === instance.canvas)
+        return current;
+      current = current.parentElement;
+    }
+    return null;
+  }
+
   function activeTableCell(instance) {
+    // Keyboard movement can change the caret without firing a click. Prefer
+    // the live in-editor selection, but retain the clicked cell when the
+    // toolbar has taken focus and the browser has cleared its selection.
+    const selection = window.getSelection();
+    if (selection?.rangeCount) {
+      const range = selection.getRangeAt(0);
+      if (instance.canvas.contains(range.startContainer)) {
+        const cell = cellAtNode(instance, range.startContainer);
+        if (cell) return cell;
+        // A selection outside a table must not mutate a previously clicked table.
+        if (range.startContainer !== instance.canvas) return null;
+      }
+    }
     if (instance.activeCell && instance.canvas.contains(instance.activeCell)) return instance.activeCell;
-    const cell = editableAncestor(instance, ["TD", "TH"]);
+    const cell = cellAtNode(instance, instance.lastRange?.startContainer);
     return cell && instance.canvas.contains(cell) ? cell : null;
+  }
+
+  function selectTableCell(instance, cell) {
+    if (!cell || !instance.canvas.contains(cell)) return;
+    const range = document.createRange();
+    range.selectNodeContents(cell);
+    range.collapse(false);
+    instance.canvas.focus();
+    const selection = window.getSelection();
+    selection.removeAllRanges();
+    selection.addRange(range);
+    instance.lastRange = range.cloneRange();
+    instance.activeCell = cell;
+    updateContextTools(instance);
+  }
+
+  function selectAfterTableRemoval(instance, table) {
+    const parent = table.parentNode;
+    if (!parent || !instance.canvas.contains(parent) && parent !== instance.canvas) return;
+    const offset = Array.from(parent.childNodes).indexOf(table);
+    table.remove();
+    const range = document.createRange();
+    range.setStart(parent, Math.min(offset, parent.childNodes.length));
+    range.collapse(true);
+    instance.canvas.focus();
+    const selection = window.getSelection();
+    selection.removeAllRanges();
+    selection.addRange(range);
+    instance.lastRange = range.cloneRange();
+    instance.activeCell = null;
+    updateContextTools(instance);
+  }
+
+  function isPlaceholderCell(cell) {
+    // A solitary <br> is the editor's empty-cell placeholder. Everything else
+    // (including input, hr, and inline images) is document content.
+    const nodes = Array.from(cell.childNodes).filter(node =>
+      node.nodeType !== Node.TEXT_NODE || !!node.textContent.trim());
+    return nodes.length === 0 || (nodes.length === 1 && nodes[0].nodeName === "BR");
   }
 
   function mergeTableRight(instance) {
@@ -706,14 +769,14 @@
       return message(instance, "No adjacent cell available for merging.", "warning");
     const width = cell.colSpan + right.colSpan;
     if (width > 12) return message(instance, "Merged cell cannot exceed 12 columns.", "warning");
-    if (right.textContent?.trim() || right.querySelector("img")) {
-      if (cell.textContent?.trim() || cell.querySelector("img")) cell.appendChild(document.createElement("br"));
+    if (!isPlaceholderCell(right)) {
+      if (isPlaceholderCell(cell)) cell.replaceChildren();
+      else if (cell.lastChild?.nodeName !== "BR") cell.appendChild(document.createElement("br"));
       while (right.firstChild) cell.appendChild(right.firstChild);
     }
     cell.colSpan = width;
     right.remove();
-    instance.activeCell = cell;
-    instance.lastRange = null;
+    selectTableCell(instance, cell);
     changed(instance);
     message(instance, `Merged ${width} columns. Split before adding/deleting rows or columns.`, "success");
   }
@@ -734,8 +797,7 @@
       after.after(sibling);
       after = sibling;
     }
-    instance.activeCell = cell;
-    instance.lastRange = null;
+    selectTableCell(instance, cell);
     changed(instance);
     message(instance, `Split into ${count} cells. Content remains in the first cell.`, "success");
   }
@@ -905,52 +967,68 @@
     const table = cell.closest("table");
     if (!row || !table) return;
     const rows = Array.from(table.rows);
+    const rowIndex = rows.indexOf(row);
     const colIndex = Array.from(row.cells).indexOf(cell);
     if (rows.some(r => r.cells.length !== row.cells.length || Array.from(r.cells).some(c => c.colSpan !== 1 || c.rowSpan !== 1))) {
       return message(instance, "Split merged cells before changing rows, columns, or header status.", "warning");
     }
-    const emptyCell = tag => {
-      const result = document.createElement(tag);
+    const emptyCell = source => {
+      const result = document.createElement(source.tagName.toLowerCase());
+      // Retain the appearance of borders, heading and text while creating an
+      // empty cell; never copy its data, event handlers or arbitrary attributes.
+      for (const style of ["borderColor", "borderWidth", "borderStyle", "backgroundColor", "color",
+        "textAlign", "fontFamily", "fontSize"]) {
+        if (source.style[style]) result.style[style] = source.style[style];
+      }
       result.appendChild(document.createElement("br"));
       return result;
     };
+    let destination = null;
     if (operation === "table-delete") {
-      table.remove();
-      instance.activeCell = null;
+      selectAfterTableRemoval(instance, table);
     } else if (operation === "table-row-before" || operation === "table-row-after") {
       const added = document.createElement("tr");
-      for (const existing of Array.from(row.cells)) added.appendChild(emptyCell(existing.tagName.toLowerCase()));
+      for (const existing of Array.from(row.cells)) added.appendChild(emptyCell(existing));
       if (operation === "table-row-before") row.before(added); else row.after(added);
-      instance.activeCell = added.cells[Math.max(0, colIndex)];
+      destination = added.cells[colIndex];
     } else if (operation === "table-row-delete") {
-      if (rows.length === 1) table.remove(); else row.remove();
-      instance.activeCell = null;
+      if (rows.length === 1) selectAfterTableRemoval(instance, table);
+      else {
+        // Prefer the following row, falling back to the preceding row.
+        destination = rows[Math.min(rowIndex + 1, rows.length - 1)];
+        if (destination === row) destination = rows[rowIndex - 1];
+        destination = destination?.cells[colIndex] || null;
+        row.remove();
+      }
     } else if (operation === "table-col-before" || operation === "table-col-after") {
       const insertAt = colIndex + (operation === "table-col-after" ? 1 : 0);
       for (const r of rows) {
         const reference = r.cells[insertAt] || null;
-        const styleSource = r.cells[Math.min(colIndex, r.cells.length - 1)];
-        const inserted = emptyCell(styleSource.tagName.toLowerCase());
+        const source = r.cells[colIndex];
+        const inserted = emptyCell(source);
         r.insertBefore(inserted, reference);
-        if (r === row) instance.activeCell = inserted;
+        if (r === row) destination = inserted;
       }
     } else if (operation === "table-col-delete") {
-      if (row.cells.length === 1) table.remove(); else for (const r of rows) r.deleteCell(colIndex);
-      instance.activeCell = null;
+      if (row.cells.length === 1) selectAfterTableRemoval(instance, table);
+      else {
+        for (const r of rows) r.deleteCell(colIndex);
+        destination = row.cells[Math.min(colIndex, row.cells.length - 1)];
+      }
     } else if (operation === "table-header-toggle") {
       const nextTag = Array.from(row.cells).every(c => c.tagName === "TH") ? "td" : "th";
       for (const oldCell of Array.from(row.cells)) {
         const replacement = document.createElement(nextTag);
         for (const attribute of Array.from(oldCell.attributes)) replacement.setAttribute(attribute.name, attribute.value);
         while (oldCell.firstChild) replacement.appendChild(oldCell.firstChild);
-        if (oldCell === cell) instance.activeCell = replacement;
+        if (oldCell === cell) destination = replacement;
         oldCell.replaceWith(replacement);
       }
       message(instance, nextTag === "th" ? "Header row enabled." : "Header row removed.", "success");
     } else {
       return;
     }
-    instance.lastRange = null;
+    if (destination) selectTableCell(instance, destination);
     changed(instance);
   }
 
@@ -2518,6 +2596,25 @@
       instance.signaturePanel.querySelector("[data-signature-insert]").addEventListener("click", () => insertSignature(instance), { signal });
       instance.signaturePanel.querySelector("[data-signature-close]").addEventListener("click", () => { instance.signaturePanel.hidden = true; clearSignature(instance); }, { signal });
     }
+    // When the caret is inside a table, Tab/Shift+Tab navigate existing cells.
+    // Do not create a new row or interfere with controls, modifiers, or the
+    // browser's normal focus behavior at the first/last table cell.
+    instance.canvas.addEventListener("keydown", event => {
+      if (event.key !== "Tab" || event.altKey || event.ctrlKey || event.metaKey ||
+          event.target.closest("input,textarea,select,button,a")) return;
+      const selection = window.getSelection();
+      if (!selection?.rangeCount || !selection.isCollapsed) return;
+      const range = selection.getRangeAt(0);
+      if (!instance.canvas.contains(range.startContainer)) return;
+      const current = cellAtNode(instance, range.startContainer);
+      if (!current || cellAtNode(instance, range.endContainer) !== current) return;
+      const cells = Array.from(current.closest("table").rows).flatMap(row => Array.from(row.cells));
+      const index = cells.indexOf(current);
+      const next = cells[index + (event.shiftKey ? -1 : 1)];
+      if (!next) return;
+      event.preventDefault();
+      selectTableCell(instance, next);
+    }, { signal });
     // Intercept browser-native history (including Edit > Undo) so it cannot
     // diverge from Azunt.Editor's snapshots. Group IME composition (notably
     // Korean) into one undo step rather than one partial syllable per input.
@@ -2566,7 +2663,14 @@
       updateContextTools(instance);
     }, { signal });
     instance.canvas.addEventListener("mouseup", () => selectedRange(instance), { signal });
-    instance.canvas.addEventListener("keyup", () => selectedRange(instance), { signal });
+    instance.canvas.addEventListener("keyup", () => {
+      selectedRange(instance);
+      const selection = window.getSelection();
+      if (selection?.rangeCount && instance.canvas.contains(selection.getRangeAt(0).startContainer)) {
+        instance.activeCell = cellAtNode(instance, selection.getRangeAt(0).startContainer);
+        updateContextTools(instance);
+      }
+    }, { signal });
     instance.canvas.addEventListener("dragenter", event => {
       if (!isSupportedDrop(event.dataTransfer)) return;
       event.preventDefault();

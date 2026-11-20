@@ -34,3 +34,14 @@ See [HTML paste handling](html-paste.md) for security boundaries and remaining l
 - No C#/NuGet API changes; actual .NET 10 Release build and host execution remain unverified here.
 
 See [Undo/Redo stability](undo-redo-stabilization.md).
+
+## Third stabilization patch — Table Editing
+
+- Keeps nontext content (including checked checkboxes and radio buttons) during horizontal cell merging.
+- Restores a usable caret after row/column add/delete, header toggle, merge/split and table delete.
+- Supports Tab/Shift+Tab navigation within existing table cells, without overriding boundary focus or embedded input controls.
+- Copies permitted visual cell styles into newly inserted rows/columns.
+- Adds focused regression tests in `tests/editor-table-stability-070-browser.py`.
+- No public API/schema/dependency changes or edits to PDF/Word/Excel exporters.
+
+See [Table editing stability](table-editing-stabilization.md).

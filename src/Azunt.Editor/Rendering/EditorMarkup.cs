@@ -252,6 +252,13 @@ public static class EditorMarkup
         w.Append("<div class=\"az-azunt-editor-image-resize-handle\" data-image-resize-handle hidden "
             + "role=\"button\" tabindex=\"0\" aria-label=\"Resize selected image by dragging the corner\" "
             + "title=\"Drag to resize the selected image (aspect ratio preserved)\"></div>");
+        // Table grips are rendered by the host, not dynamically added to the
+        // Blazor-owned DOM. Both live outside contenteditable and saved HTML.
+        w.Append("<button type=\"button\" class=\"az-azunt-editor-table-move-handle\" data-table-move-handle hidden "
+            + "aria-label=\"Move table\" title=\"Drag to move this table; Alt+Up/Down to move one block\">&#10021;</button>");
+        w.Append("<button type=\"button\" class=\"az-azunt-editor-table-column-handle\" data-table-column-handle hidden "
+            + "aria-label=\"Resize table column\" title=\"Drag to resize adjacent table columns\"></button>");
+        w.Append("<div class=\"az-azunt-editor-table-drop-marker\" data-table-drop-marker hidden aria-hidden=\"true\"></div>");
         w.Append("<textarea class=\"az-azunt-editor-source\" data-azunt-source hidden aria-label=\"HTML source\" spellcheck=\"false\" style=\"min-height:")
             .Append(safeHeight).Append("px\"></textarea>");
         w.Append("<textarea hidden class=\"az-azunt-editor-value\" data-azunt-value=\"true\" name=\"")

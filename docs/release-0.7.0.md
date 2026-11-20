@@ -59,3 +59,12 @@ See [Table editing stability](table-editing-stabilization.md).
 
 See [Image persistence](image-persistence.md). The .NET 10 build, real host
 integration and generated export formats remain unverified in this environment.
+
+## Fifth stabilization patch — Table move and column resizing
+
+- Adds a non-document table move grip and a column boundary resize grip in Edit mode.
+- Whole-table drag/reorder is constrained to top-level blocks; merged cells never permit destructive column resizing.
+- Stores bounded percentage cell widths and `table-layout:fixed`; browser and server View/export sanitizers share the allowlist.
+- Undo/Redo, keyboard controls, Edit/View cancellation, and column add/remove normalization are covered by dedicated Chromium and .NET smoke assertions.
+- See [Table movement and column resizing](table-movement-and-column-resizing.md).
+- .NET 10 Release build and real host/export generation remain unverified in the current environment.

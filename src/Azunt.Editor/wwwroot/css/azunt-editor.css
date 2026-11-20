@@ -751,3 +751,36 @@
     outline-offset: -2px;
   }
 }
+
+/* 0.7.0 table movement and column resizing. Handles stay outside saved HTML. */
+.az-azunt-editor .az-azunt-editor-table-move-handle,
+.az-azunt-editor .az-azunt-editor-table-column-handle {
+  position: absolute; z-index: 12; padding: 0; margin: 0; border: 1px solid #1d4ed8;
+  background: #2563eb; color: white; touch-action: none; user-select: none;
+}
+.az-azunt-editor .az-azunt-editor-table-move-handle {
+  width: 21px; height: 25px; border-radius: 5px 0 0 5px;
+  cursor: grab; font-size: 15px; line-height: 1;
+}
+.az-azunt-editor .az-azunt-editor-table-move-handle.az-is-dragging { cursor: grabbing; }
+.az-azunt-editor .az-azunt-editor-table-column-handle {
+  width: 10px; min-height: 18px; border: none; border-radius: 3px;
+  background: linear-gradient(to right, transparent 3px, #2563eb 3px, #2563eb 6px, transparent 6px);
+  cursor: col-resize;
+}
+.az-azunt-editor .az-azunt-editor-table-drop-marker {
+  position: absolute; z-index: 11; height: 3px; border-radius: 3px;
+  background: #2563eb; pointer-events: none;
+  box-shadow: 0 0 0 1px #ffffff;
+}
+.az-azunt-editor .az-azunt-editor-table-move-handle:focus-visible,
+.az-azunt-editor .az-azunt-editor-table-column-handle:focus-visible { outline: 2px solid #f59e0b; outline-offset: 3px; }
+.az-azunt-editor [hidden].az-azunt-editor-table-move-handle,
+.az-azunt-editor [hidden].az-azunt-editor-table-column-handle,
+.az-azunt-editor [hidden].az-azunt-editor-table-drop-marker { display: none !important; }
+.az-azunt-editor[data-editor-mode="view"] .az-azunt-editor-table-move-handle,
+.az-azunt-editor[data-editor-mode="view"] .az-azunt-editor-table-column-handle,
+.az-azunt-editor[data-editor-mode="view"] .az-azunt-editor-table-drop-marker { display: none !important; }
+@media print {
+  .az-azunt-editor-table-move-handle,.az-azunt-editor-table-column-handle,.az-azunt-editor-table-drop-marker { display:none!important; }
+}

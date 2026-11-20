@@ -36,6 +36,17 @@ var inlineViewer = Azunt.Editor.Rendering.EditorViewerSanitizer.Sanitize(
     "<pre><code>Console.WriteLine(&quot;Hello&quot;);</code></pre><table><tr><td colspan=\"2\">Cell</td></tr></table>");
 Require(inlineViewer.Contains("<pre><code>"), "Code blocks survive viewer sanitizer");
 Require(inlineViewer.Contains("colspan=\"2\""), "Table colspan survives viewer sanitizer");
+// 0.7.0: restricted cell percentage widths survive SSR, arbitrary CSS is rejected.
+var resizedViewer = EditorViewerSanitizer.Sanitize(
+    "<table style='table-layout:fixed;position:fixed'><tr>" +
+    "<td style='width:63.333%;position:absolute'>Left</td>" +
+    "<td style='width:36.667%'>Right</td></tr></table>");
+Require(resizedViewer.Contains("table-layout:fixed"), "Table layout survives View sanitization");
+Require(resizedViewer.Contains("width:63.333%") && resizedViewer.Contains("width:36.667%"),
+    "Column percentage widths survive View sanitization");
+Require(!resizedViewer.Contains("position:"), "Unsupported table CSS is removed");
+Require(!EditorViewerSanitizer.Sanitize("<td style='width:999%;width:calc(100%)'>Bad</td>").Contains("width:"),
+    "Disallowed percentage widths are rejected in View");
 var rgbViewer = Azunt.Editor.Rendering.EditorViewerSanitizer.Sanitize(
     "<p style=\"color:rgb(18, 52, 86);background-color:rgba(255, 220, 10, 1)\">Colors</p>");
 Require(rgbViewer.Contains("#123456") && rgbViewer.Contains("#ffdc0a"), "Browser RGB colors survive server rendering");
@@ -55,6 +66,9 @@ Require(!pastedViewer.Contains("Hidden metadata") && !pastedViewer.Contains("bod
 
 // 0.6.8: both toolbar modes expose the table split control and its grid picker.
 var tableToolbar = EditorMarkup.Render("table-palette", "Html");
+Require(tableToolbar.Contains("data-table-move-handle"), "Table movement grip is host-rendered");
+Require(tableToolbar.Contains("data-table-column-handle"), "Column resize grip is host-rendered");
+Require(tableToolbar.Contains("data-table-drop-marker"), "Table drop indicator is host-rendered");
 Require(tableToolbar.Contains("data-quick-command=\"table\""), "Quick default 2x2 table insertion retained");
 Require(tableToolbar.Contains("data-command=\"table\""), "Classic default 2x2 table insertion retained");
 Require(tableToolbar.Split("data-azunt-menu=\"tablepicker\"").Length == 3, "Table grid dropdown on both toolbars");

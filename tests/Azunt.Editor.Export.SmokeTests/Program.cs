@@ -88,6 +88,16 @@ catch (ArgumentException) { /* Expected: bounded HTML nesting. */ }
 
 // Merged horizontal table cells and border settings survive server normalization
 // and are emitted as editable Open XML rather than flattened text.
+var resizedTableHtml = EditorHtmlSanitizer.Sanitize(
+    "<table style='table-layout:fixed;position:absolute'><tr>" +
+    "<td style='width:41.500%;position:fixed'>One</td>" +
+    "<td style='width:58.500%'>Two</td></tr></table>");
+Require(resizedTableHtml.Contains("table-layout:fixed"), "Export HTML retains fixed table layout");
+Require(resizedTableHtml.Contains("width:41.500%") && resizedTableHtml.Contains("width:58.500%"),
+    "Export HTML retains resized table column widths");
+Require(!resizedTableHtml.Contains("position:"), "Export HTML drops unsupported CSS");
+Require(!EditorHtmlSanitizer.Sanitize("<td style='width:500%'>Bad</td>").Contains("width:"),
+    "Export HTML rejects invalid column widths");
 var advancedHtml = EditorHtmlSanitizer.Sanitize(
     "<table style='border-color:#cc0000;border-width:2px'>" +
     "<tr><td colspan='2'>Merged heading</td><td>Third</td></tr>" +

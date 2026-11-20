@@ -193,3 +193,7 @@ For the complete migration notes, see `docs/css-class-namespace.md`.
 For PDF browser setup on Windows ARM64 and troubleshooting light/dark editor controls,
 see [Windows ARM64 and dark-mode guidance](docs/windows-arm64-and-dark-mode.md).
 
+
+## Table movement and column resizing (0.7.0 follow-up)
+
+Edit mode shows a drag grip at a selected table's upper-left edge so the whole table can be moved between document blocks. A vertical grip between adjacent columns resizes widths on simple, unmerged tables; size choices are stored as safe percentages and persist in View mode. Both are undoable; grips are not included in saved HTML. See [Table movement and column resizing](docs/table-movement-and-column-resizing.md).

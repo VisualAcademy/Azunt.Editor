@@ -325,6 +325,15 @@ internal sealed class SafeEditorDocument
             var width = node.Style("border-width");
             if (width is "1px" or "2px" or "3px" or "4px") styles.Add($"border-width:{width}");
             if (styles.Any(s => s.StartsWith("border-", StringComparison.Ordinal))) styles.Add("border-style:solid");
+            if (node.Name == "table" && node.Style("table-layout") == "fixed")
+                styles.Add("table-layout:fixed");
+            if (node.Name is "td" or "th")
+            {
+                var columnWidth = node.Style("width");
+                if (Regex.IsMatch(columnWidth, @"^(?:100|[1-9]?\d(?:\.\d{1,3})?)%$",
+                    RegexOptions.CultureInvariant, TimeSpan.FromSeconds(1)))
+                    styles.Add($"width:{columnWidth}");
+            }
         }
         var indent = Pixel.Match(node.Style("margin-left"));
         if (indent.Success && int.TryParse(indent.Groups["value"].Value, out var px) && px <= 240)

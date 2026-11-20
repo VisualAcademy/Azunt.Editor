@@ -115,3 +115,6 @@ finally
 {
     if (Directory.Exists(imageFolder)) Directory.Delete(imageFolder, recursive: true);
 }
+
+// MVC/Razor Pages markup remains automatically mountable.
+if (safe.Contains("data-azunt-mount=\"manual\"")) throw new Exception("Non-Blazor editor became manually mounted");

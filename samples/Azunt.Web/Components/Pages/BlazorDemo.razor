@@ -21,7 +21,7 @@
 <p>Interactive Server component using the same JavaScript editor engine. ·
     <a href="/editor/blazor">Compact toolbar</a> · <a href="/editor/blazor?toolbar=classic">Classic toolbar</a></p>
 
-<p class="document-meta">Mode: <a href="/editor/blazor?mode=view">Start in View</a> · <button type="button" @onclick="ToggleModeAsync">
+<p class="document-meta">Mode: <a href="/editor/blazor?mode=view">Start in View</a> · <button type="button" @onclick="ToggleMode">
     @(_demoMode == EditorMode.Edit ? "Switch to View" : "Switch to Edit")
 </button></p>
 
@@ -73,10 +73,11 @@
             _demoMode = EditorMode.View;
     }
 
-    private async Task ToggleModeAsync()
+    private void ToggleMode()
     {
+        // Let the child handle mode changes through its Mode parameter.
+        // Avoid making a second direct JS call during the initial Blazor mount.
         _demoMode = _demoMode == EditorMode.Edit ? EditorMode.View : EditorMode.Edit;
-        if (_editor is not null) await _editor.SetModeAsync(_demoMode);
     }
     private string _html = "<h2>Blazor Server demo</h2><p>Select text to format it, or add multiple images.</p>";
     private string _savedHtml = "";

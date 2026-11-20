@@ -9,6 +9,18 @@ public static class EditorMarkup
 {
     public static string Render(string id, string name, string? value = null, int height = 320,
         bool readOnly = false, string? uploadUrl = null, string toolbarMode = "Compact", EditorMode mode = EditorMode.Edit)
+        => RenderCore(id, name, value, height, readOnly, uploadUrl, toolbarMode, mode, manualMount: false);
+
+    // Blazor prerendering leaves this markup static until its interactive
+    // OnAfterRenderAsync callback binds the JS engine and its .NET reference.
+    // Auto-mounting during DOMContentLoaded changes prerendered nodes before
+    // Blazor has attached, which can disrupt hydration and command binding.
+    internal static string RenderForBlazor(string id, string name, string? value, int height,
+        bool readOnly, string? uploadUrl, string toolbarMode, EditorMode mode)
+        => RenderCore(id, name, value, height, readOnly, uploadUrl, toolbarMode, mode, manualMount: true);
+
+    private static string RenderCore(string id, string name, string? value, int height,
+        bool readOnly, string? uploadUrl, string toolbarMode, EditorMode mode, bool manualMount)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(id);
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
@@ -21,6 +33,7 @@ public static class EditorMarkup
         w.Append("<div class=\"az-azunt-editor\" data-azunt-editor=\"true\" id=\"").Append(Encode(id))
             .Append("\" data-read-only=\"").Append(readOnly ? "true" : "false").Append('"')
             .Append(" data-editor-mode=\"").Append(viewer ? "view" : "edit").Append('"');
+        if (manualMount) w.Append(" data-azunt-mount=\"manual\"");
         if (!string.IsNullOrWhiteSpace(uploadUrl))
             w.Append(" data-upload-url=\"").Append(Encode(uploadUrl)).Append('"');
         w.Append(" data-toolbar-mode=\"").Append(string.Equals(toolbarMode, "Classic", StringComparison.OrdinalIgnoreCase) ? "classic" : "compact").Append("\">");

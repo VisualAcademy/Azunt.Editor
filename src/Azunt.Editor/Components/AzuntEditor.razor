@@ -40,7 +40,7 @@
     {
         if (!string.IsNullOrWhiteSpace(Id)) _editorId = Id;
         // Hold stable markup across ValueChanged rerenders. JavaScript owns the live DOM.
-        _initialMarkup = EditorMarkup.Render(_editorId, Name, Value, Height, ReadOnly, UploadUrl, ToolbarMode, Mode);
+        _initialMarkup = EditorMarkup.RenderForBlazor(_editorId, Name, Value, Height, ReadOnly, UploadUrl, ToolbarMode, Mode);
         _appliedMode = Mode;
     }
 
@@ -66,6 +66,10 @@
         {
             await JS.InvokeVoidAsync("AzuntEditor.mount", _editorId, _reference);
             _mounted = true;
+            // A parent can update Mode while the first interactive mount is still
+            // pending; apply that request after the engine is ready.
+            if (Mode != _appliedMode)
+                await SetModeAsync(Mode);
             if (CustomCommands is { Count: > 0 })
                 await JS.InvokeVoidAsync("AzuntEditor.setCommands", _editorId, CustomCommands);
         }

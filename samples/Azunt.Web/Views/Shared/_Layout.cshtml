@@ -5,8 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Azunt.Web — Azunt.Editor</title>
     <link rel="stylesheet" href="/css/site.css" />
-    <link rel="stylesheet" href="/_content/Azunt.Editor/css/azunt-editor.css" />
-    <link rel="stylesheet" href="/_content/Azunt.Editor.Export/css/azunt-editor-export.css" />
+    <link rel="stylesheet" asp-append-version="true" href="/_content/Azunt.Editor/css/azunt-editor.css" />
+    <link rel="stylesheet" asp-append-version="true" href="/_content/Azunt.Editor.Export/css/azunt-editor-export.css" />
 </head>
 <body>
     <div class="page-wrap">
@@ -21,7 +21,7 @@
         </header>
         <main>@RenderBody()</main>
     </div>
-    <script src="/_content/Azunt.Editor/js/azunt-editor.js"></script>
+    <script asp-append-version="true" src="/_content/Azunt.Editor/js/azunt-editor.js"></script>
     <script src="/js/editor-custom-commands.js"></script>
     @await RenderSectionAsync("Scripts", required: false)
 </body>

@@ -2254,7 +2254,11 @@
   }
 
   function mountAll() {
-    document.querySelectorAll("[data-azunt-editor]").forEach(element => mount(element));
+    // MVC and Razor Pages use automatic mounting. Interactive Blazor components
+    // are prerendered first; touching their markup here can race with hydration.
+    // Their OnAfterRenderAsync calls mount(id, dotNetReference) instead.
+    document.querySelectorAll('[data-azunt-editor]:not([data-azunt-mount="manual"])')
+      .forEach(element => mount(element));
   }
 
   // Mode changes operate on the live editor rather than replacing Blazor-owned markup.

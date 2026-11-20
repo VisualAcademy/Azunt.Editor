@@ -47,4 +47,9 @@ for token in ['Icon { get; set; }', 'RequiresEdit { get; set; }']:
 assert 'SetCustomCommandsAsync' in component
 for token in ['function unregisterCommand(', 'Duplicate custom command id:', 'previousBlazorCommands']:
     assert token in editor_js, f'Missing command lifecycle feature: {token}'
+
+# Blazor prerender markup must not be auto-mounted ahead of hydration.
+assert 'data-azunt-mount=' in (root / 'src/Azunt.Editor/Rendering/EditorMarkup.cs').read_text()
+assert 'RenderForBlazor(' in component
+assert ':not([data-azunt-mount="manual"])' in editor_js
 print('PASS: Azunt.Editor 0.6.6 release contracts, sources are application-agnostic')

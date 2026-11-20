@@ -653,3 +653,18 @@
 }
 .az-azunt-editor[data-editor-mode="view"] .az-azunt-editor-canvas img { cursor: auto; }
 .az-azunt-editor[data-editor-mode="view"] .az-azunt-editor-canvas img.az-azunt-editor-image-selected { outline: none; }
+
+/* 0.6.7: built-in HTML form controls with an accessible split dropdown. */
+.az-azunt-editor-form-split { display: inline-flex; align-items: stretch; flex-shrink: 0; border: 1px solid var(--azunt-line); border-radius: 6px; overflow: hidden; }
+.az-azunt-editor-form-split .az-azunt-editor-button { border-radius: 0; min-height: 34px; }
+.az-azunt-editor-form-split .az-azunt-editor-form-primary { min-width: 34px; font-size: 18px; }
+.az-azunt-editor-form-split .az-azunt-editor-form-dropdown { min-width: 24px; padding-inline: 4px; border-left: 1px solid var(--azunt-line); }
+.az-azunt-editor-form-choices { width: 100%; gap: 5px; justify-content: flex-start; }
+.az-azunt-editor-form-choices .az-azunt-editor-form-choice { justify-content: flex-start; border: 1px solid var(--azunt-line); min-height: 36px; padding-inline: 10px; }
+.az-azunt-editor-canvas input[type="checkbox"],
+.az-azunt-editor-canvas input[type="radio"] { accent-color: var(--azunt-accent); vertical-align: middle; margin: 0 3px 0 2px; inline-size: 16px; block-size: 16px; }
+.az-azunt-editor-canvas input[type="checkbox"]:disabled,
+.az-azunt-editor-canvas input[type="radio"]:disabled { opacity: 1; cursor: default; }
+.az-azunt-editor[data-toolbar-mode="compact"] .az-azunt-editor-form-split .az-azunt-editor-button { height: var(--azunt-tool-height); }
+@media (pointer: coarse) { .az-azunt-editor-form-split .az-azunt-editor-form-dropdown { min-width: 38px; } }
+@media (forced-colors: active) { .az-azunt-editor-form-split { border-color: ButtonText; } }

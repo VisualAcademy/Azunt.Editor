@@ -2,7 +2,7 @@
 
 A lightweight rich-text editor for ASP.NET Core MVC, Razor Pages, and Blazor Server.
 
-Version: **0.6.6** · .NET 10
+Version: **0.6.7** · .NET 10
 
 ## Projects
 - `src/Azunt.Editor` — shared editor components, JavaScript, and CSS
@@ -30,6 +30,21 @@ mode on `/editor/blazor` without discarding the current document. Start in View
 using `/editor/blazor?mode=view`. In 0.6.6,
 View content is emitted server-side through a restricted HTML allowlist, so
 initial viewing does not depend on the editor JavaScript or a SignalR circuit.
+
+## HTML form control insertion (0.6.7)
+
+The Compact and Classic toolbars include a split button: **☐** inserts an unchecked
+checkbox, while **▾** opens four options: unchecked/checked radio buttons and
+unchecked/checked checkboxes. The Insert menu exposes the same options.
+
+The saved HTML uses only `<input type="checkbox">`, `<input type="radio">`,
+and optional `checked`; generated inputs have no `name`, `value`, script or
+host-form submission semantics. When clicked in Edit mode, the checked state
+is synchronized with saved HTML. In View mode the controls are disabled and
+retain their visual checked state. Word/Excel export uses corresponding Unicode
+glyphs (☐, ☑, ○, ◉) rather than interactive form fields.
+
+See [form controls](docs/form-controls.md) for usage and limitations.
 
 ## Images
 

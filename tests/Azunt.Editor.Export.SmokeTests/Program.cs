@@ -114,6 +114,34 @@ using (var zip = new ZipArchive(new MemoryStream(advancedXlsx.Content), ZipArchi
         "Excel embeds signature PNG");
 }
 
+// 0.6.7: checked/unchecked native controls survive export sanitization
+// but other input types and event/host-form attributes are discarded.
+var safeControls = EditorHtmlSanitizer.Sanitize(
+    "<p>Controls <input type='radio'> <input type='radio' checked> " +
+    "<input type='checkbox'> <input type='checkbox' checked></p>" +
+    "<input type='password' value='secret'><input type='checkbox' name='x' onchange='bad()'>");
+Require(safeControls.Count(c => c == '<') == 7, "Four explicit options and one extra safe checkbox survive");
+Require(safeControls.Contains("<input type=\"radio\">"), "Unchecked radio preserved");
+Require(safeControls.Contains("<input type=\"radio\" checked>"), "Checked radio preserved");
+Require(safeControls.Contains("<input type=\"checkbox\">"), "Unchecked checkbox preserved");
+Require(safeControls.Contains("<input type=\"checkbox\" checked>"), "Checked checkbox preserved");
+Require(!safeControls.Contains("password") && !safeControls.Contains("name=") &&
+        !safeControls.Contains("onchange") && !safeControls.Contains("secret"), "Unapproved input attributes rejected");
+var wordControls = await exporter.ExportAsync(safeControls, EditorExportFormat.Docx);
+using (var zip = new ZipArchive(new MemoryStream(wordControls.Content), ZipArchiveMode.Read))
+{
+    var xml = Read(zip, "word/document.xml");
+    Require(xml.Contains("☐") && xml.Contains("☑") && xml.Contains("○") && xml.Contains("◉"),
+        "DOCX uses native form-control glyphs");
+}
+var excelControls = await exporter.ExportAsync(safeControls, EditorExportFormat.Xlsx);
+using (var zip = new ZipArchive(new MemoryStream(excelControls.Content), ZipArchiveMode.Read))
+{
+    var xml = Read(zip, "xl/worksheets/sheet1.xml");
+    Require(xml.Contains("☐") && xml.Contains("☑") && xml.Contains("○") && xml.Contains("◉"),
+        "XLSX uses native form-control glyphs");
+}
+
 // Managed image references are opt-in. No remote URLs are ever fetched.
 var storedImageUrl = "/editor/demo-images/" + new string('a', 32);
 Require(!EditorHtmlSanitizer.Sanitize($"<img src='{storedImageUrl}'>").Contains("<img"),

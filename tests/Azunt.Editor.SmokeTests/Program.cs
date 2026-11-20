@@ -40,6 +40,23 @@ var rgbViewer = Azunt.Editor.Rendering.EditorViewerSanitizer.Sanitize(
     "<p style=\"color:rgb(18, 52, 86);background-color:rgba(255, 220, 10, 1)\">Colors</p>");
 Require(rgbViewer.Contains("#123456") && rgbViewer.Contains("#ffdc0a"), "Browser RGB colors survive server rendering");
 
+// 0.6.7: both toolbar modes expose the split form-control insertion button.
+var formToolbar = EditorMarkup.Render("forms", "Html");
+Require(formToolbar.Contains("data-quick-command=\"form-checkbox\""), "Quick checkbox insertion");
+Require(formToolbar.Contains("data-command=\"form-checkbox\""), "Classic checkbox insertion");
+Require(formToolbar.Contains("data-azunt-menu=\"controls\""), "Split dropdown in both modes");
+var controlsView = EditorMarkup.Render("forms-view", "Html",
+    "<p><input type='checkbox' checked onclick='bad()'> Checkbox <input type='radio'> Radio</p>",
+    mode: Azunt.Editor.Models.EditorMode.View);
+var controlsCanvas = controlsView.Split("class=\"az-azunt-editor-canvas\"", 2)[1].Split("</div>", 2)[0];
+Require(controlsCanvas.Contains("<input type=\"checkbox\" checked disabled>"), "Checked checkbox SSR is inert");
+Require(controlsCanvas.Contains("<input type=\"radio\" disabled>"), "Radio SSR is inert");
+Require(!controlsCanvas.Contains("onclick"), "Form input event handlers are stripped");
+var unsafeControls = Azunt.Editor.Rendering.EditorViewerSanitizer.Sanitize(
+    "<input type='password' value='secret'><input type='text' name='x'>" +
+    "<input type='checkbox' name='answer' value='yes' autofocus checked>");
+Require(unsafeControls == "<input type=\"checkbox\" checked disabled>", "Only narrow form attributes survive SSR");
+
 var clamped = EditorMarkup.Render("e2", "Html", height: 999999);
 Require(clamped.Contains("min-height:1400px"), "Height clamped");
 

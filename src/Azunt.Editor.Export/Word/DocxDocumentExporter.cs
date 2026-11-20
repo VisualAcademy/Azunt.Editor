@@ -94,6 +94,11 @@ internal static class DocxDocumentExporter
             body.Append(para);
             return;
         }
+        if (node.Name == "input")
+        {
+            body.Append(new W.Paragraph(Run(SafeEditorDocument.FormControlGlyph(node), new Format())));
+            return;
+        }
         if (node.Name == "img")
         {
             var para = new W.Paragraph();
@@ -179,6 +184,7 @@ internal static class DocxDocumentExporter
             if (node.Text.Length > 0) para.Append(Run(node.Text, parent));
             return;
         }
+        if (node.Name == "input") { para.Append(Run(SafeEditorDocument.FormControlGlyph(node), parent)); return; }
         if (node.Name == "br") { para.Append(new W.Run(new W.Break())); return; }
         if (node.Name == "img")
         {

@@ -3,7 +3,7 @@ from pathlib import Path
 from xml.etree import ElementTree
 
 root = Path(__file__).resolve().parents[1]
-version = '0.6.6'
+version = '0.6.7'
 for item in ['src/Azunt.Editor/Azunt.Editor.csproj', 'src/Azunt.Editor.Export/Azunt.Editor.Export.csproj',
              'samples/Azunt.Web/Azunt.Web.csproj']:
     doc = ElementTree.parse(root / item)
@@ -17,6 +17,9 @@ for control in ['data-find-panel', 'data-chars-panel', 'data-editor-stats', 'dat
     assert control in markup, f'Missing editor writing control: {control}' 
 assert 'data-command' in markup and '<svg' in markup
 assert 'data-current-format' in markup, 'Missing current-format indicator'
+for item in ['data-quick-command', 'data-azunt-menu', 'form-checkbox', 'controls']:
+    assert item in markup, f'Missing HTML form control button: {item}'
+
 
 pdf = (root / 'src/Azunt.Editor.Export/Pdf/PdfDocumentExporter.cs').read_text()
 assert 'DisplayHeaderFooter = options.ShowPageNumbers' in pdf
@@ -52,4 +55,4 @@ for token in ['function unregisterCommand(', 'Duplicate custom command id:', 'pr
 assert 'data-azunt-mount=' in (root / 'src/Azunt.Editor/Rendering/EditorMarkup.cs').read_text()
 assert 'RenderForBlazor(' in component
 assert ':not([data-azunt-mount="manual"])' in editor_js
-print('PASS: Azunt.Editor 0.6.6 release contracts, sources are application-agnostic')
+print('PASS: Azunt.Editor 0.6.7 release contracts, sources are application-agnostic')

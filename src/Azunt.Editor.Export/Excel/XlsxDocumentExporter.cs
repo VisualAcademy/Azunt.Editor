@@ -123,6 +123,11 @@ internal static class XlsxDocumentExporter
                     WriteFlow(node);
                     return;
                 }
+                if (node.Name == "input")
+                {
+                    AppendRow([SafeEditorDocument.FormControlGlyph(node)]);
+                    return;
+                }
                 if (node.Name == "img")
                 {
                     var height = AddImage(node, rowNumber, 0);
@@ -155,6 +160,9 @@ internal static class XlsxDocumentExporter
                             FlushText();
                             var height = AddImage(item, rowNumber, 0);
                             ReserveImageRows(height);
+                            break;
+                        case "input":
+                            currentText.Append(SafeEditorDocument.FormControlGlyph(item));
                             break;
                         case "br":
                             currentText.Append('\n');

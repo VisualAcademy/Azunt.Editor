@@ -15,11 +15,11 @@
   ]);
   const allowedTags = new Set([
     "p", "div", "h2", "h3", "strong", "b", "em", "i", "u", "s", "ul", "ol", "li",
-    "blockquote", "pre", "code", "sup", "sub", "table", "thead", "tbody", "tr", "td", "th", "br", "hr", "img", "a", "span"
+    "blockquote", "pre", "code", "sup", "sub", "table", "thead", "tbody", "tr", "td", "th", "br", "hr", "img", "a", "span", "input"
   ]);
   const dropWithChildren = new Set([
     "script", "style", "iframe", "frame", "frameset", "object", "embed", "svg", "math", "template",
-    "form", "input", "textarea", "button", "select", "option", "link", "meta", "base", "video", "audio"
+    "form", "textarea", "button", "select", "option", "link", "meta", "base", "video", "audio"
   ]);
   const imageDataUrlPattern = /^data:image\/(?:png|jpeg|gif|webp);base64,[A-Za-z0-9+/]+={0,2}$/i;
   const supportedTypes = new Set(["image/png", "image/jpeg", "image/gif", "image/webp"]);
@@ -90,7 +90,18 @@
         for (const child of Array.from(node.childNodes)) visit(child, destination);
         return;
       }
+      // Form controls are intentionally a tiny whitelist. A saved document must
+      // not introduce text/password/file inputs or submit host application forms.
+      if (tag === "input" && !["checkbox", "radio"].includes((node.getAttribute("type") || "").toLowerCase())) return;
       const clean = document.createElement(tag);
+      if (tag === "input") {
+        clean.setAttribute("type", node.getAttribute("type").toLowerCase());
+        // Read the live property so user toggles survive HTML serialization,
+        // even if the browser has not changed the checked HTML attribute.
+        if (node.checked) clean.setAttribute("checked", "");
+        destination.appendChild(clean);
+        return;
+      }
       if (tag === "img") {
         const src = safeResourceUrl(node.getAttribute("src"), true);
         if (!src) return;
@@ -299,6 +310,31 @@
     const selection = window.getSelection();
     selection.removeAllRanges();
     selection.addRange(range);
+  }
+
+  // Form inserts are purely document elements, not host-application form fields:
+  // they have no name/value, handlers, or arbitrary attributes.
+  const formControlKinds = new Set([
+    "form-checkbox", "form-checkbox-checked", "form-radio", "form-radio-checked"
+  ]);
+
+  function insertFormControl(instance, command) {
+    if (!formControlKinds.has(command)) return;
+    const input = document.createElement("input");
+    input.type = command.startsWith("form-radio") ? "radio" : "checkbox";
+    input.checked = command.endsWith("-checked");
+    if (input.checked) input.setAttribute("checked", "");
+    insertAtSelection(instance, input);
+    message(instance, `${input.type === "radio" ? "Radio button" : "Checkbox"} inserted.`, "success");
+  }
+
+  function setDocumentControlsReadOnly(instance) {
+    // Disabled is view-only state; sanitizeHtml intentionally never persists it.
+    instance.canvas.querySelectorAll('input[type="checkbox"],input[type="radio"]').forEach(control => {
+      control.disabled = instance.readOnly;
+      if (instance.readOnly) control.tabIndex = -1;
+      else control.removeAttribute("tabindex");
+    });
   }
 
   function insertAtSelection(instance, node) {
@@ -1389,6 +1425,7 @@
       return;
     }
     if (instance.sourceMode) return message(instance, "Apply HTML source before using formatting tools.", "warning");
+    if (formControlKinds.has(command)) return insertFormControl(instance, command);
     if (command === "clear-format") return clearFormatting(instance);
     if (command === "page-break") return insertRule(instance, true);
     if (command === "horizontal-rule") return insertRule(instance, false);
@@ -1427,7 +1464,7 @@
   const menuGroups = Object.freeze({
     file: ["Document"], edit: ["Writing tools"], view: ["Document"],
     insert: ["Link", "Image"], format: ["Text formatting", "Font and color", "Paragraph"],
-    table: ["Table"], image: ["Image"], link: ["Link"],
+    table: ["Table"], image: ["Image"], link: ["Link"], controls: [],
     tools: ["Writing tools"], export: [],
     more: ["Text formatting", "Font and color", "Paragraph", "Link", "Table", "Image", "Writing tools", "Document"]
   });
@@ -1644,6 +1681,29 @@
     if (!instance.menuPanel?.hidden) openMenu(instance, instance.openMenu);
   }
 
+  function appendFormControlChoices(target) {
+    const group = document.createElement("div");
+    group.className = "az-azunt-editor-group az-azunt-editor-form-choices";
+    group.dataset.groupLabel = "Form controls";
+    group.setAttribute("role", "group");
+    group.setAttribute("aria-label", "Insert an HTML form control");
+    for (const [command, label, glyph] of [
+      ["form-radio", "Radio button (unchecked)", "○"],
+      ["form-radio-checked", "Radio button (checked)", "◉"],
+      ["form-checkbox", "Checkbox (unchecked)", "☐"],
+      ["form-checkbox-checked", "Checkbox (checked)", "☑"]
+    ]) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "az-azunt-editor-button az-azunt-editor-form-choice";
+      button.dataset.command = command;
+      button.textContent = `${glyph}  ${label}`;
+      button.setAttribute("aria-label", label);
+      group.appendChild(button);
+    }
+    target.appendChild(group);
+  }
+
   function appendCustomCommands(instance, key, target) {
     const commands = Array.from(effectiveCommands(instance).values()).filter(def =>
       key === "more" || def.group === key || (key === "file" && def.group === "export"));
@@ -1670,6 +1730,7 @@
       const group = instance.originalGroups.find(candidate => candidate.dataset.groupLabel === label);
       if (group) instance.menuPanel.appendChild(group);
     }
+    if (key === "controls" || key === "insert" || key === "more") appendFormControlChoices(instance.menuPanel);
     appendCustomCommands(instance, key, instance.menuPanel);
     if (!instance.menuPanel.children.length) {
       const note = document.createElement("span");
@@ -1939,6 +2000,7 @@
     const startingHtml = visibleHtml.trim() ? visibleHtml
       : (sameRoot ? pendingHtml : instance.value.value);
     instance.canvas.innerHTML = sanitizeHtml(startingHtml);
+    setDocumentControlsReadOnly(instance);
     instance.value.value = readHtml(instance);
     // Switching modes retains undo history, but starts with the current sanitized HTML.
     const oldHistory = sameRoot && previous?.history;
@@ -1966,6 +2028,13 @@
       if (event.target.closest("button")) event.preventDefault();
     }, { signal });
     instance.toolbar.addEventListener("keydown", event => {
+      const formDropdown = event.target.closest('button[data-azunt-menu="controls"]');
+      if (formDropdown && ["ArrowDown", "ArrowUp"].includes(event.key)) {
+        event.preventDefault();
+        if (instance.openMenu !== "controls") openMenu(instance, "controls", formDropdown);
+        focusMenuItem(instance, event.key === "ArrowUp");
+        return;
+      }
       const trigger = event.target.closest("[data-compact-menu] button[data-azunt-menu]");
       if (trigger) {
         const triggers = menuTriggers(instance);
@@ -2133,6 +2202,14 @@
       instance.signaturePanel.querySelector("[data-signature-close]").addEventListener("click", () => { instance.signaturePanel.hidden = true; clearSignature(instance); }, { signal });
     }
     instance.canvas.addEventListener("input", () => changed(instance), { signal });
+    instance.canvas.addEventListener("change", event => {
+      const control = event.target;
+      if (!control?.matches?.('input[type="checkbox"],input[type="radio"]') || !instance.canvas.contains(control)) return;
+      // Keep defaultChecked and the serialized attribute in sync with the live UI.
+      if (control.checked) control.setAttribute("checked", "");
+      else control.removeAttribute("checked");
+      changed(instance);
+    }, { signal });
     instance.canvas.addEventListener("blur", () => {
       window.clearTimeout(instance.emitTimer);
       remember(instance);
@@ -2326,6 +2403,7 @@
     instance.source.hidden = true;
     instance.canvas.hidden = false;
     instance.canvas.innerHTML = sanitizeHtml(html);
+    setDocumentControlsReadOnly(instance);
     instance.lastRange = null;
     setImageSelection(instance, null);
     instance.activeCell = null;

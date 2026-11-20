@@ -42,19 +42,19 @@ internal sealed class ViewerSafeEditorDocument
     {
         "p", "div", "h2", "h3", "strong", "b", "em", "i", "u", "s",
         "ul", "ol", "li", "blockquote", "pre", "code", "sup", "sub", "table", "thead", "tbody",
-        "tr", "td", "th", "br", "hr", "img", "a", "span"
+        "tr", "td", "th", "br", "hr", "img", "a", "span", "input"
     };
     private static readonly HashSet<string> Omitted = new(StringComparer.OrdinalIgnoreCase)
     {
         "script", "style", "iframe", "frame", "frameset", "object", "embed", "svg", "math", "template",
-        "form", "input", "textarea", "button", "select", "option", "link", "meta", "base", "video", "audio",
+        "form", "textarea", "button", "select", "option", "link", "meta", "base", "video", "audio",
         "noscript", "noembed", "noframes", "plaintext", "xmp", "title"
     };
-    private static readonly HashSet<string> Void = new(StringComparer.OrdinalIgnoreCase) { "br", "hr", "img" };
+    private static readonly HashSet<string> Void = new(StringComparer.OrdinalIgnoreCase) { "br", "hr", "img", "input" };
     // Standard HTML void elements have no end tag. They must never cause the
     // remainder of an otherwise valid document to be discarded.
     private static readonly HashSet<string> OmittedVoid = new(StringComparer.OrdinalIgnoreCase)
-    { "input", "link", "meta", "base" };
+    { "link", "meta", "base" };
     private const int MaxElementDepth = 128;
     private static readonly HashSet<string> Fonts = new(StringComparer.OrdinalIgnoreCase)
     { "Arial", "Georgia", "Times New Roman", "Verdana", "Segoe UI", "Noto Sans KR", "Malgun Gothic" };
@@ -129,7 +129,7 @@ internal sealed class ViewerSafeEditorDocument
             foreach (Match match in AttrPattern.Matches(token[nameEnd..]))
             {
                 var key = match.Groups["key"].Value;
-                if (key is not ("src" or "href" or "alt" or "width" or "height" or "style" or "data-azunt-page-break" or "colspan")) continue;
+                if (key is not ("src" or "href" or "alt" or "width" or "height" or "style" or "data-azunt-page-break" or "colspan" or "type" or "checked")) continue;
                 var value = match.Groups["double"].Success ? match.Groups["double"].Value
                     : match.Groups["single"].Success ? match.Groups["single"].Value
                     : match.Groups["bare"].Value;
@@ -178,6 +178,8 @@ internal sealed class ViewerSafeEditorDocument
     private static void Append(Node node, StringBuilder output)
     {
         if (node.Name == "#text") { output.Append(HtmlEncoder.Default.Encode(node.Text)); return; }
+        var inputType = node.Attribute("type").Trim().ToLowerInvariant();
+        if (node.Name == "input" && inputType is not ("radio" or "checkbox")) return;
         if (node.Name == "img")
         {
             var src = node.Attribute("src");
@@ -185,6 +187,13 @@ internal sealed class ViewerSafeEditorDocument
                 return; // Reject unsupported sources and unsafe URL schemes.
         }
         output.Append('<').Append(node.Name);
+        if (node.Name == "input")
+        {
+            output.Append(" type=\"").Append(inputType).Append('"');
+            if (node.Attributes.ContainsKey("checked")) output.Append(" checked");
+            // Server-rendered View is non-interactive even without JavaScript.
+            output.Append(" disabled");
+        }
         if (node.Name == "img")
         {
             output.Append(" src=\"").Append(HtmlEncoder.Default.Encode(node.Attribute("src"))).Append('"');

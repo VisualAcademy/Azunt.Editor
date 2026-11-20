@@ -36,25 +36,34 @@ internal sealed class SafeEditorDocument
             foreach (var child in Children)
                 foreach (var descendant in child.DescendantsAndSelf()) yield return descendant;
         }
-        public string PlainText() => Name == "#text" ? Text : string.Concat(Children.Select(c => c.PlainText()));
+        public string PlainText() => Name == "#text" ? Text :
+            Name == "input" ? FormControlGlyph(this) : string.Concat(Children.Select(c => c.PlainText()));
     }
+
+    internal static string FormControlGlyph(Node node)
+        => node.Attribute("type").Trim().ToLowerInvariant() switch
+        {
+            "checkbox" => node.Attributes.ContainsKey("checked") ? "☑" : "☐",
+            "radio" => node.Attributes.ContainsKey("checked") ? "◉" : "○",
+            _ => ""
+        };
 
     private static readonly HashSet<string> Allowed = new(StringComparer.OrdinalIgnoreCase)
     {
         "p", "div", "h1", "h2", "h3", "h4", "strong", "b", "em", "i", "u", "s", "del", "strike",
         "ul", "ol", "li", "blockquote", "pre", "code", "sup", "sub", "table", "thead", "tbody",
-        "tfoot", "tr", "td", "th", "br", "hr", "img", "a", "span"
+        "tfoot", "tr", "td", "th", "br", "hr", "img", "a", "span", "input"
     };
     private static readonly HashSet<string> Omitted = new(StringComparer.OrdinalIgnoreCase)
     {
         "script", "style", "iframe", "frame", "frameset", "object", "embed", "svg", "math", "template",
-        "form", "input", "textarea", "button", "select", "option", "link", "meta", "base", "video", "audio"
+        "form", "textarea", "button", "select", "option", "link", "meta", "base", "video", "audio"
     };
-    private static readonly HashSet<string> Void = new(StringComparer.OrdinalIgnoreCase) { "br", "hr", "img" };
+    private static readonly HashSet<string> Void = new(StringComparer.OrdinalIgnoreCase) { "br", "hr", "img", "input" };
     // Standard HTML void elements have no end tag. They must never cause the
     // remainder of an otherwise valid document to be discarded.
     private static readonly HashSet<string> OmittedVoid = new(StringComparer.OrdinalIgnoreCase)
-    { "input", "link", "meta", "base" };
+    { "link", "meta", "base" };
     private const int MaxElementDepth = 128;
     private static readonly HashSet<string> Fonts = new(StringComparer.OrdinalIgnoreCase)
     { "Arial", "Georgia", "Times New Roman", "Verdana", "Segoe UI", "Noto Sans KR", "Malgun Gothic" };
@@ -129,7 +138,7 @@ internal sealed class SafeEditorDocument
             foreach (Match match in AttrPattern.Matches(token[nameEnd..]))
             {
                 var key = match.Groups["key"].Value;
-                if (key is not ("src" or "href" or "alt" or "width" or "height" or "style" or "data-azunt-page-break" or "colspan")) continue;
+                if (key is not ("src" or "href" or "alt" or "width" or "height" or "style" or "data-azunt-page-break" or "colspan" or "type" or "checked")) continue;
                 var value = match.Groups["double"].Success ? match.Groups["double"].Value
                     : match.Groups["single"].Success ? match.Groups["single"].Value
                     : match.Groups["bare"].Value;
@@ -178,6 +187,8 @@ internal sealed class SafeEditorDocument
     private static void Append(Node node, StringBuilder output, Func<string, bool>? isManagedImageUrl)
     {
         if (node.Name == "#text") { output.Append(HtmlEncoder.Default.Encode(node.Text)); return; }
+        var inputType = node.Attribute("type").Trim().ToLowerInvariant();
+        if (node.Name == "input" && inputType is not ("checkbox" or "radio")) return;
         if (node.Name == "img")
         {
             var src = node.Attribute("src");
@@ -186,6 +197,11 @@ internal sealed class SafeEditorDocument
                 return; // Never allow arbitrary remote image URLs.
         }
         output.Append('<').Append(node.Name);
+        if (node.Name == "input")
+        {
+            output.Append(" type=\"").Append(inputType).Append('"');
+            if (node.Attributes.ContainsKey("checked")) output.Append(" checked");
+        }
         if (node.Name == "img")
         {
             output.Append(" src=\"").Append(HtmlEncoder.Default.Encode(node.Attribute("src"))).Append('"');

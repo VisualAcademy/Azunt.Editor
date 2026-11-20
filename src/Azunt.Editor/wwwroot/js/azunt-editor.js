@@ -1003,7 +1003,12 @@
   }
 
   function editableTable(instance, table) {
-    return table && table.tagName === "TABLE" && table.parentElement === instance.canvas &&
+    // Tables inserted within existing paragraphs or loaded from older HTML can
+    // have a wrapping block. A handle must still be usable for those tables.
+    // Only reject a table nested inside ANOTHER table (moving it could alter
+    // its parent's cell structure).
+    return table && table.tagName === "TABLE" && instance.canvas.contains(table) &&
+      !table.parentElement?.closest("table") &&
       !instance.readOnly && !instance.sourceMode && !instance.imageResize;
   }
 
@@ -1053,7 +1058,11 @@
       return;
     }
     instance.selectedTable = table;
-    instance.tableColumnIndex = column;
+    // Clicking the final column should expose the last *inner* boundary,
+    // rather than hiding resizing altogether.
+    const count = table.rows[0]?.cells.length || 0;
+    instance.tableColumnIndex = rectangularTable(table)
+      ? Math.min(Math.max(0, column), count - 2) : column;
     positionTableControls(instance);
   }
 
@@ -1089,6 +1098,9 @@
   function startTableMove(instance, event) {
     if (event.button !== 0 || !editableTable(instance, instance.selectedTable)) return;
     event.preventDefault();
+    // The floating table command bar may overlap the drop destination; keep it
+    // hidden for the entire gesture so elementFromPoint() sees the document.
+    if (instance.contextTools) instance.contextTools.hidden = true;
     remember(instance);
     instance.tableMove = { table: instance.selectedTable, pointerId: event.pointerId,
       startX: event.clientX, startY: event.clientY, target: null, moved: false };
@@ -1126,12 +1138,19 @@
       message(instance, "Table moved. Use Undo to restore its previous position.", "success");
     }
     positionTableControls(instance);
+    updateContextTools(instance);
   }
 
   function moveTableByKeyboard(instance, direction) {
     const table = instance.selectedTable;
     if (!editableTable(instance, table)) return;
-    const sibling = direction < 0 ? table.previousElementSibling : table.nextElementSibling;
+    // A historical document may wrap the selected table inside a paragraph
+    // or div. Move only the table, but calculate destination using root-level
+    // blocks; insertBefore() requires a direct child of the canvas.
+    let rootBlock = table;
+    while (rootBlock.parentElement && rootBlock.parentElement !== instance.canvas)
+      rootBlock = rootBlock.parentElement;
+    const sibling = direction < 0 ? rootBlock.previousElementSibling : rootBlock.nextElementSibling;
     if (!sibling) return;
     remember(instance);
     instance.canvas.insertBefore(table, direction < 0 ? sibling : sibling.nextSibling);
@@ -1146,6 +1165,7 @@
     const index = instance.tableColumnIndex;
     if (!Number.isInteger(index) || index < 0 || index >= table.rows[0].cells.length - 1) return;
     event.preventDefault();
+    if (instance.contextTools) instance.contextTools.hidden = true;
     remember(instance);
     const widths = Array.from(table.rows[0].cells, c => c.getBoundingClientRect().width);
     const total = widths.reduce((a, b) => a + b, 0);
@@ -1204,6 +1224,7 @@
       message(instance, "Column widths updated. Use Undo to restore them.", "success");
     }
     positionTableControls(instance);
+    updateContextTools(instance);
   }
 
   function cellAtNode(instance, node) {
@@ -1619,7 +1640,12 @@
         cell.appendChild(document.createElement("br"));
       }
     }
-    insertAtSelection(instance, table);
+    // Reuse the block-aware paste insertion path. insertAtSelection() would
+    // put a table *inside* the current <p>, which is invalid HTML and made the
+    // move/resize grips disappear until a later save/reload normalized it.
+    const fragment = document.createDocumentFragment();
+    fragment.appendChild(table);
+    insertClipboardFragment(instance, fragment);
     instance.activeCell = table.rows[0].cells[0];
     selectTableControls(instance, table, 0);
   }
@@ -2445,7 +2471,11 @@
     const tools = instance.contextTools;
     if (!tools || tools.hidden || !target?.isConnected) return;
     const viewport = visibleViewport();
-    const rect = target.getBoundingClientRect();
+    // A table toolbar anchored to a cell can cover adjacent cells AND the
+    // column grip. Place it outside the entire table instead.
+    const anchor = ["TD", "TH"].includes(target.tagName) && target.closest("table")
+      ? target.closest("table") : target;
+    const rect = anchor.getBoundingClientRect();
     if (!rect.width || !rect.height || rect.bottom < viewport.top || rect.top > viewport.bottom) {
       tools.hidden = true;
       return;

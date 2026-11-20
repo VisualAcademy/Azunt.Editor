@@ -514,6 +514,8 @@
 
   function toggleSource(instance) {
     if (instance.readOnly) return;
+    // A pending image should never appear after source HTML has been edited.
+    instance.imageInsertGeneration++;
     if (!instance.sourceMode) {
       instance.source.value = sanitizeHtml(instance.canvas.innerHTML);
       instance.source.hidden = false;
@@ -1128,15 +1130,35 @@
 
   function countInlineBytes(instance) {
     return Array.from(instance.canvas.querySelectorAll("img[src^='data:']"))
-      .reduce((sum, image) => sum + Math.ceil((image.getAttribute("src") || "").length * 0.75), 0);
+      .reduce((sum, image) => {
+        const src = image.getAttribute("src") || "";
+        const comma = src.indexOf(",");
+        if (comma < 0) return sum;
+        // Count decoded raster bytes, not the data: URL header or Base64 padding.
+        // The saved-image budget is defined in bytes, not HTML character count.
+        const length = src.length - comma - 1;
+        const padding = src.endsWith("==") ? 2 : src.endsWith("=") ? 1 : 0;
+        return sum + Math.max(0, Math.floor(length * 3 / 4) - padding);
+      }, 0);
   }
 
-  function asDataUrl(file) {
+  function asDataUrl(file, signal) {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
-      reader.onload = () => resolve(String(reader.result || ""));
-      reader.onerror = () => reject(new Error("Image could not be read."));
-      reader.readAsDataURL(file);
+      const cleanup = () => signal?.removeEventListener("abort", onAbort);
+      const onAbort = () => {
+        // Do not allow a stale FileReader to insert content after View/unmount.
+        if (reader.readyState === FileReader.LOADING) reader.abort();
+        cleanup();
+        reject(new DOMException("Image insertion canceled.", "AbortError"));
+      };
+      if (signal?.aborted) { onAbort(); return; }
+      signal?.addEventListener("abort", onAbort, { once: true });
+      reader.onload = () => { cleanup(); resolve(String(reader.result || "")); };
+      reader.onerror = () => { cleanup(); reject(new Error("Image could not be read.")); };
+      reader.onabort = () => { cleanup(); reject(new DOMException("Image insertion canceled.", "AbortError")); };
+      try { reader.readAsDataURL(file); }
+      catch (error) { cleanup(); reject(error); }
     });
   }
 
@@ -1145,7 +1167,7 @@
       if (countInlineBytes(instance) + file.size > maxInlineImageBytes) {
         throw new Error("The inline image limit is 8 MB per document. Configure an upload URL for larger documents.");
       }
-      return asDataUrl(file);
+      return asDataUrl(file, instance.controller?.signal);
     }
     const form = new FormData();
     form.append("file", file, file.name);
@@ -1161,7 +1183,7 @@
       // origin and sets the matching cookie. No upload happens without a token.
       if (!instance.uploadToken) {
         const tokenResponse = await fetch(uploadTarget.href.replace(/\/$/, "") + "/token", {
-          credentials: "same-origin", cache: "no-store"
+          credentials: "same-origin", cache: "no-store", signal: instance.controller?.signal
         });
         if (!tokenResponse.ok) throw new Error("The image upload token could not be obtained.");
         const token = await tokenResponse.json();
@@ -1170,7 +1192,8 @@
       }
       headers.RequestVerificationToken = instance.uploadToken;
     }
-    const response = await fetch(uploadTarget.href, { method: "POST", body: form, headers, credentials: "same-origin" });
+    const response = await fetch(uploadTarget.href, { method: "POST", body: form, headers,
+      credentials: "same-origin", signal: instance.controller?.signal });
     if (!response.ok) throw new Error(`Image upload failed (${response.status}).`);
     const result = await response.json();
     const url = safeResourceUrl(result.url, true);
@@ -1236,34 +1259,65 @@
     }
   }
 
+  function isCurrentImageInsert(instance, generation) {
+    return instances.get(instance.element.id) === instance && instance.element.isConnected &&
+      !instance.controller.signal.aborted && !instance.readOnly && !instance.sourceMode &&
+      instance.imageInsertGeneration === generation;
+  }
+
+  // Keep the insertion caret from the initial user action. A file reader or
+  // upload can resolve after the user focuses another editor or changes selection.
+  function restoreImageInsertRange(instance, range) {
+    if (!range || !instance.canvas.contains(range.commonAncestorContainer)) return false;
+    instance.canvas.focus();
+    const selection = window.getSelection();
+    if (!selection) return false;
+    selection.removeAllRanges();
+    selection.addRange(range.cloneRange());
+    instance.lastRange = range.cloneRange();
+    return true;
+  }
+
   async function addImages(instance, files) {
-    if (instance.readOnly) return;
+    if (instance.readOnly || instance.sourceMode) return;
     const images = Array.from(files).slice(0, 10);
     if (!images.length) return;
-    selectedRange(instance); // Save the current caret position before the file dialog.
+    const generation = instance.imageInsertGeneration;
+    // Capture before the first await; preserve the order of multi-file insertion.
+    let insertionRange = selectedRange(instance).cloneRange();
+    const insertSize = instance.imageInsertSize?.value;
     let inserted = 0;
     for (const file of images) {
+      if (!isCurrentImageInsert(instance, generation)) return;
       if (!supportedTypes.has(file.type) || file.size > maxImageBytes) {
         message(instance, `Skipped ${file.name}: only PNG/JPEG/GIF/WebP up to 2 MB are supported.`, "warning");
         continue;
       }
       try {
         const url = await imageUrl(instance, file);
+        // A mode change, unmount or programmatic setHtml invalidates this job.
+        if (!isCurrentImageInsert(instance, generation)) return;
+        if (!restoreImageInsertRange(instance, insertionRange)) {
+          message(instance, "The insertion position changed. Select a location and insert the image again.", "warning");
+          return;
+        }
         const image = document.createElement("img");
         image.setAttribute("src", url);
         image.setAttribute("alt", file.name);
-        // Original is the default. No width attribute means native image pixels;
-        // CSS max-width:100% keeps oversized images within the editor viewport.
-        if (instance.imageInsertSize?.value === "480") image.setAttribute("width", "480");
+        // Original is the default. CSS max-width:100% constrains display size.
+        if (insertSize === "480") image.setAttribute("width", "480");
         insertImageParagraph(instance, image);
         setImageSelection(instance, image);
-        instance.lastRange = window.getSelection().getRangeAt(0).cloneRange();
+        const selection = window.getSelection();
+        if (selection?.rangeCount) insertionRange = selection.getRangeAt(0).cloneRange();
         inserted++;
       } catch (error) {
+        if (!isCurrentImageInsert(instance, generation) || error?.name === "AbortError") return;
         message(instance, String(error.message || error), "error");
       }
     }
-    if (inserted) message(instance, `${inserted} image(s) inserted.`, "success");
+    if (inserted && isCurrentImageInsert(instance, generation))
+      message(instance, `${inserted} image(s) inserted.`, "success");
   }
 
   function insertPlainText(instance, text) {
@@ -2317,7 +2371,7 @@
       imageAlt: element.querySelector("[data-image-alt]"),
       imageInsertSize: element.querySelector("[data-select=\"imageInsertSize\"]"),
       imageResizeHandle: element.querySelector("[data-image-resize-handle]"),
-      imageResize: null,
+      imageResize: null, imageInsertGeneration: 0,
       status: element.querySelector(".az-azunt-editor-message"),
       stats: element.querySelector("[data-editor-stats]"),
       findPanel: element.querySelector("[data-find-panel]"),
@@ -2794,6 +2848,9 @@
       throw new Error("Editor mode must be Edit or View.");
     const instance = getInstance(id);
     if (instance.mode === desired) return;
+    // Cancel a partially completed image drag BEFORE sending any pending HTML.
+    // Otherwise Blazor can receive a transient width that View then rolls back.
+    if (instance.imageResize) finishImageResize(instance, null, true);
     // A mode switch can happen before the 200ms Blazor change notification.
     // Flush the pending edit before unmount() cancels its timer. This keeps
     // @bind-Value in sync without broadcasting an event for a mere mode change.
@@ -2847,6 +2904,9 @@
 
   function setHtml(id, html) {
     const instance = getInstance(id);
+    // Replacing a document must invalidate any pending asynchronous image read.
+    instance.imageInsertGeneration++;
+    if (instance.imageResize) finishImageResize(instance, null, true);
     instance.sourceMode = false;
     instance.source.hidden = true;
     instance.canvas.hidden = false;

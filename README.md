@@ -62,6 +62,15 @@ Rectangular multi-cell selection is not included.
 
 See [Table editing stability](docs/table-editing-stabilization.md).
 
+## Image and HTML roundtrip reliability (0.7.0 follow-up)
+
+Async image reads and uploads now preserve the original insertion position even
+if the user changes focus. Pending imports are canceled or ignored when the
+editor changes mode, enters HTML source mode, unmounts, or receives a replacement document. Multi-image
+insertion order and inline Base64 byte counting are stabilized. An interrupted
+resize is rolled back before View serialization. No stored HTML or public API
+changes were introduced. See [image persistence](docs/image-persistence.md).
+
 ## Table dimension picker (0.6.8)
 
 In Compact and Classic toolbars, the table split button inserts a 2 × 2

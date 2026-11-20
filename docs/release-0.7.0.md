@@ -45,3 +45,17 @@ See [Undo/Redo stability](undo-redo-stabilization.md).
 - No public API/schema/dependency changes or edits to PDF/Word/Excel exporters.
 
 See [Table editing stability](table-editing-stabilization.md).
+
+## Fourth stabilization patch — Images and HTML roundtrip
+
+- Captures insertion caret before asynchronous image reads/uploads; prevents
+  stale insertion after `setHtml`, source editing, View transitions or unmount.
+- Preserves selected file order and image insertion size setting per batch.
+- Counts Base64 decoded bytes accurately for the existing inline image budget.
+- Cancels incomplete image resize before serializing a View-mode document.
+- Retains image HTML (`src`, `width`, `height`, `alt`) and existing image stores.
+- Adds `tests/editor-image-persistence-070-browser.py`; does not change C# public
+  APIs, stored HTML schema or PDF/Word/Excel exporter implementations.
+
+See [Image persistence](image-persistence.md). The .NET 10 build, real host
+integration and generated export formats remain unverified in this environment.

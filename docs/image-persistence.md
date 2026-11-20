@@ -60,3 +60,26 @@ new image content always receives a new random ID. These cache settings apply
 only to the local Development example. Production hosts must check permissions
 before reading private images and choose cache settings appropriate to their
 authorization model. Never use shared public caches for protected documents.
+
+## 0.7.0 image/HTML reliability pass
+
+- Image insertion keeps the caret location captured when the user selected files.
+  Delayed FileReader or upload completion no longer inserts at a later cursor
+  position, including when focus moves to a different editor instance.
+- Asynchronous imports are invalidated when the editor is unmounted, switches
+  to View, enters source editing, or receives a new document via `setHtml`. Upload HTTP requests and
+  local FileReader operations are canceled on component unmount when possible.
+  If the host has already persisted an upload, its orphan-cleanup policy still applies.
+- A multi-file insertion preserves the order of the selected files. The chosen
+  insert-size setting is captured for that group rather than changing mid-upload.
+- Inline Base64 limits count decoded payload bytes (excluding the data URL header
+  and padding). The existing 2 MB per-file and 8 MB inline document limits are unchanged.
+- A pointer drag that has not finished is canceled before switching to View,
+  avoiding an intermediate image width in the saved HTML or Blazor notification.
+- Original dimensions (no `width` attribute), explicit pixel width, `alt`, and
+  supported inline raster `src` attributes continue to use the same HTML format.
+
+**Validation:** Headless Chromium covers delayed image reads, insertion location,
+multifile ordering, programmatic replacement, Edit/View, isolated editor instances,
+width rollback and HTML roundtrips. This does not prove successful server-side
+storage, actual PDF/Word/Excel generation, or a .NET 10 Release build.

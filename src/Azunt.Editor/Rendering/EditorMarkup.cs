@@ -80,6 +80,13 @@ public static class EditorMarkup
         w.Append("</span></span>");
         w.Append("<span class=\"az-azunt-editor-quick-custom\" data-quick-custom></span>")
             .Append("<button class=\"az-azunt-editor-menu-trigger az-azunt-editor-quick-more\" type=\"button\" data-azunt-menu=\"more\" aria-expanded=\"false\" aria-haspopup=\"dialog\" title=\"More editor commands\" aria-label=\"More editor commands\">More ⋯</button>");
+        // Fullscreen is a viewport action, so keep it visible even when optional
+        // Compact editing groups are collapsed on narrow screens.
+        w.Append("<button type=\"button\" class=\"az-azunt-editor-button az-azunt-editor-quick-fullscreen\" ")
+            .Append("data-quick-command=\"fullscreen\" aria-pressed=\"false\" ")
+            .Append("aria-label=\"Enter fullscreen\" title=\"Fullscreen (Esc to exit)\">")
+            .Append("<span class=\"az-azunt-editor-button-icon\" aria-hidden=\"true\">")
+            .Append(Icon("fullscreen")).Append("</span></button>");
         w.Append("</div><div class=\"az-azunt-editor-classic-groups\" data-classic-groups>");
 
         Group("Text formatting");
@@ -324,7 +331,7 @@ public static class EditorMarkup
             w.Append("<button type=\"button\" class=\"az-azunt-editor-button\" data-command=\"").Append(Encode(command))
                 .Append("\" title=\"").Append(Encode(shortcut is null ? title : $"{title} ({shortcut})"))
                 .Append("\" aria-label=\"").Append(Encode(title)).Append("\"");
-            if (command is "bold" or "italic" or "underline" or "strike" or "sup" or "sub" or "ul" or "ol") w.Append(" aria-pressed=\"false\"");
+            if (command is "bold" or "italic" or "underline" or "strike" or "sup" or "sub" or "ul" or "ol" or "fullscreen") w.Append(" aria-pressed=\"false\"");
             w.Append(">")
                 .Append(Icon(command) is { } svg ? "<span class=\"az-azunt-editor-button-icon\" aria-hidden=\"true\">" + svg + "</span>" : "<span class=\"az-azunt-editor-button-label\">" + Encode(label) + "</span>")
                 .Append("</button>");

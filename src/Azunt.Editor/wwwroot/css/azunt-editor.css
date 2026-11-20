@@ -927,3 +927,41 @@
   .az-azunt-editor .az-azunt-editor-toolbar .az-azunt-editor-tool-split { border-color: ButtonText; }
   .az-azunt-editor .az-azunt-editor-toolbar .az-azunt-editor-tool-split > .az-azunt-editor-button:last-child { border-left-color: ButtonText; }
 }
+
+/* Fullscreen remains a permanent Compact viewport control (not an optional edit tool). */
+.az-azunt-editor[data-toolbar-mode="compact"] .az-azunt-editor-quick-more {
+  margin-left: 0;
+  flex: 0 0 auto;
+}
+.az-azunt-editor[data-toolbar-mode="compact"] .az-azunt-editor-quick-fullscreen {
+  margin-left: auto;
+  flex: 0 0 auto;
+  width: var(--azunt-tool-height, 34px);
+  min-width: var(--azunt-tool-height, 34px);
+  height: var(--azunt-tool-height, 34px);
+  min-height: var(--azunt-tool-height, 34px);
+  padding: 4px;
+  border: 1px solid var(--azunt-line);
+  border-radius: 5px;
+  background: transparent;
+}
+.az-azunt-editor[data-toolbar-mode="compact"] .az-azunt-editor-quick-fullscreen svg {
+  display: block;
+}
+.az-azunt-editor[data-toolbar-mode="compact"] .az-azunt-editor-quick-fullscreen[aria-pressed="true"] {
+  background: #dbeafe;
+  color: #1d4ed8;
+  border-color: #93c5fd;
+}
+@media screen and (prefers-color-scheme: dark) {
+  .az-azunt-editor[data-toolbar-mode="compact"] .az-azunt-editor-quick-fullscreen[aria-pressed="true"] {
+    background: #1d4ed8;
+    color: #f1f5f9;
+    border-color: #93c5fd;
+  }
+}
+@media (forced-colors: active) {
+  .az-azunt-editor[data-toolbar-mode="compact"] .az-azunt-editor-quick-fullscreen {
+    border-color: ButtonText;
+  }
+}

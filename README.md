@@ -2,7 +2,7 @@
 
 A lightweight rich-text editor for ASP.NET Core MVC, Razor Pages, and Blazor Server.
 
-Version: **0.7.2** · .NET 10
+Version: **0.8.0** · .NET 10
 
 ## Projects
 - `src/Azunt.Editor` — shared editor components, JavaScript, and CSS
@@ -16,6 +16,16 @@ dotnet restore Azunt.Editor.sln
 dotnet build Azunt.Editor.sln -c Release
 dotnet run --project samples/Azunt.Web
 ```
+
+## Fullscreen toolbar control (0.8.0 UI hotfix)
+
+The Compact toolbar now keeps a visible **Fullscreen** (expand) button at the
+far right, beside **More**. Click to expand only the editor to the available
+viewport; click again or press **Esc** to return. Classic still offers the
+original Fullscreen command in **Writing tools**. The command preserves HTML,
+and Edit → View automatically exits fullscreen because View has no edit toolbar.
+The feature uses CSS positioning, not the browser's F11 / Fullscreen API.
+See [fullscreen toolbar notes](docs/fullscreen-toolbar-0.8.0.md).
 
 ## Edit and View modes
 

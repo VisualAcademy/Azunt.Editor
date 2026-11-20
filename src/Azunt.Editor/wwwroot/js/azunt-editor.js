@@ -2093,10 +2093,27 @@
   }
 
   function toggleFullscreen(instance, enable = !instance.element.classList.contains("az-azunt-editor-fullscreen")) {
+    // Keep Compact's persistent control and Classic's grouped button in sync.
+    // Preserve the control to return keyboard focus after Esc exits fullscreen.
+    if (enable) {
+      const active = document.activeElement;
+      const fallback = instance.element.dataset.toolbarMode === "classic"
+        ? instance.toolbar.querySelector('button[data-command="fullscreen"]')
+        : instance.toolbar.querySelector('button[data-quick-command="fullscreen"]');
+      instance.fullscreenReturnFocus = active?.matches?.('button[data-command="fullscreen"],button[data-quick-command="fullscreen"]')
+        ? active : fallback;
+    }
     instance.element.classList.toggle("az-azunt-editor-fullscreen", enable);
-    const toggle = instance.toolbar.querySelector('[data-command="fullscreen"]');
-    if (toggle) toggle.setAttribute("aria-pressed", String(enable));
+    instance.toolbar.querySelectorAll('button[data-command="fullscreen"],button[data-quick-command="fullscreen"]').forEach(button => {
+      button.setAttribute("aria-pressed", String(enable));
+      button.setAttribute("aria-label", enable ? "Exit fullscreen" : "Enter fullscreen");
+      button.title = enable ? "Exit fullscreen (Esc)" : "Fullscreen (Esc to exit)";
+    });
     if (enable) instance.canvas.focus();
+    else {
+      if (instance.fullscreenReturnFocus?.isConnected) instance.fullscreenReturnFocus.focus();
+      instance.fullscreenReturnFocus = null;
+    }
   }
 
   function findNodes(instance) {
@@ -3498,6 +3515,9 @@
       throw new Error("Editor mode must be Edit or View.");
     const instance = getInstance(id);
     if (instance.mode === desired) return;
+    // View has no toolbar or Escape handler. Exit the editor's fullscreen
+    // presentation before switching to a static read-only document.
+    if (instance.element.classList.contains("az-azunt-editor-fullscreen")) toggleFullscreen(instance, false);
     closeCodePanel(instance);
     // Cancel a partially completed image drag BEFORE sending any pending HTML.
     // Otherwise Blazor can receive a transient width that View then rolls back.

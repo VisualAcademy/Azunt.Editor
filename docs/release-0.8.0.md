@@ -30,3 +30,17 @@
 - Added `tests/editor-toolbar-split-080-browser.py` for layout and UI command regressions.
 
 See [toolbar split controls](toolbar-split-controls-0.8.0.md).
+
+## Fullscreen toolbar follow-up (0.8.0)
+
+- Exposed the existing fullscreen command as a permanent right-aligned Compact
+  toolbar icon, including in reduced-width layouts. Classic retains its existing command.
+- Kept accessible pressed states and labels synchronized between toolbar modes,
+  restored focus to the invoking control after Escape, and automatically exited
+  fullscreen when changing Edit → View.
+- The implementation remains editor-only CSS fullscreen (no browser fullscreen
+  permissions) and does not alter saved HTML, Export or public .NET APIs.
+- Added `tests/editor-fullscreen-080-browser.py` covering Compact, Classic,
+  narrow screens, dark mode, Escape and mode transitions.
+
+See [fullscreen toolbar](fullscreen-toolbar-0.8.0.md).

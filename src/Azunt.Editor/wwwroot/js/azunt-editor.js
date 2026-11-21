@@ -2449,6 +2449,10 @@
   function positionMenu(instance) {
     if (!instance.menuPanel || instance.menuPanel.hidden) return;
     const viewport = visibleViewport();
+    // All menus use viewport coordinates. Classic (and Compact) must both
+    // use fixed positioning; otherwise a Classic dropdown is offset by the
+    // editor's position in a scrolled page.
+    instance.menuPanel.style.position = "fixed";
     if (instance.openMenu === "tablepicker" && instance.menuOpener) {
       const trigger = instance.menuOpener.getBoundingClientRect();
       // Unlike full-width command menus, the table palette hugs its toolbar
@@ -2458,7 +2462,6 @@
       const below = viewport.bottom - trigger.bottom - 8;
       const above = trigger.top - viewport.top - 8;
       const placeAbove = below < menuHeight && above > below;
-      instance.menuPanel.style.position = "fixed";
       instance.menuPanel.style.width = `${width}px`;
       instance.menuPanel.style.left = `${Math.max(viewport.left + 8, Math.min(trigger.left, viewport.right - width - 8))}px`;
       instance.menuPanel.style.maxHeight = `${Math.max(1, Math.min(placeAbove ? above : below, menuHeight))}px`;
@@ -2482,11 +2485,17 @@
       : Math.max(1, Math.min(860, editor.width - 16, viewport.right - viewport.left - 16));
     const left = isWideMore ? editorLeft : Math.max(viewport.left + 8,
       Math.min(contextOpener ? anchor.left : editor.left + 8, viewport.right - 8 - width));
+    // Measure content after applying the new editor-relative width, since
+    // responsive group wrapping directly affects panel scrollHeight.
+    instance.menuPanel.style.width = `${width}px`;
     const below = viewport.bottom - anchor.bottom - 8;
     const above = anchor.top - viewport.top - 8;
-    const placeAbove = below < 210 && above > below;
-    const maxHeight = Math.max(1, Math.min(isWideMore ? 560 : 440, placeAbove ? above : below));
-    instance.menuPanel.style.width = `${width}px`;
+    // Use the content height rather than a fixed 210px threshold. Near the
+    // bottom of a viewport this selects the side with enough room, avoiding
+    // a needlessly tiny scroll pane while keeping the overlay on-screen.
+    const desiredHeight = Math.min(instance.menuPanel.scrollHeight, isWideMore ? 560 : 440);
+    const placeAbove = below < desiredHeight && above > below;
+    const maxHeight = Math.max(1, Math.min(desiredHeight, placeAbove ? above : below));
     instance.menuPanel.style.left = `${left}px`;
     instance.menuPanel.style.maxHeight = `${maxHeight}px`;
     instance.menuPanel.style.top = placeAbove ? "auto" : `${Math.max(viewport.top + 8, anchor.bottom)}px`;
@@ -2497,6 +2506,8 @@
     const tools = instance.contextTools;
     if (!tools || tools.hidden || !target?.isConnected) return;
     const viewport = visibleViewport();
+    // The contextual tools use the same viewport coordinates in both modes.
+    tools.style.position = "fixed";
     // A table toolbar anchored to a cell can cover adjacent cells AND the
     // column grip. Place it outside the entire table instead.
     const anchor = ["TD", "TH"].includes(target.tagName) && target.closest("table")
@@ -2728,6 +2739,12 @@
       ? instance.menuOpener.getBoundingClientRect() : null;
     instance.openMenu = key;
     instance.menuPanel.dataset.menuKind = key;
+    const accessibleMenuNames = {
+      more: "More editor commands", tablepicker: "Insert table size",
+      codepicker: "Insert code language", controls: "Insert form controls"
+    };
+    instance.menuPanel.setAttribute("aria-label", accessibleMenuNames[key]
+      || `${key.charAt(0).toUpperCase()}${key.slice(1)} commands`);
     instance.menuPanel.hidden = false;
     for (const label of menuGroups[key]) {
       const group = instance.originalGroups.find(candidate => candidate.dataset.groupLabel === label);

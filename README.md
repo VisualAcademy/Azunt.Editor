@@ -2,7 +2,7 @@
 
 A lightweight rich-text editor for ASP.NET Core MVC, Razor Pages, and Blazor Server.
 
-Version: **0.8.0** · .NET 10
+Version: **0.8.2** · .NET 10
 
 ## Projects
 - `src/Azunt.Editor` — shared editor components, JavaScript, and CSS
@@ -16,6 +16,18 @@ dotnet restore Azunt.Editor.sln
 dotnet build Azunt.Editor.sln -c Release
 dotnet run --project samples/Azunt.Web
 ```
+
+## Editor UX final refinement (0.8.2)
+
+- Compact and Classic menus, including contextual tools, now share viewport-based positioning;
+  Classic dropdowns no longer drift when the page is scrolled.
+- More commands prefer whichever side of the trigger has sufficient space, rather than
+  the historical fixed 210px threshold. Menu width still follows the editor.
+- Touch targets and keyboard focus indicators are more consistent; menu dialogs expose
+  a description of the open command group to assistive technology.
+- No changes to editor HTML, commands, export services, or published JavaScript API.
+
+See [0.8.2 UX validation](docs/editor-ux-0.8.2.md).
 
 ## Fullscreen toolbar control (0.8.0 UI hotfix)
 

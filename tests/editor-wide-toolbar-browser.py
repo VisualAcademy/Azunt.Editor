@@ -28,7 +28,7 @@ async def main():
         menu = page.locator('[data-menu-panel]')
         assert await menu.is_visible()
         menu_box = await menu.bounding_box()
-        assert menu_box['width'] <= 866, menu_box
+        assert abs(menu_box['width'] - 1498) < 3, menu_box  # More spans the 1500px editor
         assert await menu.evaluate('(el) => getComputedStyle(el).display') == 'grid'
         groups = page.locator('[data-menu-panel] .az-azunt-editor-group')
         assert await groups.count() >= 3

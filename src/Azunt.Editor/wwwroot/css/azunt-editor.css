@@ -965,3 +965,35 @@
     border-color: ButtonText;
   }
 }
+
+/* 0.8.0 More panel layout: match the editor width on wide displays.
+   The JavaScript overlay placement clips its fixed bounds to the viewport.
+   The compact quick toolbar continues to fit on one row. */
+.az-azunt-editor[data-toolbar-mode="compact"] .az-azunt-editor-quick-more {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  align-self: center;
+  box-sizing: border-box;
+  flex: 0 0 auto;
+  height: var(--azunt-tool-height, 34px);
+  min-height: var(--azunt-tool-height, 34px);
+  line-height: 1;
+  padding: 0 10px;
+  margin-block: 0;
+  border: 1px solid var(--azunt-line);
+  border-radius: var(--azunt-tool-radius, 5px);
+  vertical-align: middle;
+}
+.az-azunt-editor[data-toolbar-mode="compact"] .az-azunt-editor-menu-panel[data-menu-kind="more"] {
+  /* Fills available width with balanced groups instead of a narrow
+     left-aligned three-column panel on wide editor canvases. */
+  grid-template-columns: repeat(auto-fit, minmax(min(205px, 100%), 1fr));
+  column-gap: 12px;
+  row-gap: 10px;
+}
+@media (max-width: 550px) {
+  .az-azunt-editor[data-toolbar-mode="compact"] .az-azunt-editor-menu-panel[data-menu-kind="more"] {
+    grid-template-columns: 1fr;
+  }
+}

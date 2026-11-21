@@ -197,8 +197,13 @@ the existing streaming path. See [public API](docs/public-api.md).
 
 ## Toolbar layout
 
-In Compact mode, the More menu uses a width-limited grid. The layout is
-shared by MVC, Razor Pages and Blazor Server, including wide host forms.
+In Compact mode, **More** matches the height of the other toolbar buttons
+and opens a responsive grid across the visible width of the editor rather than
+stopping at a fixed 860px. Wide hosts show more command groups per row; narrow
+screens retain a scrollable, viewport-clipped menu. The table-size picker and
+other small dropdowns keep their existing, compact behavior. The layout is
+shared by MVC, Razor Pages and Blazor Server.
+See [More menu layout](docs/more-menu-layout-0.8.0.md).
 
 The Table, checked Checkbox and Code buttons are grouped under **Insert** in
 Compact mode. Their adjacent dropdown arrows are part of the same split control:

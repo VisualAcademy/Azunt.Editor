@@ -44,3 +44,13 @@ See [toolbar split controls](toolbar-split-controls-0.8.0.md).
   narrow screens, dark mode, Escape and mode transitions.
 
 See [fullscreen toolbar](fullscreen-toolbar-0.8.0.md).
+
+## More menu width and toolbar alignment follow-up (0.8.0)
+
+- Aligned **More** with adjacent 34px Compact toolbar controls (40px on coarse-pointer devices).
+- Removed the hard-coded 860px **More** palette width cap. The palette now follows the editor's visible width and is clipped to the browser viewport, including fullscreen and resized layouts.
+- Distributed command groups across additional columns when more horizontal space is available; kept small popovers (table size, form controls, code language) unchanged.
+- Preserved all command handlers, Export registration, saved HTML, and public APIs.
+- Updated the wide-toolbar regression and added `tests/editor-more-menu-layout-080-browser.py`.
+
+See [More menu layout](more-menu-layout-0.8.0.md).

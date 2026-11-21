@@ -2470,13 +2470,22 @@
     const contextOpener = instance.menuOpener?.closest("[data-context-tools]");
     const anchor = contextOpener && instance.menuAnchorRect
       ? instance.menuAnchorRect : instance.toolbar.getBoundingClientRect();
-    const width = Math.max(1, Math.min(860, editor.width - 16, viewport.right - viewport.left - 16));
-    const left = Math.max(viewport.left + 8,
+    // The More palette should span the editor, not stop at the historical
+    // 860px cap. Clip to the visible viewport if the editor is partly outside
+    // it (small screens, horizontal scrolling, fullscreen). Keep compact
+    // size for the other command menus and for contextual dropdowns.
+    const isWideMore = instance.openMenu === "more" && !contextOpener;
+    const editorLeft = Math.max(viewport.left + 2, editor.left + 1);
+    const editorRight = Math.min(viewport.right - 2, editor.right - 1);
+    const width = isWideMore
+      ? Math.max(1, editorRight - editorLeft)
+      : Math.max(1, Math.min(860, editor.width - 16, viewport.right - viewport.left - 16));
+    const left = isWideMore ? editorLeft : Math.max(viewport.left + 8,
       Math.min(contextOpener ? anchor.left : editor.left + 8, viewport.right - 8 - width));
     const below = viewport.bottom - anchor.bottom - 8;
     const above = anchor.top - viewport.top - 8;
     const placeAbove = below < 210 && above > below;
-    const maxHeight = Math.max(1, Math.min(440, placeAbove ? above : below));
+    const maxHeight = Math.max(1, Math.min(isWideMore ? 560 : 440, placeAbove ? above : below));
     instance.menuPanel.style.width = `${width}px`;
     instance.menuPanel.style.left = `${left}px`;
     instance.menuPanel.style.maxHeight = `${maxHeight}px`;
@@ -2546,6 +2555,7 @@
     for (const group of instance.originalGroups || []) instance.classicGroups.appendChild(group);
     instance.menuPanel.replaceChildren();
     instance.menuPanel.hidden = true;
+    instance.menuPanel.removeAttribute("data-menu-kind");
     instance.menuPanel.classList.remove("az-azunt-editor-table-picker");
     instance.menuPanel.style.position = "";
     instance.openMenu = null;
@@ -2717,6 +2727,7 @@
     instance.menuAnchorRect = instance.menuOpener?.closest("[data-context-tools]")
       ? instance.menuOpener.getBoundingClientRect() : null;
     instance.openMenu = key;
+    instance.menuPanel.dataset.menuKind = key;
     instance.menuPanel.hidden = false;
     for (const label of menuGroups[key]) {
       const group = instance.originalGroups.find(candidate => candidate.dataset.groupLabel === label);

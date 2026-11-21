@@ -170,6 +170,58 @@ using (var zip = new ZipArchive(new MemoryStream(codeExcel.Content), ZipArchiveM
         "Excel values resembling formulas remain inert inline text");
 }
 
+// 0.8.1: verify actual Open XML package behavior, not just HTML/CSS source.
+var relativeLinkWord = await exporter.ExportAsync(
+    "<p><a href='/reports/123'>Relative report</a> and " +
+    "<a href='#section'>Section marker</a> and " +
+    "<a href='https://example.org/report'>External report</a></p>",
+    EditorExportFormat.Docx);
+using (var zip = new ZipArchive(new MemoryStream(relativeLinkWord.Content), ZipArchiveMode.Read))
+{
+    var xml = Read(zip, "word/document.xml");
+    var relations = Read(zip, "word/_rels/document.xml.rels");
+    Require(xml.Contains("Relative report") && xml.Contains("Section marker"),
+        "Word relative and fragment links remain readable text");
+    Require(relations.Contains("https://example.org/report") &&
+        !relations.Contains("/reports/123") && !relations.Contains("#section"),
+        "Only absolute links generate external Word relationships");
+}
+var coloredCodeWord = await exporter.ExportAsync(
+    "<pre data-language='csharp'><code>public class Demo {&#10; " +
+    "// comment&#10; string name = &quot;safe&quot;;&#10;}</code></pre>",
+    EditorExportFormat.Docx);
+using (var zip = new ZipArchive(new MemoryStream(coloredCodeWord.Content), ZipArchiveMode.Read))
+{
+    var xml = Read(zip, "word/document.xml");
+    Require(xml.Contains("7C3AED") && xml.Contains("64748B") && xml.Contains("167347"),
+        "Word contains different keyword, comment and string colors");
+    Require(xml.Contains("public") && xml.Contains("// comment") && xml.Contains("safe") &&
+        xml.Contains("<w:br"), "Word retains unchanged code and line boundaries");
+}
+var naturalImageWord = await exporter.ExportAsync(
+    $"<p><img src='data:image/png;base64,{samplePng}' alt='Pixel'></p>",
+    EditorExportFormat.Docx);
+using (var zip = new ZipArchive(new MemoryStream(naturalImageWord.Content), ZipArchiveMode.Read))
+{
+    var xml = Read(zip, "word/document.xml");
+    Require(xml.Contains("cx=\"9525\"") && xml.Contains("cy=\"9525\""),
+        "Word keeps a 1x1 PNG square without forcing its height to 20px");
+}
+// Place a supplementary Unicode code point directly across the 32,767 UTF-16
+// boundary to ensure a code line is split *before* a surrogate pair.
+var unicodeCodeLine = new string('x', 32766) + "😀END";
+var unicodeExcel = await exporter.ExportAsync(
+    "<pre data-language='csharp'><code>" + unicodeCodeLine + "</code></pre>",
+    EditorExportFormat.Xlsx);
+using (var zip = new ZipArchive(new MemoryStream(unicodeExcel.Content), ZipArchiveMode.Read))
+{
+    var sheet = Read(zip, "xl/worksheets/sheet1.xml");
+    using var reader = System.Xml.XmlReader.Create(new StringReader(sheet));
+    while (reader.Read()) { }
+    Require(sheet.Contains("😀END") && sheet.Contains(new string('x', 100)),
+        "Excel retains a complete Unicode code point across long-cell boundaries");
+}
+
 // 0.6.7: checked/unchecked native controls survive export sanitization
 // but other input types and event/host-form attributes are discarded.
 var safeControls = EditorHtmlSanitizer.Sanitize(

@@ -48,7 +48,7 @@ internal sealed class PdfDocumentExporter : IDisposable
             var page = await context.NewPageAsync();
             page.SetDefaultTimeout(_settings.RenderTimeoutMilliseconds);
             var title = HtmlEncoder.Default.Encode(options.Title);
-            var safeHtml = document.ToSafeHtml();
+            var safeHtml = PdfCodeFormatter.HighlightSafeHtml(document.ToSafeHtml());
             var html = $$"""
                 <!doctype html><html lang="en"><head><meta charset="utf-8"><title>{{title}}</title>
                 <style>
@@ -62,7 +62,11 @@ internal sealed class PdfDocumentExporter : IDisposable
                   p{orphans:2;widows:2}h1,h2,h3,h4{page-break-after:avoid}
                   pre{white-space:pre-wrap;overflow-wrap:anywhere}
                   pre.az-code-block{font:10pt/1.5 Consolas,'Courier New',monospace;background:#f1f5f9;color:#0f172a;border:1px solid #94a3b8;border-radius:5px;padding:12px;tab-size:4;break-inside:auto;page-break-inside:auto;white-space:pre-wrap;overflow-wrap:anywhere;-webkit-print-color-adjust:exact;print-color-adjust:exact}
-                  pre.az-code-block code{font:inherit;white-space:pre-wrap;overflow-wrap:anywhere}blockquote{border-left:3px solid #cbd5e1;padding-left:15px;margin-left:0}
+                  pre.az-code-block code{font:inherit;white-space:pre-wrap;overflow-wrap:anywhere}
+                  .az-pdf-code-keyword{color:#7c3aed}.az-pdf-code-comment{color:#64748b}
+                  .az-pdf-code-string{color:#167347}.az-pdf-code-number{color:#0969da}
+                  .az-pdf-code-tag{color:#0550ae}
+                  blockquote{border-left:3px solid #cbd5e1;padding-left:15px;margin-left:0}
                   a{color:#1d4ed8}hr{border:0;border-top:1px solid #cbd5e1}
                   hr[data-azunt-page-break="true"]{break-before:page;page-break-before:always;border:0;margin:0;height:0}
                 </style></head><body>{{safeHtml}}</body></html>

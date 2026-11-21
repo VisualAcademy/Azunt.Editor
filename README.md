@@ -252,3 +252,12 @@ margins and code backgrounds. See [0.8.0 release notes](docs/release-0.8.0.md).
 
 Release builds and full Open XML/PDF generation must be validated with .NET 10 and the
 appropriate Playwright browser on each production host.
+
+## Document export stabilization (0.8.1)
+
+The optional Export project now colors code tokens in **PDF and Word** without
+modifying the saved HTML or executing code. Relative links stay readable in
+Word rather than becoming invalid package relationships, small images preserve
+their aspect ratios, and oversized Unicode code lines are split safely for
+Excel's cell limit. See [0.8.1 export release notes](docs/release-0.8.1.md)
+and run the Export smoke tests using .NET 10 before publishing.

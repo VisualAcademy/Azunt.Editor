@@ -1,4 +1,5 @@
 using Azunt.Editor.Export.Html;
+using Azunt.Editor.Export.Formatting;
 using Azunt.Editor.Export.Models;
 using DocumentFormat.OpenXml;
 using DocumentFormat.OpenXml.Packaging;
@@ -97,8 +98,16 @@ internal static class DocxDocumentExporter
                 var properties = para.GetFirstChild<W.ParagraphProperties>();
                 properties?.Append(new W.Shading { Val = W.ShadingPatternValues.Clear, Fill = "F1F5F9" });
                 var code = node.Children.FirstOrDefault(child => child.Name == "code");
-                AppendPreformattedText(code?.PlainText() ?? node.PlainText(), para,
-                    new Format(Font: "Consolas", Size: 10, Color: "0F172A"));
+                var codeFormat = new Format(Font: "Consolas", Size: 10, Color: "0F172A");
+                var source = code?.PlainText() ?? node.PlainText();
+                var language = node.Attribute("data-language");
+                foreach (var token in CodeSyntaxTokens.Tokenize(source, language))
+                {
+                    var color = CodeSyntaxTokens.Color(token.Category);
+                    AppendPreformattedText(token.Text, para,
+                        color is null ? codeFormat : codeFormat with { Color = color });
+                }
+                if (source.Length == 0) AppendPreformattedText("", para, codeFormat);
             }
             else AppendInline(node, para, part, format, ref drawingId);
             body.Append(para);
@@ -243,11 +252,22 @@ internal static class DocxDocumentExporter
         var next = Merge(parent, node);
         if (node.Name == "a" && SafeEditorDocument.TryLink(node.Attribute("href"), out var url))
         {
-            var rel = part.AddHyperlinkRelationship(new Uri(url), true);
-            var hyperlink = new W.Hyperlink { Id = rel.Id, History = true };
-            var text = node.PlainText();
-            hyperlink.Append(Run(text, next with { Underline = true, Color = "1D4ED8" }));
-            para.Append(hyperlink);
+            // A relative editor link has no trusted export origin; keep readable text
+            // rather than attempting an invalid external Open XML relationship.
+            // Absolute HTTP(S) and mailto references are safe external relationships.
+            if (Uri.TryCreate(url, UriKind.Absolute, out var target) &&
+                target.Scheme is "http" or "https" or "mailto")
+            {
+                var rel = part.AddHyperlinkRelationship(target, true);
+                var hyperlink = new W.Hyperlink { Id = rel.Id, History = true };
+                hyperlink.Append(Run(node.PlainText(), next with { Underline = true, Color = "1D4ED8" }));
+                para.Append(hyperlink);
+            }
+            else
+            {
+                foreach (var child in node.Children)
+                    AppendInline(child, para, part, next, ref drawingId, maxImageWidth);
+            }
             return;
         }
         foreach (var child in node.Children) AppendInline(child, para, part, next, ref drawingId, maxImageWidth);
@@ -310,8 +330,16 @@ internal static class DocxDocumentExporter
         var width = Math.Max(1, sourceWidth);
         if (int.TryParse(node.Attribute("width"), out var definedWidth) && definedWidth is >= 24 and <= 2500)
             width = definedWidth;
-        width = Math.Min(width, maxWidth);
-        var height = Math.Clamp((int)Math.Round(width * (double)sourceHeight / Math.Max(1, sourceWidth)), 20, 1200);
+        width = Math.Clamp(width, 1, maxWidth);
+        var scaledHeight = width * (double)sourceHeight / Math.Max(1, sourceWidth);
+        // Never force tiny images to a 20px height: it distorts 1x1 icons and signatures.
+        // If height exceeds the printable limit, scale *both* axes proportionally.
+        if (scaledHeight > 1200)
+        {
+            width = Math.Max(1, (int)Math.Floor(width * 1200.0 / scaledHeight));
+            scaledHeight = width * (double)sourceHeight / Math.Max(1, sourceWidth);
+        }
+        var height = Math.Clamp((int)Math.Round(scaledHeight), 1, 1200);
         var cx = (long)width * 9525;
         var cy = (long)height * 9525;
         var id = drawingId++;

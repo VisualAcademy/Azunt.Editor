@@ -137,8 +137,17 @@ internal static class XlsxDocumentExporter
                     foreach (var line in source.Split('\n'))
                     {
                         if (line.Length == 0) { AppendRow([""], 2U); continue; }
-                        for (var offset = 0; offset < line.Length; offset += 32767)
-                            AppendRow([line.Substring(offset, Math.Min(32767, line.Length - offset))], 2U);
+                        for (var offset = 0; offset < line.Length;)
+                        {
+                            var count = Math.Min(32767, line.Length - offset);
+                            // UTF-16 surrogate pairs may not be split between two cells.
+                            // An unpaired surrogate is not valid XML and is normalized.
+                            if (count > 0 && offset + count < line.Length &&
+                                char.IsHighSurrogate(line[offset + count - 1]) &&
+                                char.IsLowSurrogate(line[offset + count])) count--;
+                            AppendRow([NormalizeXmlText(line.Substring(offset, count))], 2U);
+                            offset += count;
+                        }
                     }
                     return;
                 }
@@ -389,7 +398,34 @@ internal static class XlsxDocumentExporter
     private static string Normalize(string text)
     {
         var value = text.Replace('\u00a0', ' ').Trim();
-        return value.Length <= 32767 ? value : value[..32767];
+        if (value.Length > 32767)
+        {
+            var length = 32767;
+            if (char.IsHighSurrogate(value[length - 1]) && char.IsLowSurrogate(value[length])) length--;
+            value = value[..length];
+        }
+        return NormalizeXmlText(value);
+    }
+
+    private static string NormalizeXmlText(string value)
+    {
+        // Excel XML does not allow raw XML 1.0 control chars or broken UTF-16 pairs.
+        // Preserve valid tab/newline/CR and valid supplementary Unicode characters.
+        var cleaned = new StringBuilder(value.Length);
+        for (var i = 0; i < value.Length; i++)
+        {
+            var ch = value[i];
+            if (char.IsHighSurrogate(ch))
+            {
+                if (i + 1 < value.Length && char.IsLowSurrogate(value[i + 1]))
+                { cleaned.Append(ch).Append(value[++i]); }
+                else cleaned.Append('\uFFFD');
+            }
+            else if (char.IsLowSurrogate(ch)) cleaned.Append('\uFFFD');
+            else if (ch is '\t' or '\n' or '\r' || ch >= 0x20 && ch is not '\uFFFE' and not '\uFFFF')
+                cleaned.Append(ch);
+        }
+        return cleaned.ToString();
     }
 
     private static string ColumnName(int index)

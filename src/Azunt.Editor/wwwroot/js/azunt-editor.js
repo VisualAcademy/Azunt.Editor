@@ -1915,6 +1915,45 @@
       message(instance, `${inserted} image(s) inserted.`, "success");
   }
 
+  // Full-document deletion leaves a caret-ready <p><br></p>. Treat this as
+  // an editor placeholder, not as content to keep before/after the next paste.
+  // Do not remove genuine empty paragraphs elsewhere in the document.
+  function emptyDocumentParagraph(instance, range) {
+    const paragraph = instance.canvas.firstElementChild;
+    return range.collapsed && instance.canvas.childNodes.length === 1 &&
+      paragraph?.tagName === "P" && !paragraph.attributes.length &&
+      paragraph.childNodes.length === 1 && paragraph.firstChild.tagName === "BR" &&
+      (paragraph.contains(range.startContainer) || range.startContainer === instance.canvas)
+        ? paragraph : null;
+  }
+
+  // Rich block pastes replace the entire placeholder paragraph. Put the caret
+  // at the end of the pasted content, not at the canvas root (which could make
+  // the next typed character an orphan text node outside any paragraph).
+  function selectEndOfPastedContent(instance, last) {
+    let block = last?.nodeType === Node.ELEMENT_NODE ? last : null;
+    if (block?.matches("ul,ol")) block = block.querySelector("li:last-child");
+    else if (block?.matches("table")) {
+      const cells = block.querySelectorAll("td,th");
+      block = cells[cells.length - 1] || null;
+    } else if (block?.matches('blockquote')) block = block.lastElementChild || block;
+    if (block && block.isContentEditable &&
+        block.matches("p,div,h1,h2,h3,h4,li,td,th,blockquote")) {
+      const range = document.createRange();
+      range.selectNodeContents(block);
+      if (block.childNodes.length === 1 && block.firstChild.tagName === "BR")
+        range.setStart(block, 0);
+      else range.collapse(false);
+      const selection = window.getSelection();
+      selection.removeAllRanges();
+      selection.addRange(range);
+    } else if (last) {
+      selectAfter(last);
+    }
+    const selection = window.getSelection();
+    if (selection?.rangeCount) instance.lastRange = selection.getRangeAt(0).cloneRange();
+  }
+
   function insertPlainText(instance, text) {
     const fragment = document.createDocumentFragment();
     const lines = text.split(/\r\n|\r|\n/);
@@ -1927,8 +1966,12 @@
     fragment.appendChild(marker);
     instance.canvas.focus();
     const range = selectedRange(instance);
-    range.deleteContents();
-    range.insertNode(fragment);
+    const placeholder = text ? emptyDocumentParagraph(instance, range) : null;
+    if (placeholder) placeholder.replaceChildren(fragment);
+    else {
+      range.deleteContents();
+      range.insertNode(fragment);
+    }
     selectAfter(marker);
     changed(instance);
   }
@@ -2010,6 +2053,26 @@
     const block = nearestBlock(instance, range);
     const hasBlock = Array.from(fragment.childNodes).some(node =>
       node.nodeType === Node.ELEMENT_NODE && clipboardBlockTags.has(node.tagName));
+    const placeholder = emptyDocumentParagraph(instance, range);
+    if (placeholder) {
+      if (hasBlock) {
+        // Keep the actual clipboard paragraphs (including intentional blank
+        // lines), but remove the one placeholder introduced by Reset/Delete.
+        marker.remove();
+        const last = Array.from(fragment.childNodes).reverse().find(node =>
+          node.nodeType === Node.ELEMENT_NODE ||
+          (node.nodeType === Node.TEXT_NODE && node.textContent.trim()));
+        placeholder.replaceWith(fragment);
+        selectEndOfPastedContent(instance, last);
+      } else {
+        // Inline rich HTML belongs *inside* the original empty paragraph.
+        // Replace its <br> rather than leaving an extra line at the end.
+        placeholder.replaceChildren(fragment);
+        selectAfter(marker);
+      }
+      changed(instance);
+      return;
+    }
     const canSplit = hasBlock && block?.parentElement === instance.canvas &&
       ["P", "DIV", "H1", "H2", "H3", "H4"].includes(block.tagName) &&
       block.contains(range.endContainer);

@@ -13,6 +13,25 @@ Clipboard HTML is never injected directly into the live editor. The client:
 
 This does **not** add a third-party editor library or modify host application APIs. It does not alter the semantics of `setHtml()`, direct HTML source editing or document exports. `h1`, `h4`, `del`, `strike` and `tfoot` are now included in the editor/Viewer HTML allowlists, matching the Export parser.
 
+## Pasting into an empty document
+
+After **Ctrl+A** followed by **Delete** or **Backspace**, Azunt.Editor keeps
+`<p><br></p>` as a caret placeholder and resets the active paragraph format.
+That placeholder is not document content. When HTML containing block elements
+is pasted into that empty document, the clipboard blocks replace it instead
+of being inserted between two empty paragraphs. The cursor is placed at the
+end of the pasted content so typing can continue in its final editable block.
+
+Inline HTML and plain-text paste replace the placeholder `<br>` *inside* the
+paragraph. Intentional blank lines actually present in the pasted HTML or
+text remain untouched. Insertion into non-empty paragraphs still uses the
+existing block-splitting logic; neither the sanitizer nor the public API is
+changed. The same behavior applies to the shared editing engine in MVC,
+Razor Pages and Blazor Server.
+
+Regression: `python tests/editor-paste-empty-browser.py` checks full deletion,
+rich/plain paste, deliberate blank lines, caret placement, and Undo/Redo.
+
 ## Security
 
 The browser allowlist is **not a trust boundary**. For untrusted documents, applications must validate/sanitize HTML **on the server before saving and when rendering**. The viewer uses `EditorViewerSanitizer`; export has `EditorHtmlSanitizer`. Neither grants authorization to remote image URLs or unsafe link schemes. Host applications remain responsible for CSP, authentication, storage limits and trusted image URL validation.

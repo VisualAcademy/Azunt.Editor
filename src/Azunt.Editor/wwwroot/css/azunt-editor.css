@@ -127,6 +127,12 @@
 .az-azunt-editor-canvas > :first-child { margin-top: 0; }
 .az-azunt-editor-canvas h2 { font-size: 1.5em; line-height: 1.25; margin: .75em 0 .5em; }
 .az-azunt-editor-canvas p { margin: .6em 0; }
+/* Host styles such as `p { color: #516076 }` must not dim document text.
+   Let unformatted blocks inherit the editor's active theme (or an intentionally
+   colored ancestor); inline colors chosen in the editor still take precedence. */
+.az-azunt-editor .az-azunt-editor-canvas :is(p, h1, h2, h3, h4, h5, h6, li, blockquote, th, td) {
+  color: inherit;
+}
 .az-azunt-editor-canvas a { color: #1d4ed8; text-decoration: underline; }
 .az-azunt-editor-canvas img { max-width: 100%; height: auto; vertical-align: middle; cursor: pointer; }
 .az-azunt-editor-canvas img.az-azunt-editor-image-selected { outline: 3px solid #2563eb; outline-offset: 3px; }

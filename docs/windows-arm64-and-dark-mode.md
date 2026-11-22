@@ -10,6 +10,25 @@ while their text inherited dark-mode foregrounds. It does not add a new
 JavaScript or .NET public API. Host applications can still apply their own
 CSS customizations.
 
+### Document text contrast inside the editor
+
+The editor's canvas uses `--azunt-text` as its default foreground color
+(`#1e293b` in light mode and `#f1f5f9` in dark mode). A hosting site may
+also contain global rules such as `p { color: #516076; }`. Because a color
+explicitly assigned to a paragraph beats a color inherited from its parent,
+those rules previously caused gray-on-dark text inside the editor.
+
+The editor now scopes the unformatted text color for ordinary document blocks
+(paragraphs, headings, list items, quotes, and table cells) to inherit from
+the editor canvas. User-authored inline foreground colors and the editor's
+link color are preserved. This is a rendering-only CSS change; saved HTML,
+export content, and .NET/JavaScript APIs are unchanged.
+
+The regression check `python tests/editor-content-contrast-browser.py` loads
+this repository's real sample `site.css` under both light and dark preferences
+and verifies that the canvas contrast remains correct regardless of stylesheet
+load order.
+
 If the appearance looks stale after updating assets, hard-refresh the page
 and clear any stale `_content/Azunt.Editor/css/azunt-editor.css` cache.
 Inspect the computed styles of a problematic control, and emulate dark mode

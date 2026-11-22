@@ -600,6 +600,10 @@
       clone.querySelectorAll('.az-code-actions, .az-code-line-numbers').forEach(node => node.remove());
       text = clone.textContent || "";
     }
+    // Chromium reports the placeholder <br> in an empty editable paragraph
+    // as a line break in innerText. It is a caret placeholder, not a character.
+    if (!instance.sourceMode && !instance.canvas.textContent &&
+        !instance.canvas.querySelector("img,table,input,hr")) text = "";
     const count = (text.match(/[\p{L}\p{N}]+(?:['’‐-―-][\p{L}\p{N}]+)*/gu) || []).length;
     instance.stats.textContent = `${count} word${count === 1 ? "" : "s"} · ${Array.from(text).length} characters`;
   }
@@ -611,6 +615,47 @@
     updateResizeHandle(instance);
     updateFormattingState(instance);
     queueEmit(instance);
+  }
+
+  // Ctrl+A in a contenteditable region often selects the text inside the first
+  // and last block, not the canvas element itself. Compare the selected document
+  // content rather than requiring Range boundaries at the canvas edges.
+  function selectionCoversDocument(instance) {
+    const selection = window.getSelection();
+    if (!selection?.rangeCount || selection.isCollapsed) return false;
+    const range = selection.getRangeAt(0);
+    if (!instance.canvas.contains(range.startContainer) ||
+        !instance.canvas.contains(range.endContainer)) return false;
+    const fragment = range.cloneContents();
+    if (fragment.textContent !== instance.canvas.textContent) return false;
+    // Text-only comparison must not erase an unselected image, table, form
+    // control or horizontal rule (which may have no textContent at all).
+    for (const selector of ["img", "table", "input", "hr"]) {
+      if (fragment.querySelectorAll(selector).length !== instance.canvas.querySelectorAll(selector).length)
+        return false;
+    }
+    return true;
+  }
+
+  function resetSelectedDocument(instance) {
+    // Commit the pre-delete HTML before replacing the document, otherwise
+    // Ctrl+Z could skip directly over an unsnapshotted editing change.
+    remember(instance);
+    const paragraph = document.createElement("p");
+    paragraph.appendChild(document.createElement("br"));
+    instance.canvas.replaceChildren(paragraph);
+    const range = document.createRange();
+    range.setStart(paragraph, 0);
+    range.collapse(true);
+    const selection = window.getSelection();
+    selection.removeAllRanges();
+    selection.addRange(range);
+    instance.lastRange = range.cloneRange();
+    instance.activeCell = null;
+    setImageSelection(instance, null);
+    selectTableControls(instance, null);
+    updateContextTools(instance);
+    changed(instance);
   }
 
   function selectedRange(instance) {
@@ -3349,6 +3394,14 @@
         if (!event.cancelable) return; // Never compete with a non-cancelable browser edit.
         event.preventDefault();
         undoOrRedo(instance, event.inputType === "historyUndo" ? -1 : 1);
+        return;
+      }
+      if (!instance.readOnly && !instance.sourceMode && !instance.isComposing &&
+          !event.isComposing && event.cancelable &&
+          ["deleteContentBackward", "deleteContentForward", "deleteByCut"].includes(event.inputType) &&
+          selectionCoversDocument(instance)) {
+        event.preventDefault();
+        resetSelectedDocument(instance);
         return;
       }
       if (!instance.isComposing && !event.isComposing) rememberHistorySelection(instance);

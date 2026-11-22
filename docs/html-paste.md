@@ -32,6 +32,26 @@ Razor Pages and Blazor Server.
 Regression: `python tests/editor-paste-empty-browser.py` checks full deletion,
 rich/plain paste, deliberate blank lines, caret placement, and Undo/Redo.
 
+## Overwriting an entire document without deleting first
+
+When the user copies content from one Azunt.Editor instance (e.g. Razor Pages)
+then selects everything in another instance (e.g. MVC or Blazor Server) and
+pastes directly with **Ctrl+A, Ctrl+V**, the paste must replace the document's
+root nodes, not only the text within them. `Range.deleteContents()` by itself
+may leave behind an empty `<h2></h2>` at the start or `<p></p>` at the end.
+
+The shared JavaScript editor now identifies a full-document selection before
+rich HTML, inline HTML or plain-text insertion and replaces the entire canvas.
+Rich block content retains its source structure; inline-only and plain text
+start in a normal `<p>`. Real blank paragraphs from the clipboard are preserved.
+Partially selected text continues to use the original in-place insertion,
+including when unselected blocks contain no text. The paste is a single undoable
+edit, with the caret left in the inserted content. No host C# API changes.
+
+Regression: `python tests/editor-paste-overwrite-browser.py` checks direct
+full-selection overwrite, repeated use, plain and rich content, tables/lists,
+selection boundaries, Undo/Redo and native cross-instance Ctrl+C/Ctrl+V.
+
 ## Security
 
 The browser allowlist is **not a trust boundary**. For untrusted documents, applications must validate/sanitize HTML **on the server before saving and when rendering**. The viewer uses `EditorViewerSanitizer`; export has `EditorHtmlSanitizer`. Neither grants authorization to remote image URLs or unsafe link schemes. Host applications remain responsible for CSP, authentication, storage limits and trusted image URL validation.

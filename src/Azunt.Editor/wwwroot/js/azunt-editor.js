@@ -637,6 +637,15 @@
     return true;
   }
 
+  // A paste is a whole-document replacement only when the selection includes
+  // every root block, not merely all visible text. An unselected empty heading
+  // or paragraph has no textContent but must remain in a partial replacement.
+  function selectionReplacesDocument(instance) {
+    if (!selectionCoversDocument(instance)) return false;
+    const range = window.getSelection().getRangeAt(0);
+    return Array.from(instance.canvas.children).every(child => range.intersectsNode(child));
+  }
+
   function resetSelectedDocument(instance) {
     // Commit the pre-delete HTML before replacing the document, otherwise
     // Ctrl+Z could skip directly over an unsnapshotted editing change.
@@ -1965,9 +1974,17 @@
     const marker = document.createTextNode("");
     fragment.appendChild(marker);
     instance.canvas.focus();
+    const replaceDocument = selectionReplacesDocument(instance);
     const range = selectedRange(instance);
     const placeholder = text ? emptyDocumentParagraph(instance, range) : null;
-    if (placeholder) placeholder.replaceChildren(fragment);
+    if (replaceDocument) {
+      // A paste over Ctrl+A replaces the document, not just the selected text.
+      // Range.deleteContents() leaves empty heading/paragraph wrappers behind.
+      remember(instance);
+      const paragraph = document.createElement("p");
+      paragraph.appendChild(fragment);
+      instance.canvas.replaceChildren(paragraph);
+    } else if (placeholder) placeholder.replaceChildren(fragment);
     else {
       range.deleteContents();
       range.insertNode(fragment);
@@ -2049,10 +2066,35 @@
     const marker = document.createTextNode("");
     fragment.appendChild(marker);
     instance.canvas.focus();
+    const replaceDocument = selectionReplacesDocument(instance);
     const range = selectedRange(instance);
     const block = nearestBlock(instance, range);
     const hasBlock = Array.from(fragment.childNodes).some(node =>
       node.nodeType === Node.ELEMENT_NODE && clipboardBlockTags.has(node.tagName));
+    if (replaceDocument) {
+      // Replacing the entire selection must also remove the old block wrappers.
+      // Otherwise Range.deleteContents() leaves an empty <h2> and/or <p>.
+      remember(instance);
+      if (hasBlock) {
+        marker.remove();
+        const last = Array.from(fragment.childNodes).reverse().find(node =>
+          node.nodeType === Node.ELEMENT_NODE ||
+          (node.nodeType === Node.TEXT_NODE && node.textContent.trim()));
+        instance.canvas.replaceChildren(fragment);
+        selectEndOfPastedContent(instance, last);
+      } else {
+        const paragraph = document.createElement("p");
+        paragraph.appendChild(fragment);
+        instance.canvas.replaceChildren(paragraph);
+        selectAfter(marker);
+      }
+      instance.activeCell = null;
+      setImageSelection(instance, null);
+      selectTableControls(instance, null);
+      updateContextTools(instance);
+      changed(instance);
+      return;
+    }
     const placeholder = emptyDocumentParagraph(instance, range);
     if (placeholder) {
       if (hasBlock) {

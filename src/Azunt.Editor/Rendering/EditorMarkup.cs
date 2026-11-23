@@ -39,7 +39,7 @@ public static class EditorMarkup
         var viewer = mode == EditorMode.View;
 
         static string Encode(string? raw) => HtmlEncoder.Default.Encode(raw ?? string.Empty);
-        var safeHeight = Math.Clamp(height, 180, 1400);
+        var safeHeight = Math.Clamp(height, 40, 1400);
         var w = new StringBuilder(6500 + (value?.Length ?? 0));
         w.Append("<div class=\"az-azunt-editor\" data-azunt-editor=\"true\" id=\"").Append(Encode(id))
             .Append("\" data-read-only=\"").Append(readOnly ? "true" : "false").Append('"')

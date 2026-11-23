@@ -385,12 +385,10 @@
   box-shadow: 0 5px 18px #0f172a26;
 }
 .az-azunt-editor-context-tools .az-azunt-editor-button { font-size: 12px; min-height: 30px; }
-.az-azunt-editor-narrow .az-azunt-editor-quick-optional { display: none; }
 .az-azunt-editor-very-narrow .az-azunt-editor-menu-row [data-azunt-menu="edit"],
 .az-azunt-editor-very-narrow .az-azunt-editor-menu-row [data-azunt-menu="view"],
 .az-azunt-editor-very-narrow .az-azunt-editor-menu-row [data-azunt-menu="table"],
 .az-azunt-editor-very-narrow .az-azunt-editor-menu-row [data-azunt-menu="tools"] { display: none; }
-.az-azunt-editor-very-narrow .az-azunt-editor-quick-custom { max-width: 110px; }
 @media (max-width: 540px) {
   .az-azunt-editor-menu-trigger { padding: 4px 6px; font-size: 12px; }
   .az-azunt-editor-menu-row, .az-azunt-editor-quick-row { padding: 4px; }
@@ -415,7 +413,6 @@
   white-space: nowrap;
 }
 .az-azunt-editor-menu-panel { top: 92px; }
-.az-azunt-editor-narrow .az-azunt-editor-quick-group-optional { display: none; }
 
 .az-azunt-editor-signature-note { font-size: 12px; color: var(--azunt-muted); }
 
@@ -501,9 +498,6 @@
 .az-azunt-editor[data-toolbar-mode="compact"] .az-azunt-editor-context-tools .az-azunt-editor-button {
   min-height: var(--azunt-tool-height);
   height: var(--azunt-tool-height);
-}
-.az-azunt-editor[data-toolbar-mode="compact"].az-azunt-editor-tiny .az-azunt-editor-quick-group:first-child {
-  display: none;
 }
 .az-azunt-editor[data-toolbar-mode="compact"] .az-azunt-editor-quick-custom .az-azunt-editor-button {
   overflow: hidden;
@@ -1068,3 +1062,7 @@
 .az-azunt-editor[data-show-toolbar-group-labels="false"] .az-azunt-editor-classic-groups > .az-azunt-editor-group::before {
   content: none;
 }
+
+/* Measure complete controls rather than collapsing every optional group at a breakpoint. */
+.az-azunt-editor-quick-row > [data-quick-custom] { flex: 0 0 auto; }
+.az-azunt-editor-quick-row [data-quick-overflow] { display: none !important; }

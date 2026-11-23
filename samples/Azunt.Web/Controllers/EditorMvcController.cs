@@ -14,6 +14,9 @@ public sealed class EditorMvcController(IEditorExportService exporter, ILogger<E
     private const string SessionKey = "azunt.demo.mvc";
     private const int MaxHtmlLength = 12_000_000;
 
+    [HttpGet("multiple")]
+    public IActionResult Multiple() => View();
+
     [HttpGet]
     public IActionResult Index()
     {

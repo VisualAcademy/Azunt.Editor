@@ -2246,11 +2246,16 @@
     // Keep Compact's persistent control and Classic's grouped button in sync.
     // Preserve the control to return keyboard focus after Esc exits fullscreen.
     if (enable) {
+      // Only one fullscreen editor may own the viewport at a time.
+      for (const other of instances.values()) {
+        if (other !== instance && other.element.classList.contains("az-azunt-editor-fullscreen"))
+          toggleFullscreen(other, false);
+      }
       const active = document.activeElement;
       const fallback = instance.element.dataset.toolbarMode === "classic"
         ? instance.toolbar.querySelector('button[data-command="fullscreen"]')
         : instance.toolbar.querySelector('button[data-quick-command="fullscreen"]');
-      instance.fullscreenReturnFocus = active?.matches?.('button[data-command="fullscreen"],button[data-quick-command="fullscreen"]')
+      instance.fullscreenReturnFocus = instance.element.contains(active) && active?.matches?.('button[data-command="fullscreen"],button[data-quick-command="fullscreen"]')
         ? active : fallback;
     }
     instance.element.classList.toggle("az-azunt-editor-fullscreen", enable);
@@ -2770,6 +2775,7 @@
         instance.classicGroups.appendChild(group);
       }
     }
+    fitQuickToolbar(instance);
     if (!instance.menuPanel?.hidden) openMenu(instance, instance.openMenu);
   }
 
@@ -2881,6 +2887,10 @@
       const tableMenu = instance.toolbar.querySelector('[data-compact-menu] [data-azunt-menu="table"]');
       opener = tableMenu?.getClientRects().length
         ? tableMenu : instance.toolbar.querySelector('[data-azunt-menu="more"]') || opener;
+    }
+    // A keyboard or programmatic menu open must also dismiss another editor's menu.
+    for (const other of instances.values()) {
+      if (other !== instance && other.menuPanel && !other.menuPanel.hidden) closeMenu(other);
     }
     const oldOpener = instance.menuOpener;
     closeMenu(instance);
@@ -3040,6 +3050,7 @@
     const instance = getInstance(id);
     closeMenu(instance);
     instance.element.dataset.toolbarMode = String(mode).toLowerCase() === "classic" ? "classic" : "compact";
+    fitQuickToolbar(instance);
     updateContextTools(instance);
   }
 
@@ -3054,7 +3065,40 @@
     const instance = getInstance(id);
     closeMenu(instance);
     instance.element.dataset.showToolbarGroupLabels = show ? "true" : "false";
+    fitQuickToolbar(instance);
     repositionOverlays(instance);
+  }
+
+  // Keep the largest useful prefix of commands that fits the actual host.
+  // Split buttons are atomic; every omitted command remains in More.
+  function fitQuickToolbar(instance) {
+    const row = instance.toolbar?.querySelector("[data-compact-quick]");
+    if (!row || !row.clientWidth || instance.element.dataset.toolbarMode !== "compact") return;
+    row.querySelectorAll("[data-quick-overflow]").forEach(node => node.removeAttribute("data-quick-overflow"));
+    const candidates = [];
+    for (const child of row.children) {
+      if (child.matches('[data-azunt-menu="more"], [data-quick-command="fullscreen"]')) continue;
+      const controls = child.querySelector(":scope > .az-azunt-editor-quick-controls");
+      if (controls || child.matches("[data-quick-custom]")) {
+        const group = controls || child;
+        for (const control of group.children) candidates.push({ control, group, container: child });
+        if (!group.children.length) child.setAttribute("data-quick-overflow", "");
+      } else candidates.push({ control: child });
+    }
+    const fits = () => {
+      const bounds = row.getBoundingClientRect();
+      const right = bounds.right - parseFloat(getComputedStyle(row).paddingRight || 0);
+      return Array.from(row.children).every(child => child.hasAttribute("data-quick-overflow") || child.getBoundingClientRect().right <= right + 0.5);
+    };
+    // On very small screens preserve basic text formatting ahead of history.
+    const priority = item => item.control.matches('[data-quick-command="bold"], [data-quick-command="italic"], [data-quick-command="underline"]') ? 2
+      : item.control.matches('[data-quick-command="undo"], [data-quick-command="redo"]') ? 1 : 0;
+    for (const item of candidates.reverse().sort((a, b) => priority(a) - priority(b))) {
+      if (fits()) break;
+      item.control.setAttribute("data-quick-overflow", "");
+      if (item.group && Array.from(item.group.children).every(control => control.hasAttribute("data-quick-overflow")))
+        item.container.setAttribute("data-quick-overflow", "");
+    }
   }
 
   function initAdaptiveToolbar(instance) {
@@ -3090,17 +3134,15 @@
     // Blazor commands can already be registered before a toolbar is initialized,
     // e.g. while the editor is in View mode. Do not reset them here.
     refreshQuickCommands(instance);
-    // Apply the same thresholds before the first observer notification.
+    // Apply the menu-row breakpoint and measure quick commands before first paint.
     const width = instance.element.getBoundingClientRect().width;
-    instance.element.classList.toggle("az-azunt-editor-narrow", width < 760);
     instance.element.classList.toggle("az-azunt-editor-very-narrow", width < 515);
-    instance.element.classList.toggle("az-azunt-editor-tiny", width < 345);
+    fitQuickToolbar(instance);
     if (window.ResizeObserver) {
       instance.toolbarSizeObserver = new ResizeObserver(entries => {
         const width = entries[0]?.contentRect.width || instance.element.clientWidth;
-        instance.element.classList.toggle("az-azunt-editor-narrow", width < 760);
         instance.element.classList.toggle("az-azunt-editor-very-narrow", width < 515);
-        instance.element.classList.toggle("az-azunt-editor-tiny", width < 345);
+        fitQuickToolbar(instance);
         repositionOverlays(instance);
       });
       instance.toolbarSizeObserver.observe(instance.element);
@@ -3643,18 +3685,26 @@
         return;
       }
       if (event.key === "Escape") {
+        if (event.defaultPrevented) return;
+        const owner = Array.from(instances.values()).find(other => other.menuPanel && !other.menuPanel.hidden)
+          || Array.from(instances.values()).find(other => other.element.contains(document.activeElement))
+          || Array.from(instances.values()).find(other => other.element.classList.contains("az-azunt-editor-fullscreen"));
+        if (owner !== instance) return;
         if (instance.tableMove || instance.tableColumnResize) {
           event.preventDefault();
           finishTableMove(instance, null, true);
           finishTableColumnResize(instance, null, true);
           return;
         }
-        if (!instance.menuPanel?.hidden) {
+        if (instance.menuPanel && !instance.menuPanel.hidden) {
           event.preventDefault();
           closeMenu(instance, true);
           return;
         }
-        if (instance.element.classList.contains("az-azunt-editor-fullscreen")) toggleFullscreen(instance, false);
+        if (instance.element.classList.contains("az-azunt-editor-fullscreen")) {
+          event.preventDefault();
+          toggleFullscreen(instance, false);
+        }
       }
     }, { signal });
     document.addEventListener("pointerdown", event => {
@@ -3665,9 +3715,6 @@
     window.visualViewport?.addEventListener("resize", () => repositionOverlays(instance), { passive: true, signal });
     window.visualViewport?.addEventListener("scroll", () => repositionOverlays(instance), { passive: true, signal });
     instance.canvas.addEventListener("keydown", event => {
-      if (event.key === "Escape" && instance.element.classList.contains("az-azunt-editor-fullscreen")) {
-        event.preventDefault(); toggleFullscreen(instance, false); return;
-      }
       if (instance.readOnly || instance.isComposing || event.isComposing ||
           !(event.ctrlKey || event.metaKey)) return;
       const key = event.key.toLowerCase();

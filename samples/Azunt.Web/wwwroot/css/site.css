@@ -22,3 +22,7 @@ p { color: #516076; }
 .source { display:block; overflow:auto; max-height:210px; border:1px solid #dbe2eb; border-radius:8px; padding:16px; background:#fff; white-space:pre-wrap; overflow-wrap:anywhere; color:#394b63; font:12px/1.6 ui-monospace,monospace; }
 .footnote { font-size:13px; margin-top:26px; }
 @media(max-width:600px){.topbar{align-items:flex-start;flex-direction:column}.page-wrap{padding:0 14px 30px}}
+
+.multiple-editor-modal { width: min(850px, 94vw); max-height: 90vh; overflow: auto; padding: 24px; border: 1px solid #cbd5e1; border-radius: 10px; background: #fff; color: #15233c; }
+.multiple-editor-modal::backdrop { background: rgb(15 23 42 / 55%); }
+.multiple-editor-modal h2:first-child { margin-top: 0; }

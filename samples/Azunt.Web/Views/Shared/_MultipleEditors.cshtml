@@ -1,0 +1,25 @@
+<p>Test independent content, formatting, history, menus and fullscreen. Save captures HTML in this page only.</p>
+<form id="multiple-editor-form">
+    <h2>Document</h2>
+    <azunt-editor id="multi-document" name="Document" value="<p>Document content</p>" height="240" />
+    <h2>Notes</h2>
+    <azunt-editor id="multi-notes" name="Notes" value="<p>Internal notes</p>" height="112" toolbar-mode="Compact" show-menu-bar="false" show-toolbar-group-labels="false" />
+    <h2>Comments</h2>
+    <azunt-editor id="multi-comments" name="Comments" value="<p>Approval comments</p>" height="112" toolbar-mode="Compact" show-menu-bar="false" show-toolbar-group-labels="false" />
+    <div id="multi-dynamic"></div>
+    <div class="actions">
+        <button type="button" id="multi-add">Add editor</button>
+        <button type="button" id="multi-open">Open modal</button>
+        <button type="submit" class="primary">Save all HTML</button>
+    </div>
+    <dialog id="multi-modal" class="multiple-editor-modal" aria-labelledby="multi-modal-title">
+        <h2 id="multi-modal-title">Modal editors</h2>
+        <div id="multi-modal-content"></div>
+        <div class="actions"><button type="button" id="multi-close">Save modal and close</button></div>
+    </dialog>
+</form>
+<template id="multi-template">
+    <azunt-editor id="multi-template-editor" name="Template" value="" height="112" toolbar-mode="Compact" show-menu-bar="false" show-toolbar-group-labels="false" />
+</template>
+<h2>Saved HTML (escaped source)</h2>
+<pre class="source" id="multi-saved" aria-live="polite"></pre>

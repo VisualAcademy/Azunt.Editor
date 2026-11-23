@@ -293,3 +293,9 @@ More panel headings, accessible names, tooltips and command availability are unc
 - Live Blazor: `await editor.SetShowToolbarGroupLabelsAsync(false);`
 - JavaScript: `AzuntEditor.setShowToolbarGroupLabels(id, false)`
 - Demo: append `?toolbar=note&labels=false` to the MVC, Razor Pages or Blazor demo URL.
+
+### Multiple editor instances
+
+The sample host includes `/editor/mvc/multiple`, `/editor/razor-pages/multiple`, and `/editor/blazor/multiple`. Each demonstrates three inline editors, dynamic add/remove, two modal editors with HTML retained on close, and escaped HTML snapshots. MVC/Razor Pages snapshots are client-side; Blazor snapshots are in component memory. None persist to a database. Use unique IDs for simultaneously mounted editors; call `AzuntEditor.unmount(id)` before removing dynamically mounted MVC/Razor DOM. Blazor components dispose their own instances.
+
+Run `python tests/editor-multiple-browser.py` for the Chromium fixture regression (requires Playwright and BeautifulSoup; optional `CHROMIUM_PATH`). This exercises the shared JavaScript engine and sample module, not a live ASP.NET Core or SignalR host. Run the sample project locally to verify the three integration routes.

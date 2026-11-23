@@ -4,6 +4,7 @@
 @{
     var view = Model.HttpContext.Request.Query["mode"] == "view";
     var classic = Model.HttpContext.Request.Query["toolbar"] == "classic";
+    var showGroupLabels = Model.HttpContext.Request.Query["labels"] != "false";
     var noteToolbar = Model.HttpContext.Request.Query["toolbar"] == "note";
     var storedImages = HostEnvironment.IsDevelopment() && Model.HttpContext.Request.Query["images"] == "stored";
     var saveImagesOnSubmit = HostEnvironment.IsDevelopment() &&
@@ -12,7 +13,7 @@
 }
 <p class="document-meta">Image mode: @(storedImages ? "upload on insert" : saveImagesOnSubmit ? "store on save" : "inline Base64") ·
     <a href="?">Inline</a> · <a href="?images=stored">Upload on insert</a> · <a href="?images=save">Store on Save</a></p>
-<p class="document-meta">Toolbar: <a href="?">Compact</a> · <a href="?toolbar=note">Notes (one row)</a> · <a href="?toolbar=classic">Classic</a></p>
+<p class="document-meta">Toolbar: <a href="?">Compact</a> · <a href="?toolbar=note">Notes (one row)</a> · <a href="?toolbar=note&amp;labels=false">Notes (no group labels)</a> · <a href="?toolbar=classic">Classic</a></p>
 <h1>Azunt.Editor — Razor Pages</h1>
 <p class="document-meta">Mode: <a href="?">Edit</a> · <a href="?mode=view">View</a></p>
 <p>Submit the form to test Razor Pages model binding and session-scoped persistence.</p>
@@ -24,7 +25,7 @@ else
 {
     <form method="post">
         @Html.AntiForgeryToken()
-        <azunt-editor id="azunt-razor-demo" name="Html" value="@Model.Html" height="340" toolbar-mode="@(classic ? "Classic" : "Compact")" show-menu-bar="@(!noteToolbar)" upload-url="@imageUploadUrl" />
+        <azunt-editor id="azunt-razor-demo" name="Html" value="@Model.Html" height="340" toolbar-mode="@(classic ? "Classic" : "Compact")" show-menu-bar="@(!noteToolbar)" show-toolbar-group-labels="@showGroupLabels" upload-url="@imageUploadUrl" />
         <div class="actions">
             <button class="primary" type="submit">Save HTML</button>
             <azunt-export-buttons />

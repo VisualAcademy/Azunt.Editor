@@ -22,6 +22,8 @@
     [Parameter] public string ToolbarMode { get; set; } = "Compact";
     /// <summary>Display the Compact toolbar's menu row (File, Edit, View, etc.).</summary>
     [Parameter] public bool ShowMenuBar { get; set; } = true;
+    /// <summary>Display toolbar group headings; More panel headings remain visible.</summary>
+    [Parameter] public bool ShowToolbarGroupLabels { get; set; } = true;
     [Parameter] public IReadOnlyList<EditorCustomCommand>? CustomCommands { get; set; }
     [Parameter] public EventCallback<string> CustomCommandInvoked { get; set; }
 
@@ -32,6 +34,7 @@
     private bool _rendered;
     private EditorMode _appliedMode = EditorMode.Edit;
     private bool _appliedShowMenuBar = true;
+    private bool _appliedShowToolbarGroupLabels = true;
     private long _lastAppliedRevision;
     private const long MaxDocumentBytes = 16L * 1024 * 1024;
 
@@ -43,9 +46,10 @@
     {
         if (!string.IsNullOrWhiteSpace(Id)) _editorId = Id;
         // Hold stable markup across ValueChanged rerenders. JavaScript owns the live DOM.
-        _initialMarkup = EditorMarkup.RenderForBlazor(_editorId, Name, Value, Height, ReadOnly, UploadUrl, ToolbarMode, Mode, ShowMenuBar);
+        _initialMarkup = EditorMarkup.RenderForBlazor(_editorId, Name, Value, Height, ReadOnly, UploadUrl, ToolbarMode, Mode, ShowMenuBar, ShowToolbarGroupLabels);
         _appliedMode = Mode;
         _appliedShowMenuBar = ShowMenuBar;
+        _appliedShowToolbarGroupLabels = ShowToolbarGroupLabels;
     }
 
     // The live DOM belongs to JavaScript; update the mode without Blazor replacing it.
@@ -55,6 +59,8 @@
             await SetModeAsync(Mode);
         if (_mounted && ShowMenuBar != _appliedShowMenuBar)
             await SetShowMenuBarAsync(ShowMenuBar);
+        if (_mounted && ShowToolbarGroupLabels != _appliedShowToolbarGroupLabels)
+            await SetShowToolbarGroupLabelsAsync(ShowToolbarGroupLabels);
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -78,6 +84,8 @@
                 await SetModeAsync(Mode);
             if (ShowMenuBar != _appliedShowMenuBar)
                 await SetShowMenuBarAsync(ShowMenuBar);
+            if (ShowToolbarGroupLabels != _appliedShowToolbarGroupLabels)
+                await SetShowToolbarGroupLabelsAsync(ShowToolbarGroupLabels);
             if (CustomCommands is { Count: > 0 })
                 await JS.InvokeVoidAsync("AzuntEditor.setCommands", _editorId, CustomCommands);
         }
@@ -104,6 +112,15 @@
         await JS.InvokeVoidAsync("AzuntEditor.setShowMenuBar", _editorId, show);
         ShowMenuBar = show;
         _appliedShowMenuBar = show;
+    }
+
+    /// <summary>Change toolbar headings without replacing the current document.</summary>
+    public async ValueTask SetShowToolbarGroupLabelsAsync(bool show)
+    {
+        if (!_mounted) throw new InvalidOperationException("The editor must be mounted before its toolbar labels can be changed.");
+        await JS.InvokeVoidAsync("AzuntEditor.setShowToolbarGroupLabels", _editorId, show);
+        ShowToolbarGroupLabels = show;
+        _appliedShowToolbarGroupLabels = show;
     }
 
     /// <summary>Change between Edit and View without replacing or losing the current HTML.</summary>

@@ -19,15 +19,15 @@
 <p class="document-meta">Image mode: @(UseStoredImages ? "upload on insert" : UseDeferredImages ? "store on save" : "inline Base64") ·
     <a href="/editor/blazor">Inline</a> · <a href="/editor/blazor?images=stored">Upload on insert</a> · <a href="/editor/blazor?images=save">Store on Save</a></p>
 <p>Interactive Server component using the same JavaScript editor engine. ·
-    <a href="/editor/blazor">Compact toolbar</a> · <a href="/editor/blazor?toolbar=classic">Classic toolbar</a> · <a href="/editor/blazor?toolbar=note">Notes (one row)</a></p>
+    <a href="/editor/blazor">Compact toolbar</a> · <a href="/editor/blazor?toolbar=classic">Classic toolbar</a> · <a href="/editor/blazor?toolbar=note">Notes (one row)</a> · <a href="/editor/blazor?toolbar=note&amp;labels=false">Notes (no group labels)</a></p>
 
-<p class="document-meta"><label><input type="checkbox" @bind="_showMenuBar" /> Show top menu row</label></p>
+<p class="document-meta"><label><input type="checkbox" @bind="_showMenuBar" /> Show top menu row</label> · <label><input type="checkbox" @bind="_showToolbarGroupLabels" /> Show toolbar group labels</label></p>
 <p class="document-meta">Mode: <a href="/editor/blazor?mode=view">Start in View</a> · <button type="button" @onclick="ToggleMode">
     @(_demoMode == EditorMode.Edit ? "Switch to View" : "Switch to Edit")
 </button></p>
 
 <AzuntEditor @key="UseStoredImages" @ref="_editor" Id="azunt-blazor-demo" Name="BlazorHtml" @bind-Value="_html" Height="340" UploadUrl="@(UseStoredImages ? "/editor/demo-images" : null)"
-    Mode="@_demoMode" ToolbarMode="@(UseClassic ? "Classic" : "Compact")" ShowMenuBar="@_showMenuBar" CustomCommands="EditorCommands" CustomCommandInvoked="HandleEditorCommand" />
+    Mode="@_demoMode" ToolbarMode="@(UseClassic ? "Classic" : "Compact")" ShowMenuBar="@_showMenuBar" ShowToolbarGroupLabels="@_showToolbarGroupLabels" CustomCommands="EditorCommands" CustomCommandInvoked="HandleEditorCommand" />
 
 <div class="actions">
     <button class="primary" @onclick="SaveAsync">Save HTML</button>
@@ -67,6 +67,7 @@
     private AzuntEditor? _editor;
     private EditorMode _demoMode = EditorMode.Edit;
     private bool _showMenuBar = true;
+    private bool _showToolbarGroupLabels = true;
 
     protected override void OnInitialized()
     {
@@ -75,6 +76,8 @@
             _demoMode = EditorMode.View;
         if (new Uri(Navigation.Uri).Query.Contains("toolbar=note", StringComparison.OrdinalIgnoreCase))
             _showMenuBar = false;
+        if (new Uri(Navigation.Uri).Query.Contains("labels=false", StringComparison.OrdinalIgnoreCase))
+            _showToolbarGroupLabels = false;
     }
 
     private void ToggleMode()

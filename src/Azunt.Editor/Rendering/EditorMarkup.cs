@@ -10,23 +10,28 @@ public static class EditorMarkup
     // Keep the existing 8-argument entry point to avoid breaking compiled NuGet consumers.
     public static string Render(string id, string name, string? value = null, int height = 320,
         bool readOnly = false, string? uploadUrl = null, string toolbarMode = "Compact", EditorMode mode = EditorMode.Edit)
-        => RenderCore(id, name, value, height, readOnly, uploadUrl, toolbarMode, mode, showMenuBar: true, manualMount: false);
+        => RenderCore(id, name, value, height, readOnly, uploadUrl, toolbarMode, mode, showMenuBar: true, showToolbarGroupLabels: true, manualMount: false);
 
     /// <summary>Render an editor with optional Compact menu row visibility.</summary>
     public static string Render(string id, string name, string? value, int height,
         bool readOnly, string? uploadUrl, string toolbarMode, EditorMode mode, bool showMenuBar)
-        => RenderCore(id, name, value, height, readOnly, uploadUrl, toolbarMode, mode, showMenuBar, manualMount: false);
+        => RenderCore(id, name, value, height, readOnly, uploadUrl, toolbarMode, mode, showMenuBar, showToolbarGroupLabels: true, manualMount: false);
+
+    /// <summary>Render an editor with independent menu and toolbar label visibility.</summary>
+    public static string Render(string id, string name, string? value, int height,
+        bool readOnly, string? uploadUrl, string toolbarMode, EditorMode mode, bool showMenuBar, bool showToolbarGroupLabels)
+        => RenderCore(id, name, value, height, readOnly, uploadUrl, toolbarMode, mode, showMenuBar, showToolbarGroupLabels, manualMount: false);
 
     // Blazor prerendering leaves this markup static until its interactive
     // OnAfterRenderAsync callback binds the JS engine and its .NET reference.
     // Auto-mounting during DOMContentLoaded changes prerendered nodes before
     // Blazor has attached, which can disrupt hydration and command binding.
     internal static string RenderForBlazor(string id, string name, string? value, int height,
-        bool readOnly, string? uploadUrl, string toolbarMode, EditorMode mode, bool showMenuBar = true)
-        => RenderCore(id, name, value, height, readOnly, uploadUrl, toolbarMode, mode, showMenuBar, manualMount: true);
+        bool readOnly, string? uploadUrl, string toolbarMode, EditorMode mode, bool showMenuBar = true, bool showToolbarGroupLabels = true)
+        => RenderCore(id, name, value, height, readOnly, uploadUrl, toolbarMode, mode, showMenuBar, showToolbarGroupLabels, manualMount: true);
 
     private static string RenderCore(string id, string name, string? value, int height,
-        bool readOnly, string? uploadUrl, string toolbarMode, EditorMode mode, bool showMenuBar, bool manualMount)
+        bool readOnly, string? uploadUrl, string toolbarMode, EditorMode mode, bool showMenuBar, bool showToolbarGroupLabels, bool manualMount)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(id);
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
@@ -43,7 +48,8 @@ public static class EditorMarkup
         if (!string.IsNullOrWhiteSpace(uploadUrl))
             w.Append(" data-upload-url=\"").Append(Encode(uploadUrl)).Append('"');
         w.Append(" data-toolbar-mode=\"").Append(string.Equals(toolbarMode, "Classic", StringComparison.OrdinalIgnoreCase) ? "classic" : "compact")
-            .Append("\" data-show-menu-bar=\"").Append(showMenuBar ? "true" : "false").Append("\">");
+            .Append("\" data-show-menu-bar=\"").Append(showMenuBar ? "true" : "false")
+            .Append("\" data-show-toolbar-group-labels=\"").Append(showToolbarGroupLabels ? "true" : "false").Append("\">");
         w.Append("<div class=\"az-azunt-editor-toolbar\" role=\"toolbar\" aria-label=\"Editor toolbar\">");
         w.Append("<div class=\"az-azunt-editor-menu-row\" data-compact-menu role=\"menubar\" aria-label=\"Editor menus\">");
         foreach (var key in new[] { "File", "Edit", "View", "Insert", "Format", "Table", "Tools", "Export" })
@@ -62,7 +68,8 @@ public static class EditorMarkup
                 var labelText = quickIndex switch { 0 => "History", 2 => "Text formatting", 5 => "Lists", 7 => "Insert", _ => "Tools" };
                 w.Append("<span class=\"az-azunt-editor-quick-group")
                     .Append(quickIndex >= 5 ? " az-azunt-editor-quick-group-optional" : "")
-                    .Append("\"><span class=\"az-azunt-editor-quick-label\">").Append(labelText)
+                    .Append("\" role=\"group\" aria-label=\"").Append(Encode(labelText))
+                    .Append("\"><span class=\"az-azunt-editor-quick-label\" aria-hidden=\"true\">").Append(labelText)
                     .Append("</span><span class=\"az-azunt-editor-quick-controls\">");
             }
             if (command == "table") {

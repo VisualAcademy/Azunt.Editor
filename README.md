@@ -281,3 +281,15 @@ Word rather than becoming invalid package relationships, small images preserve
 their aspect ratios, and oversized Unicode code lines are split safely for
 Excel's cell limit. See [0.8.1 export release notes](docs/release-0.8.1.md)
 and run the Export smoke tests using .NET 10 before publishing.
+
+### Toolbar group labels
+
+`ShowToolbarGroupLabels` defaults to `true`, independently of `ShowMenuBar`.
+Set it to `false` for a shorter Compact toolbar or to hide Classic toolbar headings.
+More panel headings, accessible names, tooltips and command availability are unchanged.
+
+- MVC / Razor Pages: `<azunt-editor name="Description" show-menu-bar="false" show-toolbar-group-labels="false" />`
+- Blazor: `<AzuntEditor @bind-Value="Description" ShowMenuBar="false" ShowToolbarGroupLabels="false" />`
+- Live Blazor: `await editor.SetShowToolbarGroupLabelsAsync(false);`
+- JavaScript: `AzuntEditor.setShowToolbarGroupLabels(id, false)`
+- Demo: append `?toolbar=note&labels=false` to the MVC, Razor Pages or Blazor demo URL.

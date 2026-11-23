@@ -3050,6 +3050,13 @@
     instance.element.dataset.showMenuBar = show ? "true" : "false";
   }
 
+  function setShowToolbarGroupLabels(id, show) {
+    const instance = getInstance(id);
+    closeMenu(instance);
+    instance.element.dataset.showToolbarGroupLabels = show ? "true" : "false";
+    repositionOverlays(instance);
+  }
+
   function initAdaptiveToolbar(instance) {
     instance.classicGroups = instance.toolbar.querySelector("[data-classic-groups]");
     instance.menuPanel = instance.toolbar.querySelector("[data-menu-panel]");
@@ -3827,7 +3834,7 @@
     return { paperSize: instance.page.paper, orientation: instance.page.orientation, margin: instance.page.margin };
   }
 
-  window.AzuntEditor = Object.freeze({ mount, mountAll, getHtml, getHtmlStream, setHtml, setMode, getPageSettings, showStatus, unmount, sanitizeHtml, registerTemplate, registerCommand, unregisterCommand, setCommands, setToolbarMode, setShowMenuBar });
+  window.AzuntEditor = Object.freeze({ mount, mountAll, getHtml, getHtmlStream, setHtml, setMode, getPageSettings, showStatus, unmount, sanitizeHtml, registerTemplate, registerCommand, unregisterCommand, setCommands, setToolbarMode, setShowMenuBar, setShowToolbarGroupLabels });
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", mountAll, { once: true });
   else mountAll();
 })();

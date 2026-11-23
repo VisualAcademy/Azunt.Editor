@@ -1,3 +1,4 @@
+using Azunt.Editor.Models;
 using Azunt.Editor.Rendering;
 
 // Package-independent console tests: no xUnit/NUnit/external test framework.
@@ -112,6 +113,11 @@ var compact = EditorMarkup.Render("compact", "Html", "<p>Text</p>", toolbarMode:
 var classic = EditorMarkup.Render("classic", "Html", "<p>Text</p>", toolbarMode: "Classic");
 Require(compact.Contains("data-toolbar-mode=\"compact\""), "Compact toolbar mode");
 Require(classic.Contains("data-toolbar-mode=\"classic\""), "Classic toolbar mode");
+var notes = EditorMarkup.Render("notes", "Description", "<p>Memo</p>", 320, false, null, "Compact", EditorMode.Edit, showMenuBar: false);
+Require(compact.Contains("data-show-menu-bar=\"true\""), "Menu bar remains visible by default");
+Require(notes.Contains("data-show-menu-bar=\"false\""), "Note editor hides the menu bar");
+Require(notes.Contains("data-azunt-menu=\"more\""), "Note editor retains More commands");
+Require(notes.Contains("name=\"Description\""), "Note editor retains form field binding");
 Require(compact.Contains("name=\"Html\""), "MVC/Razor form binding remains stable");
 Require(classic.Contains("data-azunt-source"), "Classic source edit control remains available");
 var customCommand = new Azunt.Editor.Models.EditorCustomCommand

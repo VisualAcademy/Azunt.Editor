@@ -20,6 +20,8 @@
     [Parameter] public EditorMode Mode { get; set; } = EditorMode.Edit;
     [Parameter] public string? UploadUrl { get; set; }
     [Parameter] public string ToolbarMode { get; set; } = "Compact";
+    /// <summary>Display the Compact toolbar's menu row (File, Edit, View, etc.).</summary>
+    [Parameter] public bool ShowMenuBar { get; set; } = true;
     [Parameter] public IReadOnlyList<EditorCustomCommand>? CustomCommands { get; set; }
     [Parameter] public EventCallback<string> CustomCommandInvoked { get; set; }
 
@@ -29,6 +31,7 @@
     private bool _mounted;
     private bool _rendered;
     private EditorMode _appliedMode = EditorMode.Edit;
+    private bool _appliedShowMenuBar = true;
     private long _lastAppliedRevision;
     private const long MaxDocumentBytes = 16L * 1024 * 1024;
 
@@ -40,8 +43,9 @@
     {
         if (!string.IsNullOrWhiteSpace(Id)) _editorId = Id;
         // Hold stable markup across ValueChanged rerenders. JavaScript owns the live DOM.
-        _initialMarkup = EditorMarkup.RenderForBlazor(_editorId, Name, Value, Height, ReadOnly, UploadUrl, ToolbarMode, Mode);
+        _initialMarkup = EditorMarkup.RenderForBlazor(_editorId, Name, Value, Height, ReadOnly, UploadUrl, ToolbarMode, Mode, ShowMenuBar);
         _appliedMode = Mode;
+        _appliedShowMenuBar = ShowMenuBar;
     }
 
     // The live DOM belongs to JavaScript; update the mode without Blazor replacing it.
@@ -49,6 +53,8 @@
     {
         if (_mounted && Mode != _appliedMode)
             await SetModeAsync(Mode);
+        if (_mounted && ShowMenuBar != _appliedShowMenuBar)
+            await SetShowMenuBarAsync(ShowMenuBar);
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -70,6 +76,8 @@
             // pending; apply that request after the engine is ready.
             if (Mode != _appliedMode)
                 await SetModeAsync(Mode);
+            if (ShowMenuBar != _appliedShowMenuBar)
+                await SetShowMenuBarAsync(ShowMenuBar);
             if (CustomCommands is { Count: > 0 })
                 await JS.InvokeVoidAsync("AzuntEditor.setCommands", _editorId, CustomCommands);
         }
@@ -88,6 +96,15 @@
 
     public ValueTask SetToolbarModeAsync(string mode)
         => JS.InvokeVoidAsync("AzuntEditor.setToolbarMode", _editorId, mode);
+
+    /// <summary>Show or hide the Compact menu row without replacing the current document.</summary>
+    public async ValueTask SetShowMenuBarAsync(bool show)
+    {
+        if (!_mounted) throw new InvalidOperationException("The editor must be mounted before its menu visibility can be changed.");
+        await JS.InvokeVoidAsync("AzuntEditor.setShowMenuBar", _editorId, show);
+        ShowMenuBar = show;
+        _appliedShowMenuBar = show;
+    }
 
     /// <summary>Change between Edit and View without replacing or losing the current HTML.</summary>
     public async ValueTask SetModeAsync(EditorMode mode)

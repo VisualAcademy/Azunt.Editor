@@ -29,6 +29,10 @@ public sealed class AzuntEditorTagHelper : TagHelper
     [HtmlAttributeName("toolbar-mode")]
     public string ToolbarMode { get; set; } = "Compact";
 
+    /// <summary>Hide the Compact toolbar's top menu row while keeping quick tools and More.</summary>
+    [HtmlAttributeName("show-menu-bar")]
+    public bool ShowMenuBar { get; set; } = true;
+
     /// <summary>Edit (default) or View. View hides all editor controls.</summary>
     [HtmlAttributeName("mode")]
     public string Mode { get; set; } = "Edit";
@@ -39,6 +43,6 @@ public sealed class AzuntEditorTagHelper : TagHelper
             throw new ArgumentException("Azunt.Editor mode must be Edit or View.", nameof(Mode));
         output.TagName = null;
         output.Content.SetHtmlContent(EditorMarkup.Render(
-            Id ?? $"azunt-editor-{Guid.NewGuid():N}", Name, Value, Height, ReadOnly, UploadUrl, ToolbarMode, mode));
+            Id ?? $"azunt-editor-{Guid.NewGuid():N}", Name, Value, Height, ReadOnly, UploadUrl, ToolbarMode, mode, ShowMenuBar));
     }
 }

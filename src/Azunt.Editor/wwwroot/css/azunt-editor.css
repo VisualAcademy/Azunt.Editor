@@ -302,6 +302,10 @@
   flex-wrap: nowrap;
 }
 .az-azunt-editor[data-toolbar-mode="compact"] .az-azunt-editor-classic-groups { display: none; }
+/* Notes / description fields: keep the one-line quick tools and More, hide top menus. */
+.az-azunt-editor[data-toolbar-mode="compact"][data-show-menu-bar="false"] .az-azunt-editor-menu-row {
+  display: none;
+}
 .az-azunt-editor-menu-row,
 .az-azunt-editor-quick-row {
   display: flex;

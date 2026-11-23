@@ -27,6 +27,36 @@ AzuntEditor.setToolbarMode("editor-id", "Compact");
 AzuntEditor.setToolbarMode("editor-id", "Classic");
 ```
 
+## One-row note toolbar (ShowMenuBar)
+
+Use `ShowMenuBar=false` for short notes, project descriptions, comments, and modal
+forms. The default is `true`, so existing editors are unchanged. This option
+hides **only** the top File/Edit/View/etc. menu row in `Compact` mode. Undo,
+Redo, formatting, **More**, Fullscreen, custom quick commands, contextual tools,
+and the HTML data format remain available. `Classic` already has no menu row;
+`ShowMenuBar` has no visual effect on that layout.
+
+MVC / Razor Pages:
+
+```html
+<azunt-editor name="Description" height="180" toolbar-mode="Compact" show-menu-bar="false" />
+```
+
+Blazor Server:
+
+```razor
+<AzuntEditor @bind-Value="Description" Height="180" ToolbarMode="Compact" ShowMenuBar="false" />
+```
+
+Blazor parameters may change dynamically without replacing the live editor DOM,
+or invoke `await editor.SetShowMenuBarAsync(false)` after the component is mounted.
+JavaScript hosts can call `AzuntEditor.setShowMenuBar("editor-id", false)` and
+`AzuntEditor.setShowMenuBar("editor-id", true)`. In one-row mode, `Alt+F10`
+focuses **More** instead of a hidden menu heading.
+
+Demo routes: `/editor/mvc?toolbar=note`, `/editor/razor-pages?toolbar=note`,
+and `/editor/blazor?toolbar=note`. The Blazor demo includes a runtime checkbox.
+
 ## Custom commands
 
 Register a command for one editor (or omit the second argument to register globally):

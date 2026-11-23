@@ -55,6 +55,13 @@ Compact is the default. Set `toolbar-mode="Classic"` on `<azunt-editor>` in MVC/
 
 On an active Blazor component, call `await editor.SetToolbarModeAsync("Classic")`. Toolbar changes do not replace document HTML.
 
+For one-row note editing, set `show-menu-bar="false"` on the MVC/Razor Pages
+Tag Helper or `ShowMenuBar="false"` on the Blazor component, while retaining
+`Compact`. The default is `true` for compatibility. This hides the top menu
+row, not the **More** command menu. Live updates are available through
+`SetShowMenuBarAsync(bool)` (Blazor) or `AzuntEditor.setShowMenuBar(id, bool)`
+(JavaScript); no content reset is performed.
+
 ## Custom commands
 
 Register a JavaScript command for one editor:

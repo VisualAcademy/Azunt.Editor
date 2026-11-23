@@ -3043,6 +3043,13 @@
     updateContextTools(instance);
   }
 
+  // Controls only the menu row, not command availability or the saved document.
+  function setShowMenuBar(id, show) {
+    const instance = getInstance(id);
+    closeMenu(instance);
+    instance.element.dataset.showMenuBar = show ? "true" : "false";
+  }
+
   function initAdaptiveToolbar(instance) {
     instance.classicGroups = instance.toolbar.querySelector("[data-classic-groups]");
     instance.menuPanel = instance.toolbar.querySelector("[data-menu-panel]");
@@ -3620,8 +3627,12 @@
           instance.element.contains(document.activeElement) &&
           instance.element.dataset.toolbarMode === "compact") {
         event.preventDefault();
-        const trigger = menuTriggers(instance)[0];
-        focusMenuTrigger(instance, trigger);
+        const trigger = menuTriggers(instance)[0]
+          || instance.toolbar.querySelector('[data-azunt-menu="more"]');
+        if (trigger) {
+          if (trigger.matches('[data-compact-menu] button')) focusMenuTrigger(instance, trigger);
+          else trigger.focus({ preventScroll: true });
+        }
         return;
       }
       if (event.key === "Escape") {
@@ -3816,7 +3827,7 @@
     return { paperSize: instance.page.paper, orientation: instance.page.orientation, margin: instance.page.margin };
   }
 
-  window.AzuntEditor = Object.freeze({ mount, mountAll, getHtml, getHtmlStream, setHtml, setMode, getPageSettings, showStatus, unmount, sanitizeHtml, registerTemplate, registerCommand, unregisterCommand, setCommands, setToolbarMode });
+  window.AzuntEditor = Object.freeze({ mount, mountAll, getHtml, getHtmlStream, setHtml, setMode, getPageSettings, showStatus, unmount, sanitizeHtml, registerTemplate, registerCommand, unregisterCommand, setCommands, setToolbarMode, setShowMenuBar });
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", mountAll, { once: true });
   else mountAll();
 })();

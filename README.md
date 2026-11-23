@@ -181,6 +181,14 @@ MVC / Razor Pages: `<azunt-editor toolbar-mode="Classic" name="Html" />`
 
 Blazor Server: `<AzuntEditor ToolbarMode="Classic" @bind-Value="Html" />`
 
+For short notes and descriptions, keep the Compact quick toolbar but omit the top
+File/Edit/View menu row:
+
+- MVC / Razor Pages: `<azunt-editor name="Description" toolbar-mode="Compact" show-menu-bar="false" />`
+- Blazor: `<AzuntEditor @bind-Value="Description" ToolbarMode="Compact" ShowMenuBar="false" />`
+
+The default (`true`) remains unchanged, and **More** still exposes advanced commands.
+
 Custom buttons can be registered by the hosting application, including PDF, Word and Excel commands.
 See [toolbar configuration](docs/adaptive-toolbar.md).
 

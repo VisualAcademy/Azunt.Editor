@@ -3,14 +3,21 @@
 @{
     var view = Context.Request.Query["mode"] == "view";
     var classic = Context.Request.Query["toolbar"] == "classic";
+    var noteToolbar = Context.Request.Query["toolbar"] == "note";
     var storedImages = HostEnvironment.IsDevelopment() && Context.Request.Query["images"] == "stored";
     var saveImagesOnSubmit = HostEnvironment.IsDevelopment() &&
         (Context.Request.Query["images"] == "save");
     var imageUploadUrl = storedImages ? "/editor/demo-images" : null;
+    var queryParameters = new List<string>();
+    if (storedImages) queryParameters.Add("images=stored");
+    else if (saveImagesOnSubmit) queryParameters.Add("images=save");
+    if (noteToolbar) queryParameters.Add("toolbar=note");
+    else if (classic) queryParameters.Add("toolbar=classic");
+    var formAction = "/editor/mvc" + (queryParameters.Count > 0 ? "?" + string.Join("&", queryParameters) : "");
 }
 <p class="document-meta">Image mode: @(storedImages ? "upload on insert" : saveImagesOnSubmit ? "store on save" : "inline Base64") ·
     <a href="?">Inline</a> · <a href="?images=stored">Upload on insert</a> · <a href="?images=save">Store on Save</a></p>
-<p class="document-meta">Toolbar: <a href="?">Compact</a> · <a href="?toolbar=classic">Classic</a></p>
+<p class="document-meta">Toolbar: <a href="?">Compact</a> · <a href="?toolbar=note">Notes (one row)</a> · <a href="?toolbar=classic">Classic</a></p>
 <h1>Azunt.Editor — MVC</h1>
 <p class="document-meta">Mode: <a href="?">Edit</a> · <a href="?mode=view">View</a></p>
 <p>Submit the form to test MVC model binding and session-scoped HTML persistence.</p>
@@ -20,9 +27,9 @@
 }
 else
 {
-    <form action="@(storedImages ? "/editor/mvc?images=stored" : saveImagesOnSubmit ? "/editor/mvc?images=save" : "/editor/mvc")" method="post">
+    <form action="@formAction" method="post">
         @Html.AntiForgeryToken()
-        <azunt-editor id="azunt-mvc-demo" name="Html" value="@Model.Html" height="340" toolbar-mode="@(classic ? "Classic" : "Compact")" upload-url="@imageUploadUrl" />
+        <azunt-editor id="azunt-mvc-demo" name="Html" value="@Model.Html" height="340" toolbar-mode="@(classic ? "Classic" : "Compact")" show-menu-bar="@(!noteToolbar)" upload-url="@imageUploadUrl" />
         <div class="actions">
             <button class="primary" type="submit">Save HTML</button>
             <azunt-export-buttons />

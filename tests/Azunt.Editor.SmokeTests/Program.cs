@@ -9,6 +9,16 @@ Require(safe.Contains("&lt;p&gt;Hello&lt;/p&gt;"), "Encoded initial HTML");
 Require(safe.Contains("data-azunt-images=\"true\""), "Multiple image input");
 Require(safe.Contains("multiple"), "Multiple file selection");
 
+// Editable toolbar controls skip native Tab order even before JS mounts.
+var toolbarMarkup = safe.Split("class=\"az-azunt-editor-toolbar\"", 2)[1]
+    .Split("data-code-panel", 2)[0];
+var toolbarControls = System.Text.RegularExpressions.Regex.Matches(toolbarMarkup, "<(button|select|input)\\b[^>]*>");
+Require(toolbarControls.Count > 0, "Toolbar controls rendered");
+foreach (System.Text.RegularExpressions.Match control in toolbarControls)
+    Require(control.Value.Contains("tabindex=\"-1\""), "Editable toolbar control skips Tab");
+Require(safe.Contains("aria-keyshortcuts=\"Alt+F10\""), "Canvas advertises keyboard toolbar shortcut");
+
+
 var malicious = EditorMarkup.Render("x\" onmouseover=\"alert(1)", "Html", "</textarea><script>alert(1)</script>");
 Require(!malicious.Contains("</textarea><script>", StringComparison.OrdinalIgnoreCase), "Initial value safely encoded");
 Require(!malicious.Contains("id=\"x\" onmouseover", StringComparison.Ordinal), "ID safely encoded");

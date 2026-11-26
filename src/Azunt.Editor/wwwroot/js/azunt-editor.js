@@ -2696,6 +2696,36 @@
       .filter(button => button.getClientRects().length && !button.disabled);
   }
 
+  // In editable forms the canvas (or HTML source) is the normal Tab stop.
+  // Enable toolbar Tab navigation only while it owns focus. Read-only Edit
+  // retains its original keyboard access to print/export and other commands.
+  function syncToolbarTabStops(instance) {
+    const active = document.activeElement;
+    const enabled = instance.readOnly || instance.toolbar.contains(active);
+    const triggers = Array.from(instance.toolbar.querySelectorAll("[data-compact-menu] button[data-azunt-menu]"));
+    const current = triggers.includes(active) ? active :
+      triggers.find(button => button.tabIndex === 0) || triggers[0];
+    instance.toolbar.querySelectorAll("button, select, input, textarea").forEach(control => {
+      // Open panels have their own Tab/arrow behavior (including the table grid).
+      if (instance.menuPanel?.contains(control)) return;
+      control.tabIndex = enabled && (!triggers.includes(control) || control === current) ? 0 : -1;
+    });
+  }
+
+  function focusEditorContent(instance) {
+    if (instance.sourceMode) {
+      instance.source.focus({ preventScroll: true });
+      return;
+    }
+    const range = instance.lastRange?.cloneRange();
+    instance.canvas.focus({ preventScroll: true });
+    if (range && instance.canvas.contains(range.commonAncestorContainer)) {
+      const selection = window.getSelection();
+      selection.removeAllRanges();
+      selection.addRange(range);
+    }
+  }
+
   function focusMenuTrigger(instance, trigger) {
     if (!trigger) return;
     instance.toolbar.querySelectorAll("[data-compact-menu] button[data-azunt-menu]")
@@ -2733,6 +2763,7 @@
     instance.menuOpener = null;
     if (restoreFocus && opener?.isConnected && opener.getClientRects().length)
       opener.focus({ preventScroll: true });
+    syncToolbarTabStops(instance);
   }
 
   function createCustomButton(def, compact = false, readOnly = false) {
@@ -2775,6 +2806,7 @@
         instance.classicGroups.appendChild(group);
       }
     }
+    syncToolbarTabStops(instance);
     fitQuickToolbar(instance);
     if (!instance.menuPanel?.hidden) openMenu(instance, instance.openMenu);
   }
@@ -2908,7 +2940,11 @@
     instance.menuPanel.hidden = false;
     for (const label of menuGroups[key]) {
       const group = instance.originalGroups.find(candidate => candidate.dataset.groupLabel === label);
-      if (group) instance.menuPanel.appendChild(group);
+      if (group) {
+        instance.menuPanel.appendChild(group);
+        // Restore keyboard access to Classic controls moved into an open menu.
+        group.querySelectorAll("button, select, input, textarea").forEach(control => { control.tabIndex = 0; });
+      }
     }
     if (key === "tablepicker") {
       instance.menuPanel.classList.add("az-azunt-editor-table-picker");
@@ -3043,6 +3079,7 @@
     }
     // Measure after showing the toolbar so wrapped touch targets are accounted for.
     tools.hidden = false;
+    syncToolbarTabStops(instance);
     positionContextTools(instance, target);
   }
 
@@ -3134,6 +3171,7 @@
     // Blazor commands can already be registered before a toolbar is initialized,
     // e.g. while the editor is in View mode. Do not reset them here.
     refreshQuickCommands(instance);
+    syncToolbarTabStops(instance);
     // Apply the menu-row breakpoint and measure quick commands before first paint.
     const width = instance.element.getBoundingClientRect().width;
     instance.element.classList.toggle("az-azunt-editor-very-narrow", width < 515);
@@ -3260,12 +3298,17 @@
       instance.canvas.setAttribute("role", "document");
       instance.canvas.setAttribute("aria-label", "Document viewer");
       instance.canvas.removeAttribute("aria-multiline");
+      instance.canvas.removeAttribute("aria-keyshortcuts");
       // A viewer has no toolbar/selection/image handlers or Blazor edit callbacks.
       return true;
     }
     instance.canvas.setAttribute("role", "textbox");
     instance.canvas.setAttribute("aria-label", "Document content");
     instance.canvas.setAttribute("aria-multiline", "true");
+    if (!instance.readOnly) {
+      instance.canvas.setAttribute("aria-keyshortcuts", "Alt+F10");
+      instance.source.setAttribute("aria-keyshortcuts", "Alt+F10");
+    }
     // initAdaptiveToolbar() also renders commands retained across Edit/View changes.
     initAdaptiveToolbar(instance);
     ensureTableControls(instance);
@@ -3365,8 +3408,10 @@
     }, { signal });
     instance.toolbar.addEventListener("focusout", () => {
       queueMicrotask(() => {
+        if (signal.aborted) return;
         if (!instance.toolbar.contains(document.activeElement) && !instance.menuPanel?.hidden)
           closeMenu(instance);
+        syncToolbarTabStops(instance);
       });
     }, { signal });
     instance.toolbar.addEventListener("pointerover", event => {
@@ -3374,6 +3419,7 @@
       if (cell) previewTableSize(instance, Number(cell.dataset.tableRows), Number(cell.dataset.tableColumns));
     }, { signal });
     instance.toolbar.addEventListener("focusin", event => {
+      syncToolbarTabStops(instance);
       const cell = event.target.closest("button[data-table-rows][data-table-columns]");
       if (cell) previewTableSize(instance, Number(cell.dataset.tableRows), Number(cell.dataset.tableColumns));
     }, { signal });
@@ -3534,6 +3580,7 @@
     instance.canvas.addEventListener("keydown", event => {
       if (event.key !== "Tab" || event.altKey || event.ctrlKey || event.metaKey ||
           event.target.closest("input,textarea,select,button,a")) return;
+      if (instance.menuPanel && !instance.menuPanel.hidden) closeMenu(instance);
       const selection = window.getSelection();
       if (!selection?.rangeCount || !selection.isCollapsed) return;
       const range = selection.getRangeAt(0);
@@ -3672,13 +3719,15 @@
       }
     }, { signal });
     document.addEventListener("keydown", event => {
-      if (event.altKey && event.key === "F10" && !event.ctrlKey && !event.metaKey &&
-          instance.element.contains(document.activeElement) &&
-          instance.element.dataset.toolbarMode === "compact") {
-        event.preventDefault();
-        const trigger = menuTriggers(instance)[0]
-          || instance.toolbar.querySelector('[data-azunt-menu="more"]');
-        if (trigger) {
+      if (!event.defaultPrevented && event.altKey && event.key === "F10" && !event.ctrlKey && !event.metaKey &&
+          instance.element.contains(document.activeElement)) {
+        const compact = instance.element.dataset.toolbarMode === "compact";
+        const trigger = (compact && (menuTriggers(instance)[0]
+          || instance.toolbar.querySelector('[data-azunt-menu="more"]:not(:disabled)')))
+          || Array.from(instance.toolbar.querySelectorAll("button, select, input, textarea"))
+            .find(control => !control.disabled && control.getClientRects().length && !instance.menuPanel?.contains(control));
+        if (trigger && trigger.getClientRects().length) {
+          event.preventDefault();
           if (trigger.matches('[data-compact-menu] button')) focusMenuTrigger(instance, trigger);
           else trigger.focus({ preventScroll: true });
         }
@@ -3699,6 +3748,11 @@
         if (instance.menuPanel && !instance.menuPanel.hidden) {
           event.preventDefault();
           closeMenu(instance, true);
+          return;
+        }
+        if (!instance.readOnly && instance.toolbar.contains(document.activeElement)) {
+          event.preventDefault();
+          focusEditorContent(instance);
           return;
         }
         if (instance.element.classList.contains("az-azunt-editor-fullscreen")) {
@@ -3728,6 +3782,10 @@
     }, { signal });
     instance.images.addEventListener("change", () => {
       void addImages(instance, instance.images.files).finally(() => { instance.images.value = ""; });
+    }, { signal });
+    instance.source.addEventListener("keydown", event => {
+      if (event.key === "Tab" && !event.altKey && !event.ctrlKey && !event.metaKey &&
+          instance.menuPanel && !instance.menuPanel.hidden) closeMenu(instance);
     }, { signal });
     instance.source.addEventListener("input", () => {
       // Source edits remain local until switching back; MVC form/Blazor explicit Save

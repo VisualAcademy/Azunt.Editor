@@ -37,6 +37,7 @@ public static class EditorMarkup
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
         if (!Enum.IsDefined(mode)) throw new ArgumentOutOfRangeException(nameof(mode));
         var viewer = mode == EditorMode.View;
+        var toolbarTabIndex = readOnly ? "" : " tabindex=\"-1\"";
 
         static string Encode(string? raw) => HtmlEncoder.Default.Encode(raw ?? string.Empty);
         var safeHeight = Math.Clamp(height, 40, 1400);
@@ -53,7 +54,7 @@ public static class EditorMarkup
         w.Append("<div class=\"az-azunt-editor-toolbar\" role=\"toolbar\" aria-label=\"Editor toolbar\">");
         w.Append("<div class=\"az-azunt-editor-menu-row\" data-compact-menu role=\"menubar\" aria-label=\"Editor menus\">");
         foreach (var key in new[] { "File", "Edit", "View", "Insert", "Format", "Table", "Tools", "Export" })
-            w.Append("<button type=\"button\" class=\"az-azunt-editor-menu-trigger\" data-azunt-menu=\"").Append(key.ToLowerInvariant())
+            w.Append("<button").Append(toolbarTabIndex).Append(" type=\"button\" class=\"az-azunt-editor-menu-trigger\" data-azunt-menu=\"").Append(key.ToLowerInvariant())
                 .Append("\" aria-expanded=\"false\" aria-haspopup=\"dialog\">").Append(key).Append("</button>");
         w.Append("</div><div class=\"az-azunt-editor-quick-row\" data-compact-quick role=\"group\" aria-label=\"Common formatting\">");
         int quickIndex = 0;
@@ -81,7 +82,7 @@ public static class EditorMarkup
                 quickIndex++;
                 continue;
             }
-            w.Append("<button type=\"button\" class=\"az-azunt-editor-button az-azunt-editor-quick-command")
+            w.Append("<button").Append(toolbarTabIndex).Append(" type=\"button\" class=\"az-azunt-editor-button az-azunt-editor-quick-command")
                 .Append(optional ? " az-azunt-editor-quick-optional" : "")
                 .Append("\" data-quick-command=\"").Append(command).Append("\" title=\"").Append(Encode(title))
                 .Append("\" aria-label=\"").Append(Encode(title)).Append("\"");
@@ -93,10 +94,10 @@ public static class EditorMarkup
         }
         w.Append("</span></span>");
         w.Append("<span class=\"az-azunt-editor-quick-custom\" data-quick-custom></span>")
-            .Append("<button class=\"az-azunt-editor-menu-trigger az-azunt-editor-quick-more\" type=\"button\" data-azunt-menu=\"more\" aria-expanded=\"false\" aria-haspopup=\"dialog\" title=\"More editor commands\" aria-label=\"More editor commands\">More ⋯</button>");
+            .Append("<button").Append(toolbarTabIndex).Append(" class=\"az-azunt-editor-menu-trigger az-azunt-editor-quick-more\" type=\"button\" data-azunt-menu=\"more\" aria-expanded=\"false\" aria-haspopup=\"dialog\" title=\"More editor commands\" aria-label=\"More editor commands\">More ⋯</button>");
         // Fullscreen is a viewport action, so keep it visible even when optional
         // Compact editing groups are collapsed on narrow screens.
-        w.Append("<button type=\"button\" class=\"az-azunt-editor-button az-azunt-editor-quick-fullscreen\" ")
+        w.Append("<button").Append(toolbarTabIndex).Append(" type=\"button\" class=\"az-azunt-editor-button az-azunt-editor-quick-fullscreen\" ")
             .Append("data-quick-command=\"fullscreen\" aria-pressed=\"false\" ")
             .Append("aria-label=\"Enter fullscreen\" title=\"Fullscreen (Esc to exit)\">")
             .Append("<span class=\"az-azunt-editor-button-icon\" aria-hidden=\"true\">")
@@ -173,10 +174,10 @@ public static class EditorMarkup
         Select("imageInsertSize", "New image insertion size", new[] { ("original", "Original size"), ("480", "480 px") });
         Button("image-original", "1:1", "Restore selected image to its original dimensions");
         w.Append("<label class=\"az-azunt-editor-input-label\" title=\"Selected image width in pixels (blank means original size)\">W ")
-            .Append("<input class=\"az-azunt-editor-width\" data-image-width type=\"number\" min=\"24\" max=\"2500\" step=\"1\" ")
+            .Append("<input").Append(toolbarTabIndex).Append(" class=\"az-azunt-editor-width\" data-image-width type=\"number\" min=\"24\" max=\"2500\" step=\"1\" ")
             .Append("placeholder=\"original\" aria-label=\"Image width\" /></label>");
         w.Append("<label class=\"az-azunt-editor-input-label\" title=\"Description of selected image\">Alt ")
-            .Append("<input class=\"az-azunt-editor-alt\" data-image-alt type=\"text\" maxlength=\"200\" ")
+            .Append("<input").Append(toolbarTabIndex).Append(" class=\"az-azunt-editor-alt\" data-image-alt type=\"text\" maxlength=\"200\" ")
             .Append("placeholder=\"Image description\" aria-label=\"Image alternative text\" /></label>");
         Select("imageAlign", "Image alignment", new[] { ("", "Image align"), ("left", "Left"), ("center", "Center"), ("right", "Right") });
         Button("image-delete", "×Img", "Delete selected image");
@@ -271,6 +272,7 @@ public static class EditorMarkup
             .Append("\" contenteditable=\"")
             .Append(readOnly || viewer ? "false" : "true")
             .Append('"');
+        if (!viewer && !readOnly) w.Append(" aria-keyshortcuts=\"Alt+F10\"");
         if (!viewer) w.Append(" style=\"min-height:").Append(safeHeight).Append("px\"");
         w.Append(">");
         if (viewer) w.Append(EditorViewerSanitizer.Sanitize(value));
@@ -304,13 +306,13 @@ public static class EditorMarkup
             var quickClass = compact ? " az-azunt-editor-quick-optional" : "";
             w.Append("<span class=\"az-azunt-editor-tool-split az-azunt-editor-table-split")
                 .Append(quickClass).Append("\" role=\"group\" aria-label=\"Insert table\">")
-                .Append("<button type=\"button\" class=\"az-azunt-editor-button az-azunt-editor-table-primary")
+                .Append("<button").Append(toolbarTabIndex).Append(" type=\"button\" class=\"az-azunt-editor-button az-azunt-editor-table-primary")
                 .Append(compact ? " az-azunt-editor-quick-command" : "")
                 .Append("\" ").Append(commandAttribute)
                 .Append("=\"table\" title=\"Insert 2 × 2 table\" aria-label=\"Insert 2 by 2 table\">")
                 .Append("<span class=\"az-azunt-editor-button-icon\" aria-hidden=\"true\">")
                 .Append(Icon("table")).Append("</span></button>")
-                .Append("<button type=\"button\" class=\"az-azunt-editor-button az-azunt-editor-table-dropdown\" ")
+                .Append("<button").Append(toolbarTabIndex).Append(" type=\"button\" class=\"az-azunt-editor-button az-azunt-editor-table-dropdown\" ")
                 .Append("data-azunt-menu=\"tablepicker\" aria-haspopup=\"dialog\" aria-expanded=\"false\" ")
                 .Append("aria-label=\"Choose table rows and columns\" title=\"Choose table size\">▾</button></span>");
         }
@@ -319,10 +321,10 @@ public static class EditorMarkup
         {
             var commandAttribute = compact ? "data-quick-command" : "data-command";
             w.Append("<span class=\"az-azunt-editor-tool-split az-azunt-editor-form-split\" role=\"group\" aria-label=\"Insert HTML form control\">")
-                .Append("<button type=\"button\" class=\"az-azunt-editor-button az-azunt-editor-form-primary\" ")
+                .Append("<button").Append(toolbarTabIndex).Append(" type=\"button\" class=\"az-azunt-editor-button az-azunt-editor-form-primary\" ")
                 .Append(commandAttribute).Append("=\"form-checkbox-checked\" title=\"Insert checked checkbox\" ")
                 .Append("aria-label=\"Insert checked checkbox\">☑</button>")
-                .Append("<button type=\"button\" class=\"az-azunt-editor-button az-azunt-editor-form-dropdown\" ")
+                .Append("<button").Append(toolbarTabIndex).Append(" type=\"button\" class=\"az-azunt-editor-button az-azunt-editor-form-dropdown\" ")
                 .Append("data-azunt-menu=\"controls\" aria-haspopup=\"dialog\" aria-expanded=\"false\" ")
                 .Append("aria-label=\"Choose radio button or checkbox\" title=\"Choose form control\">▾</button></span>");
         }
@@ -331,9 +333,9 @@ public static class EditorMarkup
         {
             var commandAttribute = compact ? "data-quick-command" : "data-command";
             w.Append("<span class=\"az-azunt-editor-tool-split az-code-toolbar\" role=\"group\" aria-label=\"Insert code block\">")
-                .Append("<button type=\"button\" class=\"az-azunt-editor-button az-code-toolbar-primary\" ")
+                .Append("<button").Append(toolbarTabIndex).Append(" type=\"button\" class=\"az-azunt-editor-button az-code-toolbar-primary\" ")
                 .Append(commandAttribute).Append("=\"code-block\" title=\"Insert C# code block\" aria-label=\"Insert C# code block\">&lt;/&gt;</button>")
-                .Append("<button type=\"button\" class=\"az-azunt-editor-button az-code-toolbar-dropdown\" ")
+                .Append("<button").Append(toolbarTabIndex).Append(" type=\"button\" class=\"az-azunt-editor-button az-code-toolbar-dropdown\" ")
                 .Append("data-azunt-menu=\"codepicker\" aria-haspopup=\"dialog\" aria-expanded=\"false\" ")
                 .Append("aria-label=\"Choose code language\" title=\"Choose code language\">▾</button></span>");
         }
@@ -342,7 +344,7 @@ public static class EditorMarkup
         void EndGroup() => w.Append("</div>");
         void Button(string command, string label, string title, string? shortcut = null)
         {
-            w.Append("<button type=\"button\" class=\"az-azunt-editor-button\" data-command=\"").Append(Encode(command))
+            w.Append("<button").Append(toolbarTabIndex).Append(" type=\"button\" class=\"az-azunt-editor-button\" data-command=\"").Append(Encode(command))
                 .Append("\" title=\"").Append(Encode(shortcut is null ? title : $"{title} ({shortcut})"))
                 .Append("\" aria-label=\"").Append(Encode(title)).Append("\"");
             if (command is "bold" or "italic" or "underline" or "strike" or "sup" or "sub" or "ul" or "ol" or "fullscreen") w.Append(" aria-pressed=\"false\"");
@@ -389,12 +391,12 @@ public static class EditorMarkup
         {
             w.Append("<label class=\"az-azunt-editor-input-label\" title=\"").Append(Encode(title)).Append("\">")
                 .Append(command == "color" ? "A " : "▣ ")
-                .Append("<input type=\"color\" data-select=\"").Append(Encode(command))
+                .Append("<input").Append(toolbarTabIndex).Append(" type=\"color\" data-select=\"").Append(Encode(command))
                 .Append("\" value=\"").Append(initial).Append("\" aria-label=\"").Append(Encode(title)).Append("\" /></label>");
         }
         void Select(string command, string title, (string Value, string Label)[] options)
         {
-            w.Append("<select class=\"az-azunt-editor-select\" data-select=\"").Append(Encode(command))
+            w.Append("<select").Append(toolbarTabIndex).Append(" class=\"az-azunt-editor-select\" data-select=\"").Append(Encode(command))
                 .Append("\" title=\"").Append(Encode(title)).Append("\" aria-label=\"").Append(Encode(title));
             if (command == "paper") w.Append("\" name=\"PaperSize");
             if (command == "orientation") w.Append("\" name=\"Orientation");

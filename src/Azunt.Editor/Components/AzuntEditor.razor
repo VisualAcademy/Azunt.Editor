@@ -26,6 +26,7 @@
     [Parameter] public bool ShowToolbarGroupLabels { get; set; } = true;
     [Parameter] public IReadOnlyList<EditorCustomCommand>? CustomCommands { get; set; }
     [Parameter] public EventCallback<string> CustomCommandInvoked { get; set; }
+    [Parameter] public EventCallback<EditorCommandContext> CustomCommandWithSelectionInvoked { get; set; }
 
     private string _editorId = $"azunt-editor-{Guid.NewGuid():N}";
     private string _initialMarkup = string.Empty;
@@ -93,6 +94,42 @@
 
     [JSInvokable]
     public Task OnCustomCommand(string id) => CustomCommandInvoked.InvokeAsync(id);
+
+    [JSInvokable]
+    public async Task OnCustomCommandWithSelection(string id, string? token)
+    {
+        if (CustomCommandWithSelectionInvoked.HasDelegate)
+            await CustomCommandWithSelectionInvoked.InvokeAsync(new EditorCommandContext(id, token));
+        else
+        {
+            if (token is not null) await ReleaseSelectionAsync(token);
+            await CustomCommandInvoked.InvokeAsync(id);
+        }
+    }
+
+    /// <summary>Capture the current edit selection before opening a host picker.</summary>
+    public ValueTask<string?> SaveSelectionAsync()
+        => JS.InvokeAsync<string?>("AzuntEditor.saveSelection", _editorId);
+
+    /// <summary>Restore and consume a valid bookmark. False means no selection was restored.</summary>
+    public ValueTask<bool> RestoreSelectionAsync(string token)
+        => JS.InvokeAsync<bool>("AzuntEditor.restoreSelection", _editorId, token);
+
+    /// <summary>Discard a bookmark when a host picker is canceled.</summary>
+    public ValueTask<bool> ReleaseSelectionAsync(string token)
+        => JS.InvokeAsync<bool>("AzuntEditor.releaseSelection", _editorId, token);
+
+    /// <summary>Insert sanitized HTML at the saved selection, consuming the token on success.</summary>
+    public ValueTask<bool> InsertHtmlAsync(string token, string html)
+        => JS.InvokeAsync<bool>("AzuntEditor.insertHtml", _editorId, token, html);
+
+    /// <summary>Insert escaped plain text at the saved selection.</summary>
+    public ValueTask<bool> InsertTextAsync(string token, string text)
+        => JS.InvokeAsync<bool>("AzuntEditor.insertText", _editorId, token, text);
+
+    /// <summary>Insert an authorized image URL or raster data URL at the saved selection.</summary>
+    public ValueTask<bool> InsertImageAsync(string token, string src, string alt = "", int? width = null)
+        => JS.InvokeAsync<bool>("AzuntEditor.insertImage", _editorId, token, src, alt, width);
 
     /// <summary>Replace custom commands after the editor has mounted, without rerendering its document.</summary>
     public async ValueTask SetCustomCommandsAsync(IReadOnlyList<EditorCustomCommand>? commands)

@@ -100,3 +100,93 @@ Setting the list replaces only Blazor-provided commands. It does not remove Java
 ## Security and hosting
 
 The host application is responsible for authorization, document/image storage, and server-side HTML validation. Custom commands execute host code and should not be treated as a security boundary. No third-party editor runtime or CDN is required.
+
+## Selection-aware extensions (0.8.7)
+
+Capture a selection before opening a host-owned dialog (image library, approval,
+quick note, signature picker, etc.). The bookmark is opaque, local to one editor
+instance, and single-use. A newer capture replaces the previous one. Insertion
+replaces the saved selection or inserts at the saved caret. No fallback to the
+end of the document is attempted. Close the modal before restoring/inserting.
+
+```javascript
+AzuntEditor.registerCommand({
+  id: "pickImage", label: "Image library", group: "Insert",
+  placement: "Toolbar", icon: "Image", captureSelection: true,
+  execute: async ({ editorId, selectionToken }) => {
+    if (!selectionToken) return; // select an editable location first
+    try {
+      // Host function: returns an authorized image URL, or null on cancel.
+      // It must close its dialog before returning.
+      const url = await chooseImage();
+      if (url && !AzuntEditor.insertImage(editorId, selectionToken, url, "Image", 240))
+        alert("Select an insertion location and try again.");
+    } finally {
+      AzuntEditor.releaseSelection(editorId, selectionToken);
+    }
+  }
+}, "editor-id");
+```
+
+Without a toolbar command, call `saveSelection(id)` synchronously before focusing
+an external control. It returns a string or null; it does not invent a caret.
+The remaining methods return booleans:
+
+| JavaScript | Blazor component method |
+| --- | --- |
+| `saveSelection(id)` | `SaveSelectionAsync()` |
+| `restoreSelection(id, token)` | `RestoreSelectionAsync(token)` |
+| `releaseSelection(id, token)` | `ReleaseSelectionAsync(token)` |
+| `insertHtml(id, token, html)` | `InsertHtmlAsync(token, html)` |
+| `insertText(id, token, text)` | `InsertTextAsync(token, text)` |
+| `insertImage(id, token, src, alt, width)` | `InsertImageAsync(token, src, alt, width)` |
+
+`restoreSelection` consumes the token, so use an insert method directly when
+inserting content. The insert methods restore the selection internally. The
+existing paste engine handles the insertion, records Undo/Redo, and synchronizes
+HTML to the hidden form field and Blazor binding. Cancel with `releaseSelection`.
+An unsuccessful insertion never intentionally falls back to another position;
+reselect and retry. Tokens are invalidated by document edits, Undo/Redo,
+source mode, SetHtml, View mode, remount or unmount. Focus changes alone do not
+invalidate a token. A missing/invalid selection, read-only state, active pointer
+editing or IME composition prevents capture. CaptureSelection implies RequiresEdit.
+The guard is deliberately conservative and can reject changes that only appear
+visually identical. One bookmark per mounted editor bounds memory use.
+
+### Blazor Server
+
+Add `CaptureSelection = true` to the command definition and handle the new
+`CustomCommandWithSelectionInvoked` event (`EditorCommandContext` contains
+`CommandId` and nullable `SelectionToken`). The browser captures the token before
+sending the callback to .NET. Existing commands still use `CustomCommandInvoked`.
+If the new callback has no delegate, the old callback is invoked and the token
+is released. No changes are needed for existing Export commands.
+
+```razor
+<AzuntEditor @ref="editor" CustomCommands="commands"
+             CustomCommandWithSelectionInvoked="OnPickAsync" />
+```
+
+```csharp
+private async Task OnPickAsync(EditorCommandContext context)
+{
+    if (editor is null || context.SelectionToken is not string token) return;
+    try
+    {
+        var url = await ChooseAuthorizedImageAsync(); // host closes picker first
+        if (url is not null && !await editor.InsertImageAsync(token, url, "Image"))
+            notice = "Select a location and try again.";
+    }
+    finally { await editor.ReleaseSelectionAsync(token); }
+}
+```
+
+Use a host-approved URL or supported PNG/JPEG/GIF/WebP data URL. Existing editor
+sanitization and document/image limits apply (16 MiB document, 2 MiB per inline
+image, 8 MiB aggregate inline images; the estimate conservatively includes the
+existing selection). Text is escaped; HTML is sanitized using the existing
+editor policy. This is not an authorization boundary or a server sanitizer.
+Complex block fragments use the existing paste behavior, not a new document
+layout engine. The host must authenticate the user and authorize the chosen
+image/signature, validate HTML on save, and enforce its own storage policy.
+An image insertion does not certify or cryptographically sign a document.

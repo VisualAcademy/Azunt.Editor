@@ -13,4 +13,6 @@ public sealed class EditorCustomCommand
     public string? Icon { get; set; }
     /// <summary>Disable this command when the editor is read-only.</summary>
     public bool RequiresEdit { get; set; }
+    /// <summary>Capture an insertion bookmark before invoking a host command. Implies RequiresEdit.</summary>
+    public bool CaptureSelection { get; set; }
 }

@@ -5,6 +5,7 @@
   const instances = new Map();
   const globalCommands = new Map();
   const commandsByEditor = new Map();
+  let selectionSequence = 0;
   // Built-in templates are safe, deliberately small HTML examples. Host code can
   // register additional content via AzuntEditor.registerTemplate (no CDN/network).
   const templates = new Map([
@@ -609,6 +610,7 @@
   }
 
   function changed(instance) {
+    clearSelectionBookmark(instance);
     remember(instance);
     decorateCodeBlocks(instance);
     updateStats(instance);
@@ -828,6 +830,7 @@
   function toggleSource(instance) {
     closeCodePanel(instance);
     if (instance.readOnly) return;
+    clearSelectionBookmark(instance);
     // Mode transitions must never persist a half-completed pointer gesture.
     finishTableMove(instance, null, true);
     finishTableColumnResize(instance, null, true);
@@ -1716,6 +1719,7 @@
     rememberHistorySelection(instance);
     const next = instance.historyIndex + delta;
     if (next < 0 || next >= instance.history.length) return;
+    clearSelectionBookmark(instance);
     instance.historyIndex = next;
     instance.canvas.innerHTML = instance.history[next];
     decorateCodeBlocks(instance);
@@ -3007,21 +3011,34 @@
     const def = effectiveCommands(instance).get(id);
     if (!def) return;
     if (instance.readOnly && def.requiresEdit) return;
+    const selectionToken = def.captureSelection ? saveSelection(instance.element.id) : null;
     try {
       if (typeof def.execute === "function") {
         const result = def.execute({
           editorId: instance.element.id, editor: instance.element,
+          selectionToken,
           getHtml: () => getHtml(instance.element.id),
           getPageSettings: () => getPageSettings(instance.element.id),
           setHtml: html => setHtml(instance.element.id, html),
           showStatus: (text, kind = "info") => message(instance, text, kind)
         });
-        if (result && typeof result.catch === "function") result.catch(() => message(instance, "Command failed.", "error"));
+        if (result && typeof result.catch === "function") result.catch(() => {
+          if (selectionToken) releaseSelection(instance.element.id, selectionToken);
+          message(instance, "Command failed.", "error");
+        });
       } else if (def.blazor && instance.dotNetReference) {
-        instance.dotNetReference.invokeMethodAsync("OnCustomCommand", id)
-          .catch(() => message(instance, "Command failed.", "error"));
+        const operation = def.captureSelection
+          ? instance.dotNetReference.invokeMethodAsync("OnCustomCommandWithSelection", id, selectionToken)
+          : instance.dotNetReference.invokeMethodAsync("OnCustomCommand", id);
+        operation.catch(() => {
+          if (selectionToken) releaseSelection(instance.element.id, selectionToken);
+          message(instance, "Command failed.", "error");
+        });
       }
-    } catch (_) { message(instance, "Command failed.", "error"); }
+    } catch (_) {
+      if (selectionToken) releaseSelection(instance.element.id, selectionToken);
+      message(instance, "Command failed.", "error");
+    }
   }
 
   function normalizeCommand(raw, isBlazor = false) {
@@ -3035,7 +3052,8 @@
     if (placement !== "menu" && placement !== "toolbar") throw new Error("Custom command placement must be Menu or Toolbar.");
     return {
       id: raw.id, label: raw.label.trim(), icon: String(raw.icon || "").slice(0, 8), group,
-      placement, requiresEdit: raw.requiresEdit === true, blazor: isBlazor,
+      placement, requiresEdit: raw.requiresEdit === true || raw.captureSelection === true,
+      captureSelection: raw.captureSelection === true, blazor: isBlazor,
       execute: typeof raw.execute === "function" && !isBlazor ? raw.execute : undefined
     };
   }
@@ -3905,6 +3923,147 @@
     return instances.get(id);
   }
 
+  // Extension selection bookmarks are deliberately separate from history and lastRange.
+  // They never fall back to the document end when a delayed host action becomes stale.
+  function clearSelectionBookmark(instance) {
+    instance.selectionBookmark?.observer.disconnect();
+    instance.selectionBookmark = null;
+  }
+
+  function extensionInstance(id) {
+    const instance = instances.get(id);
+    return bindingIsCurrent(instance, document.getElementById(id)) ? instance : null;
+  }
+
+  function editableExtension(instance) {
+    return instance && !instance.readOnly && !instance.sourceMode && !instance.isComposing &&
+      !instance.imageResize && !instance.tableMove && !instance.tableColumnResize;
+  }
+
+  function editableEndpoint(instance, node) {
+    const element = node.nodeType === Node.ELEMENT_NODE ? node : node.parentElement;
+    return instance.canvas.contains(node) && !element?.closest('[contenteditable="false"]');
+  }
+
+  function saveSelection(id) {
+    const instance = extensionInstance(id);
+    if (!instance) return null;
+    clearSelectionBookmark(instance);
+    if (!editableExtension(instance)) return null;
+    const selection = window.getSelection();
+    let range = selection?.rangeCount ? selection.getRangeAt(0) : null;
+    // A selection in another editor must not be treated as this editor's caret.
+    if (!range || !instance.canvas.contains(range.commonAncestorContainer)) {
+      const other = range && Array.from(instances.values()).some(i => i.canvas.contains(range.commonAncestorContainer));
+      if (other) return null;
+      range = instance.lastRange;
+    }
+    if (!range || !editableEndpoint(instance, range.startContainer) ||
+        !editableEndpoint(instance, range.endContainer)) return null;
+    const html = readHtml(instance);
+    if (new Blob([html]).size > maxDocumentBytes) return null;
+    const token = `selection-${++selectionSequence}`;
+    const observer = new MutationObserver(() => {
+      if (instance.selectionBookmark?.token === token) clearSelectionBookmark(instance);
+    });
+    // Ignore focus-only CSS/ARIA changes. A sanitized snapshot also checks
+    // persisted attribute changes, including styles, image width and links.
+    observer.observe(instance.canvas, { childList: true, characterData: true, subtree: true });
+    instance.selectionBookmark = { token, range: range.cloneRange(), html, observer };
+    return token;
+  }
+
+  function releaseSelection(id, token) {
+    const instance = instances.get(id);
+    if (!token || instance?.selectionBookmark?.token !== token) return false;
+    clearSelectionBookmark(instance);
+    return true;
+  }
+
+  function validBookmark(instance, token) {
+    const saved = instance?.selectionBookmark;
+    if (!token || saved?.token !== token) return null;
+    if (!editableExtension(instance) || saved.observer.takeRecords().length ||
+        readHtml(instance) !== saved.html || !editableEndpoint(instance, saved.range.startContainer) ||
+        !editableEndpoint(instance, saved.range.endContainer)) {
+      clearSelectionBookmark(instance);
+      return null;
+    }
+    return saved;
+  }
+
+  function restoreSelection(id, token) {
+    const instance = extensionInstance(id);
+    if (!validBookmark(instance, token)) return false;
+    instance.canvas.focus({ preventScroll: true });
+    // Focus handlers in the host may change content or replace the component.
+    if (extensionInstance(id) !== instance || document.activeElement !== instance.canvas) return false;
+    const saved = validBookmark(instance, token);
+    if (!saved) return false;
+    const range = saved.range.cloneRange();
+    clearSelectionBookmark(instance);
+    const selection = window.getSelection();
+    selection.removeAllRanges();
+    selection.addRange(range);
+    instance.lastRange = range.cloneRange();
+    rememberHistorySelection(instance);
+    updateFormattingState(instance);
+    return true;
+  }
+
+  function insertExtensionFragment(id, token, clean) {
+    const instance = extensionInstance(id);
+    const saved = validBookmark(instance, token);
+    if (!saved || !clean?.trim()) return false;
+    // A conservative size check happens before touching the selection or document.
+    if (new Blob([saved.html, clean]).size > maxDocumentBytes) return false;
+    const template = document.createElement("template");
+    template.innerHTML = clean;
+    const images = Array.from(template.content.querySelectorAll('img[src^="data:"]'));
+    let bytes = countInlineBytes(instance);
+    for (const img of images) {
+      const data = img.getAttribute("src").split(",")[1];
+      const length = Math.floor(data.length * 3 / 4) - (data.endsWith("==") ? 2 : data.endsWith("=") ? 1 : 0);
+      if (length > maxImageBytes) return false;
+      bytes += length;
+    }
+    if (bytes > maxInlineImageBytes || !restoreSelection(id, token)) return false;
+    // Commit the pre-insert state so host insertion is a single Undo step.
+    remember(instance);
+    setImageSelection(instance, null);
+    insertClipboardFragment(instance, template.content);
+    return true;
+  }
+
+  function insertHtml(id, token, html) {
+    if (typeof html !== "string" || new Blob([html]).size > maxDocumentBytes) return false;
+    return insertExtensionFragment(id, token, sanitizeHtml(html));
+  }
+
+  function insertText(id, token, text) {
+    if (typeof text !== "string" || !text.length || new Blob([text]).size > maxDocumentBytes) return false;
+    const element = document.createElement("div");
+    text.split(/\r\n|\r|\n/).forEach((line, index) => {
+      if (index) element.appendChild(document.createElement("br"));
+      element.appendChild(document.createTextNode(line));
+    });
+    return insertExtensionFragment(id, token, element.innerHTML);
+  }
+
+  // Host supplies an already authorized image URL or small raster data URL.
+  // The library does not fetch signatures, upload images or authenticate users.
+  function insertImage(id, token, src, alt = "", width = null) {
+    if (typeof src !== "string" || src.length > maxDocumentBytes || !safeResourceUrl(src, true)) return false;
+    if (width !== null && (!Number.isInteger(width) || width < 1 || width > 2500)) return false;
+    const inert = document.createElement("template");
+    inert.innerHTML = "<img>";
+    const img = inert.content.firstElementChild;
+    img.setAttribute("src", src);
+    img.setAttribute("alt", String(alt ?? "").slice(0, 250));
+    if (width !== null) img.setAttribute("width", String(width));
+    return insertHtml(id, token, img.outerHTML);
+  }
+
   function getHtml(id) {
     const instance = getInstance(id);
     const html = readHtml(instance);
@@ -3924,6 +4083,7 @@
   function setHtml(id, html) {
     const instance = getInstance(id);
     closeCodePanel(instance);
+    clearSelectionBookmark(instance);
     // Replacing a document must invalidate any pending asynchronous image read.
     instance.imageInsertGeneration++;
     if (instance.imageResize) finishImageResize(instance, null, true);
@@ -3951,6 +4111,7 @@
   function unmount(id) {
     const instance = instances.get(id);
     if (!instance) return;
+    clearSelectionBookmark(instance);
     if (instance.imageResize) finishImageResize(instance, null, true);
     finishTableMove(instance, null, true);
     finishTableColumnResize(instance, null, true);
@@ -3976,7 +4137,7 @@
     return { paperSize: instance.page.paper, orientation: instance.page.orientation, margin: instance.page.margin };
   }
 
-  window.AzuntEditor = Object.freeze({ mount, mountAll, getHtml, getHtmlStream, setHtml, setMode, getPageSettings, showStatus, unmount, sanitizeHtml, registerTemplate, registerCommand, unregisterCommand, setCommands, setToolbarMode, setShowMenuBar, setShowToolbarGroupLabels });
+  window.AzuntEditor = Object.freeze({ mount, mountAll, getHtml, getHtmlStream, setHtml, setMode, getPageSettings, showStatus, unmount, sanitizeHtml, registerTemplate, registerCommand, unregisterCommand, setCommands, setToolbarMode, setShowMenuBar, setShowToolbarGroupLabels, saveSelection, restoreSelection, releaseSelection, insertHtml, insertText, insertImage });
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", mountAll, { once: true });
   else mountAll();
 })();

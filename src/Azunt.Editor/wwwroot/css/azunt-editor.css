@@ -1026,7 +1026,7 @@
   }
 }
 
-/* Align More with the command row, not the center of the labeled toolbar.
+/* Align More and custom commands with the command row, not the center of the labeled toolbar.
    Use the same label line height and gap for both the groups and offset. */
 .az-azunt-editor[data-toolbar-mode="compact"] {
   --azunt-quick-label-space: 12px;
@@ -1038,7 +1038,8 @@
 .az-azunt-editor[data-toolbar-mode="compact"] .az-azunt-editor-quick-group {
   min-height: calc(var(--azunt-tool-height) + var(--azunt-quick-label-space));
 }
-.az-azunt-editor[data-toolbar-mode="compact"] .az-azunt-editor-quick-row:has(.az-azunt-editor-quick-label) .az-azunt-editor-quick-more {
+.az-azunt-editor[data-toolbar-mode="compact"] .az-azunt-editor-quick-row:has(.az-azunt-editor-quick-label) .az-azunt-editor-quick-more,
+.az-azunt-editor[data-toolbar-mode="compact"] .az-azunt-editor-quick-row:has(.az-azunt-editor-quick-label) > .az-azunt-editor-quick-custom {
   transform: translateY(calc(var(--azunt-quick-label-space) / 2));
 }
 /* Only the permanent toolbar loses headings. Keep the More/menu panel
@@ -1053,7 +1054,8 @@
 .az-azunt-editor[data-toolbar-mode="compact"][data-show-toolbar-group-labels="false"] .az-azunt-editor-quick-group {
   min-height: var(--azunt-tool-height);
 }
-.az-azunt-editor[data-toolbar-mode="compact"][data-show-toolbar-group-labels="false"] .az-azunt-editor-quick-row:has(.az-azunt-editor-quick-label) .az-azunt-editor-quick-more {
+.az-azunt-editor[data-toolbar-mode="compact"][data-show-toolbar-group-labels="false"] .az-azunt-editor-quick-row:has(.az-azunt-editor-quick-label) .az-azunt-editor-quick-more,
+.az-azunt-editor[data-toolbar-mode="compact"][data-show-toolbar-group-labels="false"] .az-azunt-editor-quick-row:has(.az-azunt-editor-quick-label) > .az-azunt-editor-quick-custom {
   transform: none;
 }
 .az-azunt-editor[data-show-toolbar-group-labels="false"] .az-azunt-editor-classic-groups > .az-azunt-editor-group {

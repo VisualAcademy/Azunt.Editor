@@ -2,7 +2,7 @@
 
 A lightweight rich-text editor for ASP.NET Core MVC, Razor Pages, and Blazor Server.
 
-Version: **0.8.6** · .NET 10
+Version: **0.8.7** · .NET 10
 
 ## Projects
 - `src/Azunt.Editor` — shared editor components, JavaScript, and CSS
@@ -250,6 +250,11 @@ navigate menus, `Enter` to activate an item, and `Esc` to return focus.
 Active text formatting is shown on the toolbar and in the editor footer.
 
 ## Custom commands
+
+Version 0.8.7 adds opt-in selection bookmarks for asynchronous host pickers,
+with safe HTML, text and image insertion in MVC, Razor Pages and Blazor Server.
+Try `/editor/extensions` in Azunt.Web. See [extension API](docs/public-api.md#selection-aware-extensions-087)
+and [release notes](docs/release-0.8.7.md).
 
 Host applications can add commands to a single editor or globally. Commands can be removed
 with `AzuntEditor.unregisterCommand(id, editorId)`. Blazor Server can replace the registered

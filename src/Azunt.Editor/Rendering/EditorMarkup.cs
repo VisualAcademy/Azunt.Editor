@@ -29,18 +29,25 @@ public static class EditorMarkup
         => RenderCore(id, name, value, height, readOnly, uploadUrl, toolbarMode, mode, showMenuBar, showToolbarGroupLabels,
             manualMount: false, contentRendering: contentRendering);
 
+    /// <summary>Render with an opt-in document style selector.</summary>
+    public static string Render(string id, string name, string? value, int height,
+        bool readOnly, string? uploadUrl, string toolbarMode, EditorMode mode, bool showMenuBar,
+        bool showToolbarGroupLabels, EditorContentRendering contentRendering, bool showDocumentStyleSelector)
+        => RenderCore(id, name, value, height, readOnly, uploadUrl, toolbarMode, mode, showMenuBar, showToolbarGroupLabels,
+            manualMount: false, contentRendering: contentRendering, showDocumentStyleSelector: showDocumentStyleSelector);
+
     // Blazor prerendering leaves this markup static until its interactive
     // OnAfterRenderAsync callback binds the JS engine and its .NET reference.
     // Auto-mounting during DOMContentLoaded changes prerendered nodes before
     // Blazor has attached, which can disrupt hydration and command binding.
     internal static string RenderForBlazor(string id, string name, string? value, int height,
         bool readOnly, string? uploadUrl, string toolbarMode, EditorMode mode, bool showMenuBar = true, bool showToolbarGroupLabels = true,
-        EditorContentRendering contentRendering = EditorContentRendering.Standard)
-        => RenderCore(id, name, value, height, readOnly, uploadUrl, toolbarMode, mode, showMenuBar, showToolbarGroupLabels, manualMount: true, contentRendering: contentRendering);
+        EditorContentRendering contentRendering = EditorContentRendering.Standard, bool showDocumentStyleSelector = false)
+        => RenderCore(id, name, value, height, readOnly, uploadUrl, toolbarMode, mode, showMenuBar, showToolbarGroupLabels, manualMount: true, contentRendering: contentRendering, showDocumentStyleSelector: showDocumentStyleSelector);
 
     private static string RenderCore(string id, string name, string? value, int height,
         bool readOnly, string? uploadUrl, string toolbarMode, EditorMode mode, bool showMenuBar, bool showToolbarGroupLabels, bool manualMount,
-        EditorContentRendering contentRendering = EditorContentRendering.Standard)
+        EditorContentRendering contentRendering = EditorContentRendering.Standard, bool showDocumentStyleSelector = false)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(id);
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
@@ -55,8 +62,16 @@ public static class EditorMarkup
         w.Append("<div class=\"az-azunt-editor\" data-azunt-editor=\"true\" id=\"").Append(Encode(id))
             .Append("\" data-read-only=\"").Append(readOnly ? "true" : "false").Append('"')
             .Append(" data-editor-mode=\"").Append(viewer ? "view" : "edit").Append('"');
-        if (contentRendering == EditorContentRendering.BrowserDefault)
-            w.Append(" data-content-rendering=\"browser-default\"");
+        var renderingMarker = contentRendering switch
+        {
+            EditorContentRendering.BrowserDefault => "browser-default",
+            EditorContentRendering.CompactReport => "compact-report",
+            EditorContentRendering.BusinessDocument => "business-document",
+            EditorContentRendering.Minimal => "minimal",
+            _ => null
+        };
+        if (renderingMarker is not null)
+            w.Append(" data-content-rendering=\"").Append(renderingMarker).Append('"');
         if (manualMount) w.Append(" data-azunt-mount=\"manual\"");
         if (!string.IsNullOrWhiteSpace(uploadUrl))
             w.Append(" data-upload-url=\"").Append(Encode(uploadUrl)).Append('"');
@@ -115,6 +130,17 @@ public static class EditorMarkup
             .Append("<span class=\"az-azunt-editor-button-icon\" aria-hidden=\"true\">")
             .Append(Icon("fullscreen")).Append("</span></button>");
         w.Append("</div><div class=\"az-azunt-editor-classic-groups\" data-classic-groups>");
+
+        if (showDocumentStyleSelector)
+        {
+            Group("Document style");
+            Select("documentStyle", "Document style", new[] {
+                ("Standard", "Standard"), ("BrowserDefault", "Browser Default"),
+                ("CompactReport", "Compact Report"), ("BusinessDocument", "Business Document"),
+                ("Minimal", "Minimal")
+            });
+            EndGroup();
+        }
 
         Group("Text formatting");
         Button("bold", "B", "Bold", "Ctrl+B");
@@ -415,7 +441,11 @@ public static class EditorMarkup
             if (command == "margin") w.Append("\" name=\"Margin");
             w.Append("\">");
             foreach (var (optionValue, optionLabel) in options)
-                w.Append("<option value=\"").Append(Encode(optionValue)).Append("\">").Append(Encode(optionLabel)).Append("</option>");
+            {
+                w.Append("<option value=\"").Append(Encode(optionValue)).Append('"');
+                if (command == "documentStyle" && optionValue == contentRendering.ToString()) w.Append(" selected");
+                w.Append('>').Append(Encode(optionLabel)).Append("</option>");
+            }
             w.Append("</select>");
         }
     }

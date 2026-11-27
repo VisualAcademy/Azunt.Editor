@@ -2,7 +2,7 @@
 
 A lightweight rich-text editor for ASP.NET Core MVC, Razor Pages, and Blazor Server.
 
-Version: **0.8.8** · .NET 10
+Version: **0.8.9** · .NET 10
 
 ## Projects
 - `src/Azunt.Editor` — shared editor components, JavaScript, and CSS
@@ -351,3 +351,21 @@ Run `python tests/editor-multiple-browser.py` for the Chromium fixture regressio
 Opt in with `ContentRendering="EditorContentRendering.BrowserDefault"` (Blazor)
 or `content-rendering="BrowserDefault"` (MVC/Razor Pages). Standard remains
 the default. See [release notes](docs/release-0.8.8.md) for scope and limitations.
+
+## Document styles (0.8.9)
+
+The editor supports Standard (legacy default), Browser Default, Compact Report
+(13px body / 12px table), Business Document and Minimal. Enable the optional
+selector in Format / More or Classic with `ShowDocumentStyleSelector="true"`
+(Blazor) or `show-document-style-selector="true"` (Tag Helper).
+
+```razor
+<AzuntEditor @bind-Value="Html" @bind-ContentRendering="Rendering"
+             ShowDocumentStyleSelector="true" />
+```
+
+Initialize `Rendering` to `EditorContentRendering.CompactReport` for dense
+reports. These styles are presentation settings in this release: store the
+selected enum separately if it must survive reload, and apply it to both Edit
+and View. Print, Preview and export retain their existing independent settings.
+See [release notes](docs/release-0.8.9.md).

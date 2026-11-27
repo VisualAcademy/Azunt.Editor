@@ -20,6 +20,10 @@
     [Parameter] public EditorMode Mode { get; set; } = EditorMode.Edit;
     /// <summary>On-screen document appearance; does not change saved HTML.</summary>
     [Parameter] public EditorContentRendering ContentRendering { get; set; } = EditorContentRendering.Standard;
+    /// <summary>Notify the host when a user chooses a document style.</summary>
+    [Parameter] public EventCallback<EditorContentRendering> ContentRenderingChanged { get; set; }
+    /// <summary>Enable the document style selector in the initial toolbar markup.</summary>
+    [Parameter] public bool ShowDocumentStyleSelector { get; set; }
     [Parameter] public string? UploadUrl { get; set; }
     [Parameter] public string ToolbarMode { get; set; } = "Compact";
     /// <summary>Display the Compact toolbar's menu row (File, Edit, View, etc.).</summary>
@@ -50,7 +54,7 @@
     {
         if (!string.IsNullOrWhiteSpace(Id)) _editorId = Id;
         // Hold stable markup across ValueChanged rerenders. JavaScript owns the live DOM.
-        _initialMarkup = EditorMarkup.RenderForBlazor(_editorId, Name, Value, Height, ReadOnly, UploadUrl, ToolbarMode, Mode, ShowMenuBar, ShowToolbarGroupLabels, ContentRendering);
+        _initialMarkup = EditorMarkup.RenderForBlazor(_editorId, Name, Value, Height, ReadOnly, UploadUrl, ToolbarMode, Mode, ShowMenuBar, ShowToolbarGroupLabels, ContentRendering, ShowDocumentStyleSelector);
         _appliedMode = Mode;
         _appliedContentRendering = ContentRendering;
         _appliedShowMenuBar = ShowMenuBar;
@@ -176,6 +180,22 @@
         await JS.InvokeVoidAsync("AzuntEditor.setContentRendering", _editorId, rendering.ToString());
         ContentRendering = rendering;
         _appliedContentRendering = rendering;
+    }
+
+    [JSInvokable]
+    public async Task OnContentRenderingChanged(string rendering)
+    {
+        if (!Enum.TryParse<EditorContentRendering>(rendering, true, out var parsed) || !Enum.IsDefined(parsed)) return;
+        ContentRendering = parsed;
+        _appliedContentRendering = parsed;
+        await ContentRenderingChanged.InvokeAsync(parsed);
+    }
+
+    /// <summary>Read the current live document style from the browser.</summary>
+    public async ValueTask<EditorContentRendering> GetContentRenderingAsync()
+    {
+        var rendering = await JS.InvokeAsync<string>("AzuntEditor.getContentRendering", _editorId);
+        return Enum.Parse<EditorContentRendering>(rendering);
     }
 
     /// <summary>Change between Edit and View without replacing or losing the current HTML.</summary>

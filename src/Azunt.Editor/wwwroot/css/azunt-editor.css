@@ -1133,3 +1133,70 @@
   /* Preserve the existing safety bound for very wide pasted images. */
   max-width: 100%;
 }
+
+/* Optional document styles. Keep the legacy Standard rules untouched.
+   Document presentation is light, independent of application/toolbar theme. */
+.az-azunt-editor:is([data-content-rendering="compact-report"], [data-content-rendering="business-document"], [data-content-rendering="minimal"]) > .az-azunt-editor-canvas {
+  font: var(--azunt-document-size)/var(--azunt-document-line) system-ui, -apple-system, "Segoe UI", Arial, sans-serif;
+  color: #202124;
+  color-scheme: light;
+  background: #fff;
+  padding: var(--azunt-document-padding);
+  overflow-wrap: normal;
+  word-break: normal;
+  overflow-x: auto;
+}
+.az-azunt-editor[data-content-rendering="compact-report"] {
+  --azunt-document-size: 13px;
+  --azunt-document-line: 1.4;
+  --azunt-document-padding: 12px;
+  --azunt-document-cell-size: 12px;
+  --azunt-document-cell-padding: 3px 5px;
+  --azunt-document-border: #cbd2da;
+  --azunt-document-header: #f1f4f7;
+}
+.az-azunt-editor[data-content-rendering="business-document"] {
+  --azunt-document-size: 14px;
+  --azunt-document-line: 1.5;
+  --azunt-document-padding: 20px;
+  --azunt-document-cell-size: 13px;
+  --azunt-document-cell-padding: 6px 8px;
+  --azunt-document-border: #b9c8d8;
+  --azunt-document-header: #e8eff6;
+}
+.az-azunt-editor[data-content-rendering="minimal"] {
+  --azunt-document-size: 14px;
+  --azunt-document-line: 1.45;
+  --azunt-document-padding: 16px;
+  --azunt-document-cell-size: 13px;
+  --azunt-document-cell-padding: 4px 6px;
+  --azunt-document-border: #e1e4e8;
+  --azunt-document-header: #fafafa;
+}
+.az-azunt-editor:is([data-content-rendering="compact-report"], [data-content-rendering="business-document"], [data-content-rendering="minimal"]) > .az-azunt-editor-canvas p {
+  margin: .45em 0;
+}
+.az-azunt-editor:is([data-content-rendering="compact-report"], [data-content-rendering="business-document"], [data-content-rendering="minimal"]) > .az-azunt-editor-canvas table {
+  width: auto;
+  max-width: 100%;
+  font-size: var(--azunt-document-cell-size);
+  margin: 8px 0;
+  border-collapse: collapse;
+}
+.az-azunt-editor:is([data-content-rendering="compact-report"], [data-content-rendering="business-document"], [data-content-rendering="minimal"]) > .az-azunt-editor-canvas table:is([style*="table-layout: fixed"], [style*="table-layout:fixed"]) {
+  width: 100%;
+}
+.az-azunt-editor:is([data-content-rendering="compact-report"], [data-content-rendering="business-document"], [data-content-rendering="minimal"]) > .az-azunt-editor-canvas :is(th, td) {
+  min-width: 0;
+  padding: var(--azunt-document-cell-padding);
+  border: 1px solid var(--azunt-document-border);
+  font-family: inherit;
+  font-size: inherit;
+  line-height: inherit;
+  color: inherit;
+  vertical-align: top;
+}
+.az-azunt-editor:is([data-content-rendering="compact-report"], [data-content-rendering="business-document"], [data-content-rendering="minimal"]) > .az-azunt-editor-canvas th {
+  background: var(--azunt-document-header);
+}
+.az-azunt-editor .az-azunt-editor-select[data-select="documentStyle"] { max-width: 180px; }

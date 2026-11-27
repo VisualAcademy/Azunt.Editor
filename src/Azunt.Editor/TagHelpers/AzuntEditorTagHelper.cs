@@ -41,18 +41,22 @@ public sealed class AzuntEditorTagHelper : TagHelper
     [HtmlAttributeName("mode")]
     public string Mode { get; set; } = "Edit";
 
-    /// <summary>Standard (default) or BrowserDefault, affecting only the content rendering.</summary>
+    /// <summary>On-screen document style; Standard is the default.</summary>
     [HtmlAttributeName("content-rendering")]
     public string ContentRendering { get; set; } = "Standard";
+
+    /// <summary>Enable the optional document style selector.</summary>
+    [HtmlAttributeName("show-document-style-selector")]
+    public bool ShowDocumentStyleSelector { get; set; }
 
     public override void Process(TagHelperContext context, TagHelperOutput output)
     {
         if (!Enum.TryParse<EditorMode>(Mode, true, out var mode) || !Enum.IsDefined(mode))
             throw new ArgumentException("Azunt.Editor mode must be Edit or View.", nameof(Mode));
         if (!Enum.TryParse<EditorContentRendering>(ContentRendering, true, out var contentRendering) || !Enum.IsDefined(contentRendering))
-            throw new ArgumentException("Azunt.Editor content rendering must be Standard or BrowserDefault.", nameof(ContentRendering));
+            throw new ArgumentException("Unknown Azunt.Editor content rendering style.", nameof(ContentRendering));
         output.TagName = null;
         output.Content.SetHtmlContent(EditorMarkup.Render(
-            Id ?? $"azunt-editor-{Guid.NewGuid():N}", Name, Value, Height, ReadOnly, UploadUrl, ToolbarMode, mode, ShowMenuBar, ShowToolbarGroupLabels, contentRendering));
+            Id ?? $"azunt-editor-{Guid.NewGuid():N}", Name, Value, Height, ReadOnly, UploadUrl, ToolbarMode, mode, ShowMenuBar, ShowToolbarGroupLabels, contentRendering, ShowDocumentStyleSelector));
     }
 }

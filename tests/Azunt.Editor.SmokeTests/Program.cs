@@ -29,6 +29,20 @@ foreach (var renderingMode in new[] { EditorMode.Edit, EditorMode.View })
     Require(nativeMarkup.Contains(renderingMode == EditorMode.View ? "<p>Native</p>" : "&lt;p&gt;Native&lt;/p&gt;"), "HTML preserved by native mode");
 }
 
+Require(!safe.Contains("data-select=\"documentStyle\""), "Style selector is opt-in");
+foreach (var (style, marker) in new[] {
+    (EditorContentRendering.CompactReport, "compact-report"),
+    (EditorContentRendering.BusinessDocument, "business-document"),
+    (EditorContentRendering.Minimal, "minimal") })
+{
+    var styleMarkup = EditorMarkup.Render("styled", "Html", "<p>Report</p>", 320,
+        false, null, "Compact", EditorMode.Edit, true, true, style, true);
+    Require(styleMarkup.Contains($"data-content-rendering=\"{marker}\""), "Style marker");
+    Require(styleMarkup.Contains("data-select=\"documentStyle\""), "Opt-in selector");
+    Require(styleMarkup.Contains($"value=\"{style}\" selected"), "Initial style selected");
+    Require(styleMarkup.Contains("&lt;p&gt;Report&lt;/p&gt;"), "Style does not mutate HTML");
+}
+
 var malicious = EditorMarkup.Render("x\" onmouseover=\"alert(1)", "Html", "</textarea><script>alert(1)</script>");
 Require(!malicious.Contains("</textarea><script>", StringComparison.OrdinalIgnoreCase), "Initial value safely encoded");
 Require(!malicious.Contains("id=\"x\" onmouseover", StringComparison.Ordinal), "ID safely encoded");

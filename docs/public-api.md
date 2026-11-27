@@ -207,3 +207,21 @@ be supplied when reopening in Edit or View. Existing Preview, Print and export
 rendering are unchanged. The HTML allowlist is unchanged; arbitrary CSS, legacy
 HTML attributes and external style sheets are not newly supported. Fixed-layout
 tables retain full canvas width to support the existing column-resize contract.
+
+## Document style selector (0.8.9)
+
+`EditorContentRendering` adds `CompactReport`, `BusinessDocument` and `Minimal`.
+Existing values and overloads remain unchanged. The selector is disabled by
+default; enable `ShowDocumentStyleSelector` (Blazor, initial markup only), or
+`show-document-style-selector` (Tag Helper). It is in Format and More for
+Compact toolbars and directly in the Classic toolbar. View mode hides it.
+
+Blazor: `@bind-ContentRendering` receives user selections; alternatively use
+`ContentRenderingChanged` and persist the value in the host. Read the live
+value via `GetContentRenderingAsync()`. MVC/Razor Pages: listen to the bubbling
+`azunt:content-rendering-changed` event (`event.detail.rendering`) and use
+`AzuntEditor.getContentRendering(id)`. Programmatic setters update the selector
+without firing the user change event. No HTML, history, or form field is added
+by a style change. A host must persist the enum separately; it is not embedded
+in the saved HTML. The existing sanitizer still determines supported inline
+styles. Print, Preview, PDF, Word, and Excel are unaffected in this release.

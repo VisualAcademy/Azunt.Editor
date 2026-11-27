@@ -30,11 +30,14 @@
     <select @bind="_contentRendering">
         <option value="Standard">Standard</option>
         <option value="BrowserDefault">Browser Default</option>
+        <option value="CompactReport">Compact Report</option>
+        <option value="BusinessDocument">Business Document</option>
+        <option value="Minimal">Minimal</option>
     </select>
 </label></p>
 
 <AzuntEditor @key="UseStoredImages" @ref="_editor" Id="azunt-blazor-demo" Name="BlazorHtml" @bind-Value="_html" Height="340" UploadUrl="@(UseStoredImages ? "/editor/demo-images" : null)"
-    Mode="@_demoMode" ContentRendering="@_contentRendering" ToolbarMode="@(UseClassic ? "Classic" : "Compact")" ShowMenuBar="@_showMenuBar" ShowToolbarGroupLabels="@_showToolbarGroupLabels" CustomCommands="EditorCommands" CustomCommandInvoked="HandleEditorCommand" />
+    Mode="@_demoMode" @bind-ContentRendering="_contentRendering" ShowDocumentStyleSelector="true" ToolbarMode="@(UseClassic ? "Classic" : "Compact")" ShowMenuBar="@_showMenuBar" ShowToolbarGroupLabels="@_showToolbarGroupLabels" CustomCommands="EditorCommands" CustomCommandInvoked="HandleEditorCommand" />
 
 <div class="actions">
     <button class="primary" @onclick="SaveAsync">Save HTML</button>
@@ -72,7 +75,7 @@
     private bool UseDeferredImages => HostEnvironment.IsDevelopment() &&
         new Uri(Navigation.Uri).Query.Contains("images=save", StringComparison.OrdinalIgnoreCase);
     private AzuntEditor? _editor;
-    private EditorContentRendering _contentRendering = EditorContentRendering.Standard;
+    private EditorContentRendering _contentRendering = EditorContentRendering.CompactReport;
     private EditorMode _demoMode = EditorMode.Edit;
     private bool _showMenuBar = true;
     private bool _showToolbarGroupLabels = true;

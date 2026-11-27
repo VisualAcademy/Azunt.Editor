@@ -34,7 +34,7 @@ else
 {
     <form action="@formAction" method="post">
         @Html.AntiForgeryToken()
-        <azunt-editor id="azunt-mvc-demo" name="Html" value="@Model.Html" content-rendering="@(browserDefault ? "BrowserDefault" : "Standard")" height="340" toolbar-mode="@(classic ? "Classic" : "Compact")" show-menu-bar="@(!noteToolbar)" show-toolbar-group-labels="@showGroupLabels" upload-url="@imageUploadUrl" />
+        <azunt-editor id="azunt-mvc-demo" name="Html" value="@Model.Html" content-rendering="@(browserDefault ? "BrowserDefault" : "Standard")" show-document-style-selector="true" height="340" toolbar-mode="@(classic ? "Classic" : "Compact")" show-menu-bar="@(!noteToolbar)" show-toolbar-group-labels="@showGroupLabels" upload-url="@imageUploadUrl" />
         <div class="actions">
             <button class="primary" type="submit">Save HTML</button>
             <azunt-export-buttons />

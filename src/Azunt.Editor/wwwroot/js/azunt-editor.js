@@ -2503,6 +2503,20 @@
   }
 
   function runSelect(instance, field, value) {
+    if (field === "documentStyle") {
+      const before = getContentRendering(instance.element.id);
+      setContentRendering(instance.element.id, value);
+      const rendering = getContentRendering(instance.element.id);
+      if (before !== rendering) {
+        // Presentation changes are separate from the HTML change/history pipeline.
+        instance.element.dispatchEvent(new CustomEvent("azunt:content-rendering-changed", {
+          bubbles: true, detail: { rendering }
+        }));
+        if (instance.dotNetReference) instance.dotNetReference.invokeMethodAsync("OnContentRenderingChanged", rendering)
+          .catch(() => message(instance, "Could not notify the host of the document style change.", "error"));
+      }
+      return;
+    }
     if (["paper", "orientation", "margin"].includes(field)) {
       instance.page[field] = value;
       return;
@@ -2585,10 +2599,10 @@
   // rather than copied, so selects and color inputs retain their existing state.
   const menuGroups = Object.freeze({
     file: ["Document"], edit: ["Writing tools"], view: ["Document"],
-    insert: ["Link", "Image"], format: ["Text formatting", "Font and color", "Paragraph"],
+    insert: ["Link", "Image"], format: ["Document style", "Text formatting", "Font and color", "Paragraph"],
     table: ["Table"], tablepicker: [], image: ["Image"], link: ["Link"], controls: [], codepicker: [],
     tools: ["Writing tools"], export: [],
-    more: ["Text formatting", "Font and color", "Paragraph", "Link", "Table", "Image", "Writing tools", "Document"]
+    more: ["Document style", "Text formatting", "Font and color", "Paragraph", "Link", "Table", "Image", "Writing tools", "Document"]
   });
   const menuNames = new Set(Object.keys(menuGroups));
   const toggleCommands = new Set(["bold", "italic", "underline", "strike", "sup", "sub", "ul", "ol"]);
@@ -3180,21 +3194,35 @@
   }
 
   // Presentation is kept on the host, not in document HTML or history.
+  const contentRenderings = Object.freeze({ Standard: "", BrowserDefault: "browser-default",
+    CompactReport: "compact-report", BusinessDocument: "business-document", Minimal: "minimal" });
+
+  function getContentRendering(id) {
+    const marker = getInstance(id).element.dataset.contentRendering || "";
+    return Object.keys(contentRenderings).find(key => contentRenderings[key] === marker) || "Standard";
+  }
+
+  function syncContentRenderingSelector(instance) {
+    const select = instance.toolbar?.querySelector('[data-select="documentStyle"]');
+    if (select) select.value = getContentRendering(instance.element.id);
+  }
+
   function setContentRendering(id, rendering) {
-    const desired = String(rendering).trim().toLowerCase();
-    if (desired !== "standard" && desired !== "browserdefault")
-      throw new Error("Content rendering must be Standard or BrowserDefault.");
+    const desired = Object.keys(contentRenderings).find(key => key.toLowerCase() === String(rendering).trim().toLowerCase());
+    if (!desired) throw new Error("Unknown content rendering style.");
     const instance = getInstance(id);
-    const native = desired === "browserdefault";
-    if ((instance.element.dataset.contentRendering === "browser-default") === native) return;
-    // Do not carry transient dimensions from a partially completed drag into the new layout.
-    if (instance.imageResize) finishImageResize(instance, null, true);
-    finishTableMove(instance, null, true);
-    finishTableColumnResize(instance, null, true);
-    if (native) instance.element.dataset.contentRendering = "browser-default";
-    else delete instance.element.dataset.contentRendering;
-    repositionOverlays(instance);
-    updateResizeHandle(instance);
+    const marker = contentRenderings[desired];
+    if ((instance.element.dataset.contentRendering || "") !== marker) {
+      // Cancel transient drag dimensions before changing layout.
+      if (instance.imageResize) finishImageResize(instance, null, true);
+      finishTableMove(instance, null, true);
+      finishTableColumnResize(instance, null, true);
+      if (marker) instance.element.dataset.contentRendering = marker;
+      else delete instance.element.dataset.contentRendering;
+      repositionOverlays(instance);
+      updateResizeHandle(instance);
+    }
+    syncContentRenderingSelector(instance);
   }
 
   // Controls only the menu row, not command availability or the saved document.
@@ -3394,6 +3422,7 @@
       ? (previous.historySelections || []).slice() : [null];
     instance.historyIndex = oldHistory?.length ? previous.historyIndex : 0;
     instances.set(element.id, instance);
+    syncContentRenderingSelector(instance);
     instance.canvas.contentEditable = instance.readOnly ? "false" : "true";
     instance.canvas.addEventListener("click", event => handleCodeAction(instance, event), { signal: controller.signal });
     instance.canvas.addEventListener("dblclick", event => {
@@ -3579,7 +3608,7 @@
       const target = event.target.closest("[data-select]");
       if (!target) return;
       runSelect(instance, target.dataset.select, target.value);
-      if (!["paper", "orientation", "margin", "imageInsertSize"].includes(target.dataset.select) && target.type !== "color") target.selectedIndex = 0;
+      if (!["paper", "orientation", "margin", "imageInsertSize", "documentStyle"].includes(target.dataset.select) && target.type !== "color") target.selectedIndex = 0;
       updateFormattingState(instance);
     }, { signal });
     instance.codePanel?.querySelector("[data-code-apply]")?.addEventListener("click", () => applyCodePanel(instance), { signal });
@@ -4208,7 +4237,7 @@
     return { paperSize: instance.page.paper, orientation: instance.page.orientation, margin: instance.page.margin };
   }
 
-  window.AzuntEditor = Object.freeze({ mount, mountAll, getHtml, getHtmlStream, setHtml, setMode, getPageSettings, showStatus, unmount, sanitizeHtml, registerTemplate, registerCommand, unregisterCommand, setCommands, setToolbarMode, setContentRendering, setShowMenuBar, setShowToolbarGroupLabels, saveSelection, restoreSelection, releaseSelection, insertHtml, insertText, insertImage });
+  window.AzuntEditor = Object.freeze({ mount, mountAll, getHtml, getHtmlStream, setHtml, setMode, getPageSettings, showStatus, unmount, sanitizeHtml, registerTemplate, registerCommand, unregisterCommand, setCommands, setToolbarMode, setContentRendering, getContentRendering, setShowMenuBar, setShowToolbarGroupLabels, saveSelection, restoreSelection, releaseSelection, insertHtml, insertText, insertImage });
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", mountAll, { once: true });
   else mountAll();
 })();

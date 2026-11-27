@@ -82,6 +82,12 @@ Require(resizedViewer.Contains("width:63.333%") && resizedViewer.Contains("width
 Require(!resizedViewer.Contains("position:"), "Unsupported table CSS is removed");
 Require(!EditorViewerSanitizer.Sanitize("<td style='width:999%;width:calc(100%)'>Bad</td>").Contains("width:"),
     "Disallowed percentage widths are rejected in View");
+var rowResizeViewer = EditorViewerSanitizer.Sanitize(
+    "<table><tr style='height:80px;position:fixed'><td>Row</td></tr>" +
+    "<tr style='height:9999px'><td>Invalid</td></tr></table>");
+Require(rowResizeViewer.Contains("height:80px"), "Row height survives View sanitization");
+Require(!rowResizeViewer.Contains("9999px") && !rowResizeViewer.Contains("position:"),
+    "View rejects excessive row heights and unrelated CSS");
 var rgbViewer = Azunt.Editor.Rendering.EditorViewerSanitizer.Sanitize(
     "<p style=\"color:rgb(18, 52, 86);background-color:rgba(255, 220, 10, 1)\">Colors</p>");
 Require(rgbViewer.Contains("#123456") && rgbViewer.Contains("#ffdc0a"), "Browser RGB colors survive server rendering");

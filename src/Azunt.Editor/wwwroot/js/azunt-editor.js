@@ -172,6 +172,8 @@
         if (margin && Number(margin[1]) <= 240 && Number(margin[1]) % 24 === 0)
           clean.style.marginLeft = `${Number(margin[1])}px`;
       }
+      if (tag === "tr" && /^(?:[1-9]\d{0,2}|1000)px$/.test(node.style.height))
+        clean.style.height = node.style.height;
       if (["table", "td", "th"].includes(tag)) {
         const borderColor = cleanColor(node.style.borderColor);
         const borderWidth = /^([1-4])px$/.exec(node.style.borderWidth || "");
@@ -1025,6 +1027,7 @@
     const existingResize = instance.element.querySelector("[data-table-column-handle]");
     const existingMarker = instance.element.querySelector("[data-table-drop-marker]");
     if (existingMove && existingResize && existingMarker) {
+      existingMove.title = "Drag to move; Alt+Up/Down to move one block; arrow keys to resize selected row or column";
       instance.tableMoveHandle = existingMove;
       instance.tableColumnHandle = existingResize;
       instance.tableDropMarker = existingMarker;
@@ -1038,7 +1041,7 @@
     move.dataset.tableMoveHandle = "";
     move.className = "az-azunt-editor-table-move-handle";
     move.textContent = "\u2725";
-    move.title = "Drag to move this table; Alt+Up/Down to move one block";
+    move.title = "Drag to move; Alt+Up/Down to move one block; arrow keys to resize selected row or column";
     move.setAttribute("aria-label", "Move table");
     move.hidden = true;
     const resize = document.createElement("button");
@@ -1072,6 +1075,7 @@
   function clearTableHandles(instance) {
     if (instance.tableMoveHandle) instance.tableMoveHandle.hidden = true;
     if (instance.tableColumnHandle) instance.tableColumnHandle.hidden = true;
+    instance.tableResizeTarget = null;
     if (instance.tableDropMarker) instance.tableDropMarker.hidden = true;
   }
 
@@ -1085,7 +1089,11 @@
   function positionTableControls(instance) {
     if (instance.tableMove || instance.tableColumnResize) return;
     const table = instance.selectedTable;
-    if (!editableTable(instance, table)) { clearTableHandles(instance); return; }
+    if (!editableTable(instance, table)) {
+      clearTableHandles(instance);
+      if (instance.tableHoverPoint) updateTableColumnHover(instance);
+      return;
+    }
     const host = instance.element.getBoundingClientRect();
     const rect = table.getBoundingClientRect();
     if (!rect.width || rect.bottom < host.top || rect.top > host.bottom) {
@@ -1095,49 +1103,88 @@
     move.hidden = false;
     move.style.left = `${Math.max(2, rect.left - host.left - 21)}px`;
     move.style.top = `${rect.top - host.top + 2}px`;
-    const resize = instance.tableColumnHandle;
-    const col = instance.tableColumnIndex;
-    if (instance.tableColumnPointerOutside || !rectangularTable(table) || !Number.isInteger(col) || col < 0 || col >= table.rows[0].cells.length - 1) {
-      resize.hidden = true;
-      return;
-    }
-    const edge = table.rows[0].cells[col].getBoundingClientRect().right;
-    resize.hidden = false;
-    resize.style.left = `${edge - host.left - 5}px`;
-    resize.style.top = `${rect.top - host.top}px`;
-    resize.style.height = `${rect.height}px`;
+    // Resize hit targets are independent of the selected cell/table.
+    if (instance.tableHoverPoint) updateTableColumnHover(instance);
   }
 
   function selectTableControls(instance, table, column = 0) {
     if (!editableTable(instance, table)) {
       instance.selectedTable = null;
-      instance.tableColumnPointerOutside = false;
       clearTableHandles(instance);
       return;
     }
-    if (instance.selectedTable !== table) {
-      instance.tableColumnPointerOutside = false;
-      instance.tableHoverPoint = null;
-    }
     instance.selectedTable = table;
-    // Clicking the final column should expose the last *inner* boundary,
-    // rather than hiding resizing altogether.
     const count = table.rows[0]?.cells.length || 0;
     instance.tableColumnIndex = rectangularTable(table)
       ? Math.min(Math.max(0, column), count - 2) : column;
     positionTableControls(instance);
   }
 
-  // The caret/selected table and the transient resize guide are independent.
-  // Moving outside must not clear the cell selection or break table commands.
+  // A transparent hit area is only exposed within 5 CSS pixels of an edge.
+  // Hover never changes the active cell or selects another table.
+  function tableResizeTargetAt(instance, x, y) {
+    const front = document.elementFromPoint(x, y);
+    if (!front || (front !== instance.tableColumnHandle && !instance.canvas.contains(front))) return null;
+    const cell = document.elementsFromPoint(x, y)
+      .filter(el => el !== instance.tableColumnHandle && instance.canvas.contains(el))
+      .map(el => el.closest("td,th")).find(Boolean);
+    const table = cell?.closest("table");
+    if (!editableTable(instance, table)) return null;
+    const rect = cell.getBoundingClientRect();
+    const row = cell.parentElement;
+    const rowRect = row.getBoundingClientRect();
+    const candidates = [];
+    const add = (axis, index, distance) => {
+      if (index >= 0 && distance <= 5) candidates.push({ table, axis, index, distance });
+    };
+    const col = cell.cellIndex;
+    if ((Math.abs(x - rect.left) <= 5 || Math.abs(x - rect.right) <= 5) && rectangularTable(table)) {
+      if (col > 0) add("column", col - 1, Math.abs(x - rect.left));
+      if (col < row.cells.length - 1) add("column", col, Math.abs(x - rect.right));
+    }
+    // Row heights are safe for horizontal merges, but not vertical spans.
+    if ((Math.abs(y - rowRect.top) <= 5 || Math.abs(y - rowRect.bottom) <= 5) &&
+        Array.from(table.rows).every(r => Array.from(r.cells).every(c => c.rowSpan === 1))) {
+      if (row.rowIndex > 0) add("row", row.rowIndex - 1, Math.abs(y - rowRect.top));
+      add("row", row.rowIndex, Math.abs(y - rowRect.bottom));
+    }
+    return candidates.sort((a, b) => a.distance - b.distance)[0] || null;
+  }
+
+  function positionTableResizeHandle(instance, target) {
+    const handle = instance.tableColumnHandle;
+    const { table, axis, index } = target;
+    const rect = table.getBoundingClientRect();
+    const host = instance.element.getBoundingClientRect();
+    const canvas = instance.canvas.getBoundingClientRect();
+    const left = Math.max(rect.left, canvas.left), right = Math.min(rect.right, canvas.right);
+    const top = Math.max(rect.top, canvas.top), bottom = Math.min(rect.bottom, canvas.bottom);
+    handle.dataset.resizeAxis = axis;
+    handle.setAttribute("aria-label", axis === "row" ? "Resize table row" : "Resize table column");
+    handle.title = "";
+    if (axis === "row") {
+      const edge = table.rows[index].getBoundingClientRect().bottom;
+      handle.style.left = `${left - host.left}px`;
+      handle.style.top = `${edge - host.top - 5}px`;
+      handle.style.width = `${Math.max(0, right - left)}px`;
+      handle.style.height = "10px";
+    } else {
+      const edge = table.rows[0].cells[index].getBoundingClientRect().right;
+      handle.style.left = `${edge - host.left - 5}px`;
+      handle.style.top = `${top - host.top}px`;
+      handle.style.width = "10px";
+      handle.style.height = `${Math.max(0, bottom - top)}px`;
+    }
+    handle.hidden = false;
+  }
+
   function updateTableColumnHover(instance, target) {
-    if (instance.tableMove || instance.tableColumnResize || !instance.selectedTable) return;
-    const outside = !target || !(instance.selectedTable.contains(target) ||
-      instance.tableColumnHandle.contains(target));
-    if (outside === instance.tableColumnPointerOutside) return;
-    instance.tableColumnPointerOutside = outside;
-    if (outside) instance.tableColumnHandle.hidden = true;
-    else positionTableControls(instance);
+    if (instance.tableMove || instance.tableColumnResize || !instance.tableColumnHandle) return;
+    const point = instance.tableHoverPoint;
+    const hit = point && target !== null ? tableResizeTargetAt(instance, point.x, point.y) : null;
+    instance.tableResizeTarget = hit;
+    if (hit) positionTableResizeHandle(instance, hit);
+    else instance.tableColumnHandle.hidden = true;
   }
 
   // Only direct children of the canvas are valid table drop destinations.
@@ -1233,20 +1280,28 @@
     instance.tableMoveHandle.focus({ preventScroll: true });
   }
 
-  function startTableColumnResize(instance, event) {
-    const table = instance.selectedTable;
-    if (event.button !== 0 || !editableTable(instance, table) || !rectangularTable(table)) return;
-    const index = instance.tableColumnIndex;
-    if (!Number.isInteger(index) || index < 0 || index >= table.rows[0].cells.length - 1) return;
+  function startTableColumnResize(instance, event, explicitTarget = null) {
+    const target = explicitTarget || instance.tableResizeTarget;
+    const table = target?.table;
+    if (event.button !== 0 || !editableTable(instance, table) || instance.tableMove || instance.tableColumnResize) return;
+    const { axis, index } = target;
+    if (axis === "column" && (!rectangularTable(table) || index < 0 || index >= table.rows[0].cells.length - 1)) return;
+    if (axis === "row" && (!table.rows[index] || Array.from(table.rows).some(r => Array.from(r.cells).some(c => c.rowSpan !== 1)))) return;
     event.preventDefault();
+    instance.canvas.focus({ preventScroll: true });
     if (instance.contextTools) instance.contextTools.hidden = true;
     remember(instance);
     const widths = Array.from(table.rows[0].cells, c => c.getBoundingClientRect().width);
     const total = widths.reduce((a, b) => a + b, 0);
-    if (total <= 0) return;
-    instance.tableColumnResize = { table, pointerId: event.pointerId, startX: event.clientX,
-      index, widths, total, changed: false, savedLayout: table.style.tableLayout,
-      savedWidths: Array.from(table.rows, row => Array.from(row.cells, cell => cell.style.width)) };
+    if (axis === "column" && total <= 0) return;
+    const row = axis === "row" ? table.rows[index] : null;
+    instance.tableColumnResize = { table, axis, index, pointerId: event.pointerId,
+      startX: event.clientX, startY: event.clientY, widths, total, changed: false,
+      row, rowHeight: row?.getBoundingClientRect().height, savedHeight: row?.style.height,
+      savedLayout: table.style.tableLayout,
+      savedWidths: axis === "column" ? Array.from(table.rows, r => Array.from(r.cells, cell => cell.style.width)) : null };
+    instance.tableColumnHandle.classList.add("az-is-dragging");
+    positionTableResizeHandle(instance, target);
     try { instance.tableColumnHandle.setPointerCapture(event.pointerId); } catch (_) { /* optional */ }
   }
 
@@ -1264,6 +1319,13 @@
     if (!state || event.pointerId !== state.pointerId || !instance.canvas.contains(state.table)) return;
     event.preventDefault();
     const index = state.index;
+    if (state.axis === "row") {
+      const height = Math.max(12, Math.min(1000, Math.round(state.rowHeight + event.clientY - state.startY)));
+      state.row.style.height = Math.abs(height - state.rowHeight) >= 1 ? `${height}px` : state.savedHeight;
+      state.changed = state.row.style.height !== state.savedHeight;
+      positionTableResizeHandle(instance, state);
+      return;
+    }
     const delta = event.clientX - state.startX;
     const minWidth = Math.min(50, (state.widths[index] + state.widths[index + 1]) / 2);
     const left = Math.max(minWidth, Math.min(state.widths[index] + state.widths[index + 1] - minWidth, state.widths[index] + delta));
@@ -1273,44 +1335,35 @@
     next[index + 1] = state.widths[index] + state.widths[index + 1] - left;
     applyTableColumnWidths(state.table, next, state.total);
     state.changed = Math.abs(left - state.widths[index]) >= 1;
-    positionTableColumnDuringResize(instance, state.table, index);
-  }
-
-  function positionTableColumnDuringResize(instance, table, index) {
-    const edge = table.rows[0].cells[index].getBoundingClientRect().right;
-    const rect = table.getBoundingClientRect();
-    const host = instance.element.getBoundingClientRect();
-    instance.tableColumnHandle.style.left = `${edge - host.left - 5}px`;
-    instance.tableColumnHandle.style.top = `${rect.top - host.top}px`;
-    instance.tableColumnHandle.style.height = `${rect.height}px`;
+    positionTableResizeHandle(instance, state);
   }
 
   function finishTableColumnResize(instance, event, cancel = false) {
     const state = instance.tableColumnResize;
     if (!state || (event && event.pointerId !== undefined && event.pointerId !== state.pointerId)) return;
     instance.tableColumnResize = null;
-    // A capture can outlive Escape or a cancelled gesture until pointerup.
+    const handle = instance.tableColumnHandle;
+    handle.classList.remove("az-is-dragging");
     try {
-      if (instance.tableColumnHandle.hasPointerCapture(state.pointerId))
-        instance.tableColumnHandle.releasePointerCapture(state.pointerId);
+      if (handle.hasPointerCapture(state.pointerId)) handle.releasePointerCapture(state.pointerId);
     } catch (_) { /* capture may already be lost */ }
     if ((cancel || !state.changed) && instance.canvas.contains(state.table)) {
-      state.table.style.tableLayout = state.savedLayout;
-      for (const [r, row] of Array.from(state.table.rows).entries())
-        for (const [c, cell] of Array.from(row.cells).entries()) cell.style.width = state.savedWidths[r][c];
-    } else if (state.changed) {
+      if (state.axis === "row") state.row.style.height = state.savedHeight;
+      else {
+        state.table.style.tableLayout = state.savedLayout;
+        for (const [r, row] of Array.from(state.table.rows).entries())
+          for (const [c, cell] of Array.from(row.cells).entries()) cell.style.width = state.savedWidths[r][c];
+      }
+    } else if (state.changed && instance.canvas.contains(state.table)) {
       changed(instance);
-      message(instance, "Column widths updated. Use Undo to restore them.", "success");
+      message(instance, state.axis === "row" ? "Row height updated. Use Undo to restore it." : "Column widths updated. Use Undo to restore them.", "success");
     }
+    if (event?.pointerType === "mouse" || event?.pointerType === "pen")
+      instance.tableHoverPoint = { x: event.clientX, y: event.clientY };
+    else if (cancel) instance.tableHoverPoint = null;
     positionTableControls(instance);
     updateContextTools(instance);
-    // pointerup is retargeted to the captured handle, even outside the table.
-    if (event?.pointerType === "mouse" || event?.pointerType === "pen")
-      updateTableColumnHover(instance, document.elementFromPoint(event.clientX, event.clientY));
-    else if (cancel) {
-      const point = instance.tableHoverPoint;
-      updateTableColumnHover(instance, point ? document.elementFromPoint(point.x, point.y) : null);
-    }
+    updateTableColumnHover(instance);
   }
 
   function cellAtNode(instance, node) {
@@ -2775,8 +2828,7 @@
     positionTableControls(instance);
     // Scrolling can move the table away from a stationary mouse pointer.
     const point = instance.tableHoverPoint;
-    if (point && instance.selectedTable)
-      updateTableColumnHover(instance, document.elementFromPoint(point.x, point.y));
+    if (point) updateTableColumnHover(instance);
   }
 
   function menuTriggers(instance) {
@@ -3403,7 +3455,7 @@
       revision: previous?.revision || 0, sourceMode: false, isComposing: false,
       selectedImage: null, activeCell: null, editingLink: null,
       selectedTable: null, tableColumnIndex: 0, tableMove: null, tableColumnResize: null,
-      tableColumnPointerOutside: false, tableHoverPoint: null,
+      tableResizeTarget: null, tableHoverPoint: null,
       page: previous?.page || { paper: "A4", orientation: "portrait", margin: "normal" }
     };
     // On first mount the canvas is empty and the textarea owns the initial HTML.
@@ -3468,14 +3520,25 @@
       // Normal pointerup already finished; unexpected capture loss rolls back.
       finishTableColumnResize(instance, event, true);
     }, { signal });
-    instance.tableColumnHandle.addEventListener("keydown", event => {
-      if (!["ArrowLeft", "ArrowRight"].includes(event.key) || !instance.selectedTable) return;
+    function keyboardTableResize(event, target) {
+      if (!target || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
+      const keys = target.axis === "row" ? ["ArrowUp", "ArrowDown"] : ["ArrowLeft", "ArrowRight"];
+      if (!keys.includes(event.key)) return;
       event.preventDefault();
-      const pointerId = -1;
-      startTableColumnResize(instance, { button: 0, preventDefault() {}, pointerId, clientX: 0 });
-      dragTableColumnResize(instance, { pointerId, preventDefault() {}, clientX: event.key === "ArrowLeft" ? -8 : 8 });
+      const pointerId = -1, delta = event.key === keys[0] ? -8 : 8;
+      startTableColumnResize(instance, { button: 0, preventDefault() {}, pointerId, clientX: 0, clientY: 0 }, target);
+      dragTableColumnResize(instance, { pointerId, preventDefault() {}, clientX: delta, clientY: delta });
       finishTableColumnResize(instance, { pointerId });
-      instance.tableColumnHandle.focus({ preventScroll: true });
+      instance.tableMoveHandle.focus({ preventScroll: true });
+    }
+    instance.tableColumnHandle.addEventListener("keydown", event => keyboardTableResize(event, instance.tableResizeTarget), { signal });
+    // The move grip remains an accessible keyboard entry point when no edge is hovered.
+    instance.tableMoveHandle.addEventListener("keydown", event => {
+      const table = instance.selectedTable;
+      if (!table) return;
+      const axis = ["ArrowUp", "ArrowDown"].includes(event.key) ? "row" : "column";
+      const index = axis === "row" ? (instance.activeCell?.closest("table") === table ? instance.activeCell.parentElement.rowIndex : 0) : instance.tableColumnIndex;
+      keyboardTableResize(event, { table, axis, index });
     }, { signal });
     instance.toolbar.addEventListener("mousedown", event => {
       if (event.target.closest("button")) event.preventDefault();
@@ -3791,21 +3854,6 @@
         instance.activeCell ? Array.from(instance.activeCell.parentElement.cells).indexOf(instance.activeCell) : 0);
       updateContextTools(instance);
     }, { signal });
-    instance.canvas.addEventListener("pointermove", event => {
-      if (instance.tableMove || instance.tableColumnResize || event.pointerType === "touch") return;
-      const cell = event.target.closest?.("td,th");
-      const table = cell?.closest("table") || event.target.closest?.("table");
-      if (editableTable(instance, table)) {
-        let index = instance.tableColumnIndex;
-        if (cell) {
-          const current = Array.from(cell.parentElement.cells).indexOf(cell);
-          if (current < cell.parentElement.cells.length - 1 &&
-              Math.abs(event.clientX - cell.getBoundingClientRect().right) < 15) index = current;
-        }
-        if (table !== instance.selectedTable || index !== instance.tableColumnIndex)
-          selectTableControls(instance, table, index);
-      }
-    }, { signal });
     instance.canvas.addEventListener("mouseup", () => selectedRange(instance), { signal });
     instance.canvas.addEventListener("keyup", () => {
       selectedRange(instance);
@@ -3905,7 +3953,12 @@
       if (!instance.toolbar.contains(event.target) && !instance.menuPanel?.hidden) closeMenu(instance);
     }, { signal });
     document.addEventListener("pointermove", event => {
-      if (event.pointerType === "touch" || !instance.selectedTable) return;
+      if (event.pointerType === "touch") return;
+      if (event.buttons && !instance.tableColumnResize && !instance.tableMove) {
+        instance.tableHoverPoint = null;
+        updateTableColumnHover(instance, null);
+        return;
+      }
       instance.tableHoverPoint = { x: event.clientX, y: event.clientY };
       updateTableColumnHover(instance, event.target);
     }, { passive: true, signal });

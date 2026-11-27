@@ -43,15 +43,17 @@ async def main():
         await root.locator('[data-compact-quick] [data-quick-command="table"]').click()
         assert await canvas.locator('table').count()==1
         assert await canvas.locator('table').evaluate('(t)=>t.parentElement.classList.contains("az-azunt-editor-canvas")'), 'new table must be a root block'
-        assert await move.is_visible() and await resize.is_visible(), 'grips missing after toolbar insertion'
+        assert await move.is_visible() and not await resize.is_visible(), 'move grip missing or idle resize visible'
         html=await page.evaluate('AzuntEditor.getHtml("browser-test")')
         assert html.index('<p>Before') < html.index('<table') < html.index('Destination')
         assert 'AB' in html and 'CD' in html and 'after' in html and 'Destination' in html, html
-        print('PASS:', 'host' if host_handles else 'fallback', 'toolbar insertion splits paragraph without losing text; both grips visible')
+        print('PASS:', 'host' if host_handles else 'fallback', 'toolbar insertion splits paragraph without losing text; move grip visible')
 
         # Last-column selection should expose the last INTERNAL separator.
         await canvas.locator('table tr:first-child td').last.click()
-        assert await move.is_visible() and await resize.is_visible(), 'last column hides grips'
+        assert await move.is_visible() and not await resize.is_visible(), 'last column selection hides move grip or shows idle resize'
+        last=await canvas.locator('table tr:first-child td').last.bounding_box()
+        await page.mouse.move(last['x']+2,last['y']+last['height']/2)
         box=await resize.bounding_box()
         assert box and box['height']>20
         widths_before=await canvas.locator('table tr:first-child td').evaluate_all('(cells)=>cells.map(c=>c.getBoundingClientRect().width)')
@@ -67,7 +69,7 @@ async def main():
         # Existing HTML may legitimately wrap table in a div. It still needs grips.
         await page.evaluate('AzuntEditor.setHtml("browser-test", "<p>One</p><div><p>Caption</p><table><tr><td>A</td><td>B</td></tr></table></div><p>Two</p>")')
         await canvas.locator('table td').last.click()
-        assert await move.is_visible() and await resize.is_visible(), 'wrapped table hides grips'
+        assert await move.is_visible() and not await resize.is_visible(), 'wrapped table hides move grip or shows idle resize'
         # Keyboard move must use root-level sibling to avoid NotFoundError.
         await move.focus()
         await page.keyboard.press('Alt+ArrowDown')

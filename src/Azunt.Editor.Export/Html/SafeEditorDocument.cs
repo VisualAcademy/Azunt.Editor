@@ -329,6 +329,9 @@ internal sealed class SafeEditorDocument
         }
         var align = node.Style("text-align").ToLowerInvariant();
         if (align is "left" or "right" or "center" or "justify") styles.Add($"text-align:{align}");
+        if (node.Name == "tr" && Regex.IsMatch(node.Style("height"), @"^(?:[1-9]\d{0,2}|1000)px$",
+            RegexOptions.CultureInvariant, TimeSpan.FromSeconds(1)))
+            styles.Add($"height:{node.Style("height")}");
         if (node.Name is "table" or "td" or "th")
         {
             var borderColor = node.Style("border-color");

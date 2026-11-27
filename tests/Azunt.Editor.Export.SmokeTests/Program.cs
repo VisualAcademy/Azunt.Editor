@@ -108,6 +108,12 @@ Require(resizedTableHtml.Contains("width:41.500%") && resizedTableHtml.Contains(
 Require(!resizedTableHtml.Contains("position:"), "Export HTML drops unsupported CSS");
 Require(!EditorHtmlSanitizer.Sanitize("<td style='width:500%'>Bad</td>").Contains("width:"),
     "Export HTML rejects invalid column widths");
+var rowResizeExportHtml = EditorHtmlSanitizer.Sanitize(
+    "<table><tr style='height:80px;position:fixed'><td>Row</td></tr>" +
+    "<tr style='height:9999px'><td>Invalid</td></tr></table>");
+Require(rowResizeExportHtml.Contains("height:80px"), "Export HTML retains bounded row heights");
+Require(!rowResizeExportHtml.Contains("9999px") && !rowResizeExportHtml.Contains("position:"),
+    "Export HTML rejects excessive row heights and unrelated CSS");
 var advancedHtml = EditorHtmlSanitizer.Sanitize(
     "<table style='border-color:#cc0000;border-width:2px'>" +
     "<tr><td colspan='2'>Merged heading</td><td>Third</td></tr>" +

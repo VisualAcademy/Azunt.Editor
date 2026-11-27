@@ -768,9 +768,15 @@
 }
 .az-azunt-editor .az-azunt-editor-table-move-handle.az-is-dragging { cursor: grabbing; }
 .az-azunt-editor .az-azunt-editor-table-column-handle {
-  width: 10px; min-height: 18px; border: none; border-radius: 3px;
-  background: linear-gradient(to right, transparent 3px, #2563eb 3px, #2563eb 6px, transparent 6px);
-  cursor: col-resize;
+  width: 10px; min-height: 0; border: none; border-radius: 0;
+  background: transparent; cursor: col-resize;
+}
+.az-azunt-editor .az-azunt-editor-table-column-handle[data-resize-axis="row"] { cursor: row-resize; }
+.az-azunt-editor .az-azunt-editor-table-column-handle.az-is-dragging {
+  background: linear-gradient(to right, transparent 4px, #2563eb 4px, #2563eb 6px, transparent 6px);
+}
+.az-azunt-editor .az-azunt-editor-table-column-handle[data-resize-axis="row"].az-is-dragging {
+  background: linear-gradient(to bottom, transparent 4px, #2563eb 4px, #2563eb 6px, transparent 6px);
 }
 .az-azunt-editor .az-azunt-editor-table-drop-marker {
   position: absolute; z-index: 11; height: 3px; border-radius: 3px;

@@ -28,7 +28,7 @@ async def main():
             await page.evaluate('(h) => AzuntEditor.setHtml("browser-test", h)',html)
             await canvas.locator('td').first.click()
             assert await move.is_visible(), 'move grip missing'
-            assert await resize.is_visible(), 'resize grip missing'
+            assert not await resize.is_visible(), 'idle resize hit area should be hidden'
             before=await page.evaluate('AzuntEditor.getHtml("browser-test")')
             assert before.index('Before') < before.index('<table') < before.index('After')
             move_box=await move.bounding_box()
@@ -48,6 +48,8 @@ async def main():
             assert saved.index('<table') < saved.index('After'),saved
             print('PASS: undo restores original table location')
             await canvas.locator('td').first.click()
+            cell_box=await canvas.locator('td').first.bounding_box()
+            await page.mouse.move(cell_box['x']+cell_box['width']-2,cell_box['y']+cell_box['height']/2)
             resize_box=await resize.bounding_box()
             assert resize_box and resize_box['height']>20,resize_box
             widths_before=await canvas.locator('tr').first.locator('td').evaluate_all('(cells) => cells.map(c => c.getBoundingClientRect().width)')

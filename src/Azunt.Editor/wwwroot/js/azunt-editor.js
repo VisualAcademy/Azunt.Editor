@@ -1097,7 +1097,7 @@
     move.style.top = `${rect.top - host.top + 2}px`;
     const resize = instance.tableColumnHandle;
     const col = instance.tableColumnIndex;
-    if (!rectangularTable(table) || !Number.isInteger(col) || col < 0 || col >= table.rows[0].cells.length - 1) {
+    if (instance.tableColumnPointerOutside || !rectangularTable(table) || !Number.isInteger(col) || col < 0 || col >= table.rows[0].cells.length - 1) {
       resize.hidden = true;
       return;
     }
@@ -1111,8 +1111,13 @@
   function selectTableControls(instance, table, column = 0) {
     if (!editableTable(instance, table)) {
       instance.selectedTable = null;
+      instance.tableColumnPointerOutside = false;
       clearTableHandles(instance);
       return;
+    }
+    if (instance.selectedTable !== table) {
+      instance.tableColumnPointerOutside = false;
+      instance.tableHoverPoint = null;
     }
     instance.selectedTable = table;
     // Clicking the final column should expose the last *inner* boundary,
@@ -1121,6 +1126,18 @@
     instance.tableColumnIndex = rectangularTable(table)
       ? Math.min(Math.max(0, column), count - 2) : column;
     positionTableControls(instance);
+  }
+
+  // The caret/selected table and the transient resize guide are independent.
+  // Moving outside must not clear the cell selection or break table commands.
+  function updateTableColumnHover(instance, target) {
+    if (instance.tableMove || instance.tableColumnResize || !instance.selectedTable) return;
+    const outside = !target || !(instance.selectedTable.contains(target) ||
+      instance.tableColumnHandle.contains(target));
+    if (outside === instance.tableColumnPointerOutside) return;
+    instance.tableColumnPointerOutside = outside;
+    if (outside) instance.tableColumnHandle.hidden = true;
+    else positionTableControls(instance);
   }
 
   // Only direct children of the canvas are valid table drop destinations.
@@ -1272,6 +1289,11 @@
     const state = instance.tableColumnResize;
     if (!state || (event && event.pointerId !== undefined && event.pointerId !== state.pointerId)) return;
     instance.tableColumnResize = null;
+    // A capture can outlive Escape or a cancelled gesture until pointerup.
+    try {
+      if (instance.tableColumnHandle.hasPointerCapture(state.pointerId))
+        instance.tableColumnHandle.releasePointerCapture(state.pointerId);
+    } catch (_) { /* capture may already be lost */ }
     if ((cancel || !state.changed) && instance.canvas.contains(state.table)) {
       state.table.style.tableLayout = state.savedLayout;
       for (const [r, row] of Array.from(state.table.rows).entries())
@@ -1282,6 +1304,13 @@
     }
     positionTableControls(instance);
     updateContextTools(instance);
+    // pointerup is retargeted to the captured handle, even outside the table.
+    if (event?.pointerType === "mouse" || event?.pointerType === "pen")
+      updateTableColumnHover(instance, document.elementFromPoint(event.clientX, event.clientY));
+    else if (cancel) {
+      const point = instance.tableHoverPoint;
+      updateTableColumnHover(instance, point ? document.elementFromPoint(point.x, point.y) : null);
+    }
   }
 
   function cellAtNode(instance, node) {
@@ -2730,6 +2759,10 @@
       positionContextTools(instance, target);
     }
     positionTableControls(instance);
+    // Scrolling can move the table away from a stationary mouse pointer.
+    const point = instance.tableHoverPoint;
+    if (point && instance.selectedTable)
+      updateTableColumnHover(instance, document.elementFromPoint(point.x, point.y));
   }
 
   function menuTriggers(instance) {
@@ -3324,6 +3357,7 @@
       revision: previous?.revision || 0, sourceMode: false, isComposing: false,
       selectedImage: null, activeCell: null, editingLink: null,
       selectedTable: null, tableColumnIndex: 0, tableMove: null, tableColumnResize: null,
+      tableColumnPointerOutside: false, tableHoverPoint: null,
       page: previous?.page || { paper: "A4", orientation: "portrait", margin: "normal" }
     };
     // On first mount the canvas is empty and the textarea owns the initial HTML.
@@ -3383,6 +3417,10 @@
     instance.tableColumnHandle.addEventListener("pointermove", event => dragTableColumnResize(instance, event), { signal });
     instance.tableColumnHandle.addEventListener("pointerup", event => finishTableColumnResize(instance, event), { signal });
     instance.tableColumnHandle.addEventListener("pointercancel", event => finishTableColumnResize(instance, event, true), { signal });
+    instance.tableColumnHandle.addEventListener("lostpointercapture", event => {
+      // Normal pointerup already finished; unexpected capture loss rolls back.
+      finishTableColumnResize(instance, event, true);
+    }, { signal });
     instance.tableColumnHandle.addEventListener("keydown", event => {
       if (!["ArrowLeft", "ArrowRight"].includes(event.key) || !instance.selectedTable) return;
       event.preventDefault();
@@ -3818,6 +3856,21 @@
     }, { signal });
     document.addEventListener("pointerdown", event => {
       if (!instance.toolbar.contains(event.target) && !instance.menuPanel?.hidden) closeMenu(instance);
+    }, { signal });
+    document.addEventListener("pointermove", event => {
+      if (event.pointerType === "touch" || !instance.selectedTable) return;
+      instance.tableHoverPoint = { x: event.clientX, y: event.clientY };
+      updateTableColumnHover(instance, event.target);
+    }, { passive: true, signal });
+    document.addEventListener("pointerout", event => {
+      if (event.pointerType === "touch" || event.relatedTarget) return;
+      instance.tableHoverPoint = null;
+      updateTableColumnHover(instance, null);
+    }, { passive: true, signal });
+    window.addEventListener("blur", () => {
+      finishTableColumnResize(instance, null, true);
+      instance.tableHoverPoint = null;
+      updateTableColumnHover(instance, null);
     }, { signal });
     window.addEventListener("scroll", () => repositionOverlays(instance), { capture: true, passive: true, signal });
     window.addEventListener("resize", () => repositionOverlays(instance), { passive: true, signal });

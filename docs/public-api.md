@@ -225,3 +225,23 @@ without firing the user change event. No HTML, history, or form field is added
 by a style change. A host must persist the enum separately; it is not embedded
 in the saved HTML. The existing sanitizer still determines supported inline
 styles. Print, Preview, PDF, Word, and Excel are unaffected in this release.
+
+
+## Shared document styles (0.8.10)
+
+No new host API or service registration is needed. The native `preview` and
+`print` commands capture the current `ContentRendering` value when invoked.
+The print window defaults to Match document and reuses the document rules from
+the loaded Azunt.Editor CSS. Its layout selector can choose the three legacy
+print-only profiles without changing the source editor or its HTML/history.
+The print window does not follow subsequent changes in the originating editor.
+
+Use the matching version of `azunt-editor.js` and `azunt-editor.css` from the
+normal same-origin static assets. The stylesheet must be readable via CSSOM
+(directly loaded or bundled as top-level rules); if missing or inaccessible,
+Preview shows an explicit warning and Standard fallback, and direct Print
+requires user confirmation via the print button instead of auto-printing.
+Only built-in document rules are shared; host CSS is not copied. Printing uses
+light colors and actual paper margins, and can wrap code and paginate tables.
+Browser PDF output via Print / Save as PDF is covered; server PDF, DOCX and XLSX
+remain independent. Persist `ContentRendering` separately if needed.

@@ -2533,8 +2533,46 @@
     instance.findStatus.textContent = `${count} replaced`;
   }
 
+  // Reuse the actual built-in document CSS instead of maintaining a second
+  // set of font, spacing and table presets for printing. Only the editor's
+  // document rules are copied, not host CSS, toolbar rules or dark UI media.
+  function sharedPrintDocumentCss() {
+    const baseSelectors = new Set([
+      ".az-azunt-editor", ".az-azunt-editor *", ".az-azunt-editor [hidden]",
+      ".az-azunt-editor-canvas", ".az-azunt-editor-canvas > :first-child",
+      ".az-azunt-editor-canvas h2", ".az-azunt-editor-canvas p",
+      ".az-azunt-editor .az-azunt-editor-canvas :is(p, h1, h2, h3, h4, h5, h6, li, blockquote, th, td)",
+      ".az-azunt-editor-canvas a", ".az-azunt-editor-canvas img",
+      ".az-azunt-editor-canvas table", ".az-azunt-editor-canvas th, .az-azunt-editor-canvas td",
+      ".az-azunt-editor-canvas th",
+      '.az-azunt-editor-canvas input[type="checkbox"], .az-azunt-editor-canvas input[type="radio"]',
+      '.az-azunt-editor-canvas input[type="checkbox"]:disabled, .az-azunt-editor-canvas input[type="radio"]:disabled',
+      ".az-azunt-editor .az-code-block", ".az-azunt-editor .az-code-block > code"
+    ]);
+    for (const sheet of Array.from(document.styleSheets)) {
+      let rules;
+      try { rules = Array.from(sheet.cssRules); } catch { continue; }
+      // Identify the bundled stylesheet (also works with inline test fixtures
+      // or same-origin bundlers). Do not read unrelated application sheets.
+      if (!rules.some(rule => rule.selectorText === '.az-azunt-editor[data-content-rendering="compact-report"]'
+          && rule.style?.getPropertyValue("--azunt-document-size"))) continue;
+      if (!rules.some(rule => rule.selectorText === ".az-azunt-editor-canvas")) continue;
+      return rules.filter(rule => {
+        const selector = rule.selectorText || "";
+        return baseSelectors.has(selector) ||
+          (selector.startsWith(".az-azunt-editor[data-content-rendering=") ||
+           selector.startsWith(".az-azunt-editor:is([data-content-rendering="));
+      }).map(rule => rule.cssText).join("\n");
+    }
+    return "";
+  }
+
   function printDocument(instance, previewOnly = false) {
     const html = readHtml(instance);
+    const sharedCss = sharedPrintDocumentCss();
+    const rendering = getContentRendering(instance.element.id);
+    const renderingLabel = { Standard: "Standard", BrowserDefault: "Browser Default",
+      CompactReport: "Compact Report", BusinessDocument: "Business Document", Minimal: "Minimal" }[rendering];
     const paper = allowedPageSizes.has(instance.page.paper) ? instance.page.paper : "A4";
     const orientation = allowedOrientations.has(instance.page.orientation) ? instance.page.orientation : "portrait";
     const margin = allowedMargins[instance.page.margin] || allowedMargins.normal;
@@ -2549,17 +2587,26 @@
       `#azunt-print-controls{position:sticky;top:0;padding:12px;background:#e2e8f0;z-index:10;display:flex;align-items:center;gap:12px;flex-wrap:wrap}` +
       `#azunt-print-controls button,#azunt-print-controls select{padding:8px 12px;cursor:pointer;font:inherit}` +
       `.az-azunt-print-page{margin:15px auto;padding:${margin};background:#fff;width:${pageWidth}mm;min-height:${pageHeight}mm;box-shadow:0 1px 12px #ccc;overflow-wrap:break-word}` +
-      `.az-azunt-print-page img{max-width:100%;height:auto}` +
-      `.az-azunt-print-page table{border-collapse:collapse;width:100%;break-inside:auto}` +
+      `.az-azunt-print-page:not([data-print-profile="document"]) img{max-width:100%;height:auto}` +
+      `.az-azunt-print-page table{break-inside:auto}` +
+      `.az-azunt-print-page:not([data-print-profile="document"]) table{border-collapse:collapse;width:100%}` +
       `.az-azunt-print-page thead{display:table-header-group}.az-azunt-print-page tfoot{display:table-footer-group}` +
       `.az-azunt-print-page tr{break-inside:avoid;page-break-inside:avoid}` +
       `.az-azunt-print-page hr[data-azunt-page-break="true"]{break-before:page;page-break-before:always;border:0;margin:0;height:0}` +
-      `.az-azunt-print-page th,.az-azunt-print-page td{border:1px solid #aaa;padding:6px}` +
+      `.az-azunt-print-page:not([data-print-profile="document"]) :is(th,td){border:1px solid #aaa;padding:6px}` +
       `.az-azunt-print-page[data-print-profile="compact"]{font-size:10pt;line-height:1.2}` +
       `.az-azunt-print-page[data-print-profile="compact"] :is(td,th){font-size:9pt;padding:3px;border-width:.5px}` +
       `.az-azunt-print-page[data-print-profile="comfortable"]{font-size:14pt;line-height:1.6}` +
       `.az-azunt-print-page[data-print-profile="comfortable"] :is(td,th){font-size:12pt;padding:8px}` +
+      sharedCss +
+      // Paper margins replace the editor's canvas padding. Exclude editor UI
+      // chrome and scrolling, but retain the selected document typography.
+      `\n.az-azunt-print-page .az-azunt-editor{border:0;border-radius:0;max-width:none}` +
+      `.az-azunt-print-page .az-azunt-editor > .az-azunt-editor-canvas{padding:0;overflow:visible;min-height:0;display:flow-root}` +
       `.az-azunt-print-page pre{white-space:pre-wrap;overflow-wrap:anywhere}` +
+      `.az-azunt-print-page .az-azunt-editor .az-code-block{display:block;padding:15px;overflow:visible;white-space:pre-wrap;overflow-wrap:anywhere}` +
+      `.az-azunt-print-page .az-azunt-editor .az-code-block > code{display:block;min-width:0;padding:0;white-space:pre-wrap;overflow-wrap:anywhere}` +
+      `.az-azunt-print-page hr[data-azunt-page-break="true"]::after{content:none}` +
       `@media print{body{background:#fff}#azunt-print-controls{display:none}.az-azunt-print-page{margin:0;padding:0;width:auto;min-height:0;box-shadow:none}}`;
     win.document.open();
     win.document.write("<!doctype html><html><head><meta charset='utf-8'><title>Azunt Editor — Print Preview</title></head><body></body></html>");
@@ -2578,6 +2625,11 @@
     label.textContent = "Layout: ";
     const select = win.document.createElement("select");
     select.setAttribute("aria-label", "Print layout");
+    if (sharedCss) {
+      const option = win.document.createElement("option");
+      option.value = "document"; option.textContent = `Match document (${renderingLabel})`;
+      select.appendChild(option);
+    }
     for (const name of ["Standard", "Compact", "Comfortable"]) {
       const option = win.document.createElement("option");
       option.value = name.toLowerCase(); option.textContent = name;
@@ -2590,10 +2642,23 @@
     controls.appendChild(status);
     const page = win.document.createElement("main");
     page.className = "az-azunt-print-page";
-    page.dataset.printProfile = "standard";
-    page.innerHTML = html; // Already restricted by sanitizeHtml; do not inject raw user HTML.
+    const documentRoot = win.document.createElement("div");
+    const content = win.document.createElement("div");
+    content.innerHTML = html; // Already restricted by sanitizeHtml; do not inject raw user HTML.
+    documentRoot.appendChild(content);
+    page.appendChild(documentRoot);
+    const applyProfile = () => {
+      const match = select.value === "document" && !!sharedCss;
+      page.dataset.printProfile = match ? "document" : select.value;
+      documentRoot.className = match ? "az-azunt-editor" : "";
+      content.className = match ? "az-azunt-editor-canvas" : "";
+      if (match && contentRenderings[rendering]) documentRoot.dataset.contentRendering = contentRenderings[rendering];
+      else delete documentRoot.dataset.contentRendering;
+    };
+    select.value = sharedCss ? "document" : "standard";
+    applyProfile();
     win.document.body.append(controls, page);
-    select.addEventListener("change", () => { page.dataset.printProfile = select.value; });
+    select.addEventListener("change", applyProfile);
     const images = Array.from(page.querySelectorAll("img"));
     const ready = images.map(image => image.complete ? Promise.resolve() :
       new Promise(resolve => {
@@ -2608,9 +2673,10 @@
       window.clearTimeout(timer);
       if (win.closed) return false;
       const missing = images.some(image => !image.complete || !image.naturalWidth);
-      status.textContent = missing ? "Some images could not load. Check the preview before printing." : "";
+      status.textContent = [missing ? "Some images could not load. Check the preview before printing." : "",
+        !sharedCss ? "Document styles unavailable. Review the Standard print layout before printing." : ""].filter(Boolean).join(" ");
       button.disabled = false;
-      return !missing;
+      return !missing && !!sharedCss;
     });
     button.addEventListener("click", () => { if (!win.closed) { win.focus(); win.print(); } });
     // On image failure show the preview instead of silently printing incomplete content.

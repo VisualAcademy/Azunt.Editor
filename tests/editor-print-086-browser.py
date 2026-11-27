@@ -35,7 +35,7 @@ with sync_playwright() as p:
     canvas = popup.locator('.az-azunt-print-page')
     assert abs(canvas.evaluate('e=>e.getBoundingClientRect().width') - 355.6*96/25.4) < 2
     assert popup.evaluate('window.opener === null')
-    assert canvas.get_attribute('data-print-profile') == 'standard'
+    assert canvas.get_attribute('data-print-profile') == 'document'
     counts = {}
     for profile, font, pad in [('standard',16,6),('compact',12,3),('comfortable',16,8)]:
         popup.locator('select[aria-label="Print layout"]').select_option(profile)

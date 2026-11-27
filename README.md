@@ -2,7 +2,7 @@
 
 A lightweight rich-text editor for ASP.NET Core MVC, Razor Pages, and Blazor Server.
 
-Version: **0.8.9** · .NET 10
+Version: **0.8.10** · .NET 10
 
 ## Projects
 - `src/Azunt.Editor` — shared editor components, JavaScript, and CSS
@@ -367,5 +367,18 @@ selector in Format / More or Classic with `ShowDocumentStyleSelector="true"`
 Initialize `Rendering` to `EditorContentRendering.CompactReport` for dense
 reports. These styles are presentation settings in this release: store the
 selected enum separately if it must survive reload, and apply it to both Edit
-and View. Print, Preview and export retain their existing independent settings.
+and View. Starting in 0.8.10, browser Preview and Print match the current
+document style by default; server PDF, Word and Excel keep independent settings.
 See [release notes](docs/release-0.8.9.md).
+
+
+## Shared document styles (0.8.10)
+
+File → Print Preview and Print now default to **Match document**, using the
+current built-in content rendering preset and the same document CSS as Edit
+and View. Standard, Compact and Comfortable remain available as explicit
+print-only overrides. Paper size and margins still control the printable area;
+editing canvas padding is not added a second time. The print window uses a
+light document, including when the editor UI is dark. No HTML or host style
+selection is changed. The optional server-side export package is unchanged.
+See [release notes](docs/release-0.8.10.md).

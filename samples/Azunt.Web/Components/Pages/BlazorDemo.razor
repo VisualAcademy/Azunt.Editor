@@ -6,9 +6,6 @@
 @using Azunt.Editor.Export.Html
 @using Azunt.Web.Images
 @using Azunt.Editor.Export.Components
-@using Microsoft.JSInterop
-@inject IEditorExportService ExportService
-@inject IJSRuntime JS
 @inject ILogger<BlazorDemo> Logger
 @inject NavigationManager Navigation
 @inject Microsoft.AspNetCore.Hosting.IWebHostEnvironment HostEnvironment
@@ -60,7 +57,7 @@
 <div class="actions">
     <button class="primary" @onclick="SaveAsync">Save HTML</button>
     <button @onclick="RestoreAsync">Restore saved HTML</button>
-    <AzuntExportButtons ExportRequested="ExportAsync" />
+    <AzuntExportIntegration @ref="_export" ReadHtml="ReadExportHtmlAsync" CreateOptions="CreateExportOptionsAsync" />
 </div>
 @if (!string.IsNullOrEmpty(_notice))
 {
@@ -76,17 +73,15 @@
 
 @code {
     private bool UseClassic => new Uri(Navigation.Uri).Query.Contains("toolbar=classic", StringComparison.OrdinalIgnoreCase);
-    private static readonly IReadOnlyList<EditorCustomCommand> EditorCommands = new[] {
-        new EditorCustomCommand { Id = "downloadPdf", Label = "Download PDF", Group = "Export" },
-        new EditorCustomCommand { Id = "downloadWord", Label = "Download Word", Group = "Export" },
-        new EditorCustomCommand { Id = "downloadExcel", Label = "Download Excel", Group = "Export" }
-    };
-    private Task HandleEditorCommand(string id) => id switch {
-        "downloadPdf" => ExportAsync(EditorExportFormat.Pdf),
-        "downloadWord" => ExportAsync(EditorExportFormat.Docx),
-        "downloadExcel" => ExportAsync(EditorExportFormat.Xlsx),
-        _ => Task.CompletedTask
-    };
+    private AzuntExportIntegration? _export;
+    private static readonly IReadOnlyList<EditorCustomCommand> EditorCommands =
+        EditorExportMenu.CreateCommands((id, label) => new EditorCustomCommand
+        { Id = id, Label = label, Group = "Export" });
+
+    private async Task HandleEditorCommand(string id)
+    {
+        if (_export is not null) await _export.TryHandleCommandAsync(id);
+    }
 
     private bool UseStoredImages => HostEnvironment.IsDevelopment() &&
         new Uri(Navigation.Uri).Query.Contains("images=stored", StringComparison.OrdinalIgnoreCase);
@@ -179,33 +174,22 @@
         };
     }
 
-    private async Task ExportAsync(EditorExportFormat format)
+    private ValueTask<string> ReadExportHtmlAsync() =>
+        (_editor ?? throw new InvalidOperationException("Editor component reference is unavailable.")).GetHtmlAsync();
+
+    private async ValueTask<EditorExportOptions> CreateExportOptionsAsync(EditorExportFormat format)
     {
-        if (_editor is null) { _notice = "Editor component reference is unavailable."; return; }
-        try
+        var editor = _editor ?? throw new InvalidOperationException("Editor component reference is unavailable.");
+        var page = await editor.GetPageSettingsAsync();
+        var matchStyle = (format == EditorExportFormat.Pdf && _matchPdfStyle) ||
+            (format == EditorExportFormat.Docx && _wordLayout == "MatchDocument");
+        return new EditorExportOptions
         {
-            var html = await _editor.GetHtmlAsync(); // Always current DOM, not stale bind state.
-            var page = await _editor.GetPageSettingsAsync();
-            var matchStyle = (format == EditorExportFormat.Pdf && _matchPdfStyle) ||
-                (format == EditorExportFormat.Docx && _wordLayout == "MatchDocument");
-            var documentStyle = matchStyle ? ResolveExportStyle(await _editor.GetDocumentStyleIdAsync()) : null;
-            var result = await ExportService.ExportAsync(html, format, new EditorExportOptions
-            {
-                FileName = "Azunt-Blazor-Report", Title = "Blazor editor report",
-                PaperSize = page.PaperSize, Orientation = page.Orientation, Margin = page.Margin,
-                DocumentStyle = documentStyle,
-                WordLayout = Enum.TryParse<EditorWordLayout>(_wordLayout, out var wordLayout) ? wordLayout : EditorWordLayout.Standard
-            });
-            using var stream = new MemoryStream(result.Content, writable: false);
-            using var reference = new DotNetStreamReference(stream);
-            await JS.InvokeVoidAsync("AzuntEditorExport.download", result.FileName, reference);
-            _notice = $"Created {result.FileName} ({result.Content.Length:N0} bytes).";
-        }
-        catch (Exception ex)
-        {
-            Logger.LogError(ex, "Blazor editor export failed for format {Format}.", format);
-            _notice = "Download failed. Check the application logs for details.";
-        }
+            FileName = "Azunt-Blazor-Report", Title = "Blazor editor report",
+            PaperSize = page.PaperSize, Orientation = page.Orientation, Margin = page.Margin,
+            DocumentStyle = matchStyle ? ResolveExportStyle(await editor.GetDocumentStyleIdAsync()) : null,
+            WordLayout = Enum.TryParse<EditorWordLayout>(_wordLayout, out var wordLayout) ? wordLayout : EditorWordLayout.Standard
+        };
     }
 
     private async Task RestoreAsync()

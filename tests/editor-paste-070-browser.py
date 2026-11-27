@@ -116,10 +116,10 @@ async def main():
             result = await read()
             assert 'Plain text fallback' in result and '<script' not in result, result
 
-            # Document/source HTML handling remains unchanged (paste-specific transform only).
+            # Legacy document/source HTML now retains bounded inline emphasis; paste still uses semantic wrappers.
             direct = await page.evaluate('''() => AzuntEditor.sanitizeHtml(
                 '<p><span style="font-weight:bold">Direct</span></p>')''')
-            assert 'font-weight' not in direct and '<strong>' not in direct, direct
+            assert 'font-weight: bold' in direct and '<strong>' not in direct, direct
             # No unexpected new event wiring when returning from View.
             await page.evaluate('''() => { window.exportHits=[];
               AzuntEditor.registerCommand({id:'exportPdf', label:'Download PDF', group:'export',

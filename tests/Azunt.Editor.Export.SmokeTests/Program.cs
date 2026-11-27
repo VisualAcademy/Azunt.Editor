@@ -12,6 +12,25 @@ using var provider = new ServiceCollection()
         options.BrowserChannel = Environment.GetEnvironmentVariable("AZUNT_TEST_BROWSER_CHANNEL"))
     .BuildServiceProvider();
 var exporter = provider.GetRequiredService<IEditorExportService>();
+// The integration menu is package-independent and never treats a numeric
+// form value as a valid format or an unrelated host command as an export.
+var menu = EditorExportMenu.GetCommands();
+Require(menu.Count == 3 && menu.Select(c => c.Id).Distinct().Count() == 3, "Default export commands");
+foreach (var command in menu)
+{
+    Require(EditorExportMenu.TryGetFormat(command.Id, out var mapped) && mapped == command.Format, "Export command routing");
+    Require(EditorExportMenu.TryParseFormFormat(command.Format.ToString(), out var posted) && posted == command.Format, "Form routing");
+}
+Require(!EditorExportMenu.TryGetFormat("quickSignature", out _), "Unrelated host command preserved");
+Require(!EditorExportMenu.TryParseFormFormat("0", out _) && !EditorExportMenu.TryParseFormFormat("99", out _) &&
+    !EditorExportMenu.TryParseFormFormat("Pdf,Docx", out _), "Reject invalid form formats");
+Require(EditorExportMenu.GetCommands(EditorExportFormats.Pdf | EditorExportFormats.Excel).Select(c => c.Format)
+    .SequenceEqual(new[] { EditorExportFormat.Pdf, EditorExportFormat.Xlsx }), "Per-format filtering");
+Require(EditorExportMenu.GetCommands(EditorExportFormats.None).Count == 0 &&
+    !EditorExportMenu.IsEnabled(EditorExportFormats.All, (EditorExportFormat)99), "Disabled or invalid formats");
+Require(EditorExportMenu.CreateCommands((id, label) => id + ":" + label, EditorExportFormats.Word)
+    .SequenceEqual(new[] { "azuntExportWord:Download Word" }), "Host command adapter");
+
 var samplePng = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/sq8AAAAASUVORK5CYII=";
 var html = "<h2>Export test</h2><p><strong>Bold</strong> and <a href=\"https://example.com\">a link</a></p>" +
     "<table><tr><th>Asset</th><th>Status</th></tr><tr><td>EGM-001</td><td>=1+1</td></tr></table>" +
@@ -629,6 +648,29 @@ if (Environment.GetEnvironmentVariable("AZUNT_TEST_PDF") == "1")
             await File.WriteAllBytesAsync(Path.Combine(outputDirectory, $"{layout}.pdf"), result.Content);
         }
     }
+}
+
+// Legacy report fixtures, deliberately synthetic and shared in spirit with the browser regression.
+{
+    var legacyMarkup = "<p ALIGN='center'><span style='font-family:Verdana, Geneva, sans-serif;font-size:small;color:skyblue;font-weight:bold'>Report</span></p>" +
+        "<font face='Arial' size='3' color='#123'>Legacy</font><ol type='I' start='4'><li>Fourth</li></ol>" +
+        "<table width='100%' style='border:0'><tr><td class='text-right' style='width:120px;border-style:none'>Name</td>" +
+        "<td style='width:47.4561%;border:0;border-top:1px solid black;vertical-align:bottom'>Signature</td></tr></table>" +
+        "<p style='position:fixed;background-image:url(https://invalid.example/)'>Safe</p>";
+    var legacyClean = EditorHtmlSanitizer.Sanitize(legacyMarkup);
+    foreach (var expected in new[] { "font-size:13px", "Verdana", "#87ceeb", "font-weight:bold", "font-size:16px", "#112233", "start=\"4\"", "list-style-type:upper-roman", "width:100%", "width:120px", "width:47.456%", "border:0", "border-top-style:solid", "border-top-color:#000000", "vertical-align:bottom", "text-align:right" })
+        Require(legacyClean.Contains(expected), "Legacy formatting is preserved: " + expected);
+    Require(!legacyClean.Contains("<font") && !legacyClean.Contains("position:") && !legacyClean.Contains("background-image") && !legacyClean.Contains("class="), "No arbitrary CSS or legacy classes are retained");
+    var browserBorder = EditorHtmlSanitizer.Sanitize("<table><tr><td style='border-width:1px 0px 0px;border-top-style:solid;border-top-color:rgb(0,0,0);border-right-style:initial'>Line</td></tr></table>");
+    Require(browserBorder.Contains("border:0") && browserBorder.Contains("border-top-width:1px"), "Browser serialized top-only border survives server normalization");
+}
+
+{
+    var legacyWord = await exporter.ExportAsync("<ol type='I' start='4'><li>Fourth</li><li>Fifth</li></ol>", EditorExportFormat.Docx);
+    using var legacyWordPackage = new ZipArchive(new MemoryStream(legacyWord.Content), ZipArchiveMode.Read);
+    using var legacyWordXml = legacyWordPackage.GetEntry("word/document.xml")!.Open();
+    var legacyWordText = XDocument.Load(legacyWordXml).Root!.Value;
+    Require(legacyWordText.Contains("IV. Fourth") && legacyWordText.Contains("V. Fifth"), "Roman list labels survive DOCX export");
 }
 
 Console.WriteLine("Azunt.Editor.Export smoke tests passed (DOCX, XLSX; PDF is opt-in).");

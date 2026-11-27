@@ -7,7 +7,7 @@
     <AddRazorSupportForMvc>true</AddRazorSupportForMvc>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageId>Azunt.Editor.Export</PackageId>
-    <Version>0.8.13</Version>
+    <Version>0.8.15</Version>
     <Authors>Azunt</Authors>
     <Description>Optional PDF, DOCX and XLSX document exports for ASP.NET Core applications.</Description>
     <PackageTags>azunt;editor;pdf;docx;xlsx;playwright;openxml</PackageTags>

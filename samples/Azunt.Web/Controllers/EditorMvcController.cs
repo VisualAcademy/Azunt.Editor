@@ -64,7 +64,7 @@ public sealed class EditorMvcController(IEditorExportService exporter, ILogger<E
         }
         if (!string.IsNullOrWhiteSpace(exportFormat))
         {
-            if (!Enum.TryParse<EditorExportFormat>(exportFormat, true, out var format))
+            if (!EditorExportMenu.TryParseFormFormat(exportFormat, out var format))
                 return BadRequest("Unsupported export format.");
             try
             {

@@ -2,7 +2,16 @@
 
 A lightweight rich-text editor for ASP.NET Core MVC, Razor Pages, and Blazor Server.
 
-Version: **0.8.13** · .NET 10
+Version: **0.8.15** · .NET 10
+
+## Legacy HTML compatibility (0.8.15)
+
+Recognized legacy font sizes, inline emphasis, Roman/alphabetic list styles,
+report alignment, cell widths, borderless cells and signature rules survive the
+editor, server View and HTML/PDF export cleanup. Word additionally preserves
+flat ordered-list labels and explicit cell borders. Existing image URL safety
+rules remain unchanged. See [0.8.15 release notes](docs/release-0.8.15.md)
+for supported cases, limits and migration checks.
 
 ## Projects
 - `src/Azunt.Editor` — shared editor components, JavaScript, and CSS
@@ -420,3 +429,15 @@ host-defined `EditorExportDocumentStyle` values. The export library does not
 reference the editor library. Null keeps existing PDF/Word profiles; explicit
 format-specific font/padding settings override preset defaults. Excel ignores
 this option. See [public API](docs/public-api.md) and [release notes](docs/release-0.8.13.md).
+
+
+## Common export integration (0.8.14)
+
+The optional `AzuntExportIntegration` Blazor component owns the common download
+workflow (current HTML, per-request options, busy protection, streamed browser
+download and status). `EditorExportMenu.CreateCommands` adapts the built-in
+PDF/Word/Excel commands to the host's command type without a package dependency.
+Existing `AzuntExportButtons` and export service calls remain supported. MVC and
+Razor Pages can opt into menu-to-form routing with `editor-id` on their existing
+`azunt-export-buttons` tag helper. See [public API](docs/public-api.md) and
+[0.8.14 release notes](docs/release-0.8.14.md) for examples and limitations.

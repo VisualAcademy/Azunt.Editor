@@ -57,7 +57,7 @@ public sealed class RazorModel(IEditorExportService exporter, ILogger<RazorModel
         }
         if (!string.IsNullOrWhiteSpace(exportFormat))
         {
-            if (!Enum.TryParse<EditorExportFormat>(exportFormat, true, out var format))
+            if (!EditorExportMenu.TryParseFormFormat(exportFormat, out var format))
                 return BadRequest("Unsupported export format.");
             try
             {

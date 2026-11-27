@@ -92,12 +92,12 @@ internal static class DocxDocumentExporter
         }
         if (node.Name is "ul" or "ol")
         {
-            var i = 0;
+            var i = node.Name == "ol" && int.TryParse(node.Attribute("start"), out var start) && start is >= 1 and <= 9999 ? start - 1 : 0;
             foreach (var item in node.Children.Where(c => c.Name == "li"))
             {
                 i++;
                 var para = Paragraph(item);
-                para.Append(new W.Run(new W.Text(node.Name == "ul" ? "• " : $"{i}. ")));
+                para.Append(new W.Run(new W.Text(node.Name == "ul" ? "• " : LegacyListMarker(i, node.Style("list-style-type")) + ". ")));
                 AppendInline(item, para, part, new Format(), ref drawingId, layout.BodyImageWidth, layout.ImageHeight);
                 body.Append(para);
             }
@@ -176,6 +176,24 @@ internal static class DocxDocumentExporter
         if (source.Length == 0) paragraph.Append(Run("", format));
     }
 
+    private static string LegacyListMarker(int value, string style)
+    {
+        if ((style is "upper-roman" or "lower-roman") && value is >= 1 and <= 3999)
+        {
+            var result = new System.Text.StringBuilder();
+            foreach (var (number, numeral) in new[] { (1000,"M"),(900,"CM"),(500,"D"),(400,"CD"),(100,"C"),(90,"XC"),(50,"L"),(40,"XL"),(10,"X"),(9,"IX"),(5,"V"),(4,"IV"),(1,"I") })
+                while (value >= number) { result.Append(numeral); value -= number; }
+            return style == "lower-roman" ? result.ToString().ToLowerInvariant() : result.ToString();
+        }
+        if ((style is "upper-alpha" or "lower-alpha") && value > 0)
+        {
+            var result = new System.Text.StringBuilder();
+            while (value > 0) { value--; result.Insert(0, (char)((style == "upper-alpha" ? 'A' : 'a') + value % 26)); value /= 26; }
+            return result.ToString();
+        }
+        return value.ToString(CultureInfo.InvariantCulture);
+    }
+
     private static W.Paragraph Paragraph(SafeEditorDocument.Node node, string fallbackAlignment = "")
     {
         var para = new W.Paragraph();
@@ -201,7 +219,7 @@ internal static class DocxDocumentExporter
         var color = node.Style("border-color").TrimStart('#');
         var explicitBorder = (color.Length == 6 && color.All(Uri.IsHexDigit)) || node.Style("border-width") is ("1px" or "2px" or "3px" or "4px");
         if (color.Length != 6 || !color.All(Uri.IsHexDigit)) color = layout.DocumentStyle?.BorderColor[1..] ?? "AEB8C6";
-        var borderValue = layout.DocumentStyle?.BrowserDefaults == true && !explicitBorder ? W.BorderValues.Nil : W.BorderValues.Single;
+        var borderValue = node.Style("border-style") == "none" || (layout.DocumentStyle?.BrowserDefaults == true && !explicitBorder) ? W.BorderValues.Nil : W.BorderValues.Single;
         var pixels = node.Style("border-width") switch { "2px" => 2, "3px" => 3, "4px" => 4, _ => 1 };
         var thickness = (uint)(pixels * 6);
         var borders = new W.TableBorders(
@@ -276,6 +294,26 @@ internal static class DocxDocumentExporter
                     Width = width.ToString(CultureInfo.InvariantCulture)
                 });
                 if (span > 1) cellProperties.Append(new W.GridSpan { Val = span });
+                var topBorder = cellNode.Style("border-top-style") == "solid" &&
+                    cellNode.Style("border-top-width") is ("1px" or "2px" or "3px" or "4px") &&
+                    Regex.IsMatch(cellNode.Style("border-top-color"), @"\A#[0-9a-fA-F]{6}\z");
+                var borderless = cellNode.Style("border-style") == "none";
+                if (borderless || topBorder)
+                {
+                    var cellBorders = new W.TableCellBorders();
+                    if (topBorder)
+                        cellBorders.AddChild(new W.TopBorder { Val = W.BorderValues.Single,
+                            Size = (uint)((cellNode.Style("border-top-width")[0] - '0') * 6), Color = cellNode.Style("border-top-color")[1..] });
+                    else cellBorders.AddChild(new W.TopBorder { Val = W.BorderValues.Nil });
+                    if (borderless)
+                    {
+                        cellBorders.AddChild(new W.LeftBorder { Val = W.BorderValues.Nil });
+                        cellBorders.AddChild(new W.BottomBorder { Val = W.BorderValues.Nil });
+                        cellBorders.AddChild(new W.RightBorder { Val = W.BorderValues.Nil });
+                    }
+                    cellProperties.AddChild(cellBorders);
+                }
+
                 if (layout.DocumentStyle is { } documentStyle)
                 {
                     var fill = cellNode.Style("background-color");
@@ -473,10 +511,10 @@ internal static class DocxDocumentExporter
         var highlight = node.Style("background-color");
         return current with
         {
-            Bold = current.Bold || node.Name is "b" or "strong" or "th",
-            Italic = current.Italic || node.Name is "i" or "em",
-            Underline = current.Underline || node.Name == "u",
-            Strike = current.Strike || node.Name is "s" or "strike" or "del",
+            Bold = current.Bold || node.Name is ("b" or "strong" or "th") || node.Style("font-weight") is ("bold" or "600" or "700" or "800" or "900"),
+            Italic = current.Italic || node.Name is ("i" or "em") || node.Style("font-style") == "italic",
+            Underline = current.Underline || node.Name == "u" || node.Style("text-decoration-line").Split(' ').Contains("underline"),
+            Strike = current.Strike || node.Name is ("s" or "strike" or "del") || node.Style("text-decoration-line").Split(' ').Contains("line-through"),
             Script = node.Name is "sup" or "sub" ? node.Name : current.Script,
             Font = font.Length > 0 ? font : current.Font,
             Size = size ?? current.Size,

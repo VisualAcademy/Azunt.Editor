@@ -52,7 +52,7 @@ internal sealed class SafeEditorDocument
     {
         "p", "div", "h1", "h2", "h3", "h4", "strong", "b", "em", "i", "u", "s", "del", "strike",
         "ul", "ol", "li", "blockquote", "pre", "code", "sup", "sub", "table", "thead", "tbody",
-        "tfoot", "tr", "td", "th", "br", "hr", "img", "a", "span", "input"
+        "tfoot", "tr", "td", "th", "br", "hr", "img", "a", "span", "input", "font"
     };
     private static readonly HashSet<string> Omitted = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -137,13 +137,14 @@ internal sealed class SafeEditorDocument
             var node = new Node(tag);
             foreach (Match match in AttrPattern.Matches(token[nameEnd..]))
             {
-                var key = match.Groups["key"].Value;
-                if (key is not ("src" or "href" or "alt" or "width" or "height" or "style" or "data-azunt-page-break" or "data-language" or "colspan" or "type" or "checked")) continue;
+                var key = match.Groups["key"].Value.ToLowerInvariant();
+                if (key is not ("src" or "href" or "alt" or "width" or "height" or "style" or "data-azunt-page-break" or "data-language" or "colspan" or "type" or "checked" or "start" or "align" or "valign" or "face" or "size" or "color" or "border" or "class")) continue;
                 var value = match.Groups["double"].Success ? match.Groups["double"].Value
                     : match.Groups["single"].Success ? match.Groups["single"].Value
                     : match.Groups["bare"].Value;
                 node.Attributes[key] = WebUtility.HtmlDecode(value);
             }
+            NormalizeLegacy(node);
             stack.Peek().Children.Add(node);
             if (!Void.Contains(tag) && !token.EndsWith('/'))
             {
@@ -200,7 +201,7 @@ internal sealed class SafeEditorDocument
                 !(isManagedImageUrl is not null && IsSafeLocalImageReference(src) && isManagedImageUrl(src)))
                 return; // Never allow arbitrary remote image URLs.
         }
-        output.Append('<').Append(node.Name);
+        output.Append('<').Append(node.Name == "font" ? "span" : node.Name);
         if (node.Name == "pre" && IsCodeBlock(node))
             output.Append(" class=\"az-code-block\" data-language=\"").Append(node.Attribute("data-language")).Append('"');
         if (node.Name == "input")
@@ -222,6 +223,8 @@ internal sealed class SafeEditorDocument
             output.Append(" data-azunt-page-break=\"true\"");
         if (node.Name == "a" && TryLink(node.Attribute("href"), out var href))
             output.Append(" href=\"").Append(HtmlEncoder.Default.Encode(href)).Append("\" rel=\"noopener noreferrer\"");
+        if (node.Name == "ol" && Regex.IsMatch(node.Attribute("start"), @"\A[1-9]\d{0,3}\z"))
+            output.Append(" start=\"").Append(node.Attribute("start")).Append('"');
         var style = SafeStyle(node);
         if (style.Length > 0) output.Append(" style=\"").Append(HtmlEncoder.Default.Encode(style)).Append('"');
         output.Append('>');
@@ -232,7 +235,7 @@ internal sealed class SafeEditorDocument
             output.Append("<code>").Append(HtmlEncoder.Default.Encode(source.PlainText())).Append("</code>");
         }
         else foreach (var child in node.Children) Append(child, output, isManagedImageUrl);
-        output.Append("</").Append(node.Name).Append('>');
+        output.Append("</").Append(node.Name == "font" ? "span" : node.Name).Append('>');
     }
 
     internal static bool IsSafeLocalImageReference(string? url)
@@ -314,14 +317,97 @@ internal sealed class SafeEditorDocument
         return true;
     }
 
+    // Only recognize specific legacy formatting. Never copy CSS declarations wholesale to output.
+    private static void NormalizeLegacy(Node node)
+    {
+        var properties = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var declaration in node.Attribute("style").Split(';', StringSplitOptions.RemoveEmptyEntries))
+        {
+            var colon = declaration.IndexOf(':');
+            if (colon > 0) properties.TryAdd(declaration[..colon].Trim(), declaration[(colon + 1)..].Trim());
+        }
+        string Read(string key) => properties.TryGetValue(key, out var value) ? value : "";
+        void Put(string key, string value) { if (value.Length > 0) properties[key] = value; }
+        var family = Read("font-family");
+        if (family.Length == 0 && node.Name == "font") family = node.Attribute("face");
+        family = family.Split(',')[0].Trim(' ', '\'', '"');
+        var knownFamily = Fonts.FirstOrDefault(f => f.Equals(family, StringComparison.OrdinalIgnoreCase));
+        if (knownFamily is not null) Put("font-family", knownFamily);
+        else if (family.Equals("Cedarville Cursive", StringComparison.OrdinalIgnoreCase)) Put("font-family", "Cedarville Cursive");
+        var size = Read("font-size").ToLowerInvariant();
+        var pixelSize = size switch { "xx-small" => 9, "x-small" => 10, "small" => 13, "medium" => 16, "large" => 18, "x-large" => 24, "xx-large" => 32, _ => 0 };
+        if (pixelSize == 0 && size.Length == 0 && node.Name == "font" && int.TryParse(node.Attribute("size"), out var legacySize) && legacySize is >= 1 and <= 7)
+            pixelSize = new[] { 10, 13, 16, 18, 24, 32, 48 }[legacySize - 1];
+        if (pixelSize > 0) Put("font-size", $"{pixelSize}px");
+        if (node.Name == "font" && Read("color").Length == 0) Put("color", node.Attribute("color"));
+        foreach (var key in new[] { "color", "background-color", "border-color", "border-top-color" })
+            if (LegacyColor(Read(key)) is string color) Put(key, color);
+        if (Read("text-align").Length == 0)
+        {
+            var align = node.Attribute("align").ToLowerInvariant();
+            if (align.Length == 0)
+                align = new[] { "center", "right", "left" }.FirstOrDefault(a => node.Attribute("class").Split(' ').Contains("text-" + a)) ?? "";
+            if (align is "left" or "right" or "center" or "justify") Put("text-align", align);
+        }
+        if ((node.Name is "ol" or "ul") && Read("list-style-type").Length == 0)
+            Put("list-style-type", node.Attribute("type") switch { "1" => "decimal", "a" => "lower-alpha", "A" => "upper-alpha", "i" => "lower-roman", "I" => "upper-roman", "disc" => "disc", "circle" => "circle", "square" => "square", _ => "" });
+        if (node.Name is "table" or "td" or "th")
+        {
+            var width = Read("width");
+            if (width.Length == 0) width = node.Attribute("width");
+            if (Regex.IsMatch(width, @"\A(?:[1-9]\d{0,2}|1\d{3}|2000)\z")) width += "px";
+            if (Regex.IsMatch(width, @"\A\d{1,3}\.\d{4,12}%\z") && double.TryParse(width[..^1], System.Globalization.NumberStyles.AllowDecimalPoint, System.Globalization.CultureInfo.InvariantCulture, out var percent) && percent <= 100)
+                width = Math.Round(percent, 3).ToString("0.###", System.Globalization.CultureInfo.InvariantCulture) + "%";
+            Put("width", width);
+            if (Read("border") is ("0" or "0px" or "none") || Read("border-style") == "none" || Read("border-width") is ("0" or "0px") || (node.Name == "table" && node.Attribute("border") == "0"))
+                Put("border-style", "none");
+            // Chromium serializes a top-only border over a zero border using a three-value width shorthand.
+            var topOnly = Regex.Match(Read("border-width"), @"\A([1-4]px) 0px 0px(?: 0px)?\z");
+            if (topOnly.Success && Read("border-top-style") == "solid")
+            {
+                Put("border-style", "none");
+                Put("border-top-width", topOnly.Groups[1].Value);
+            }
+            var top = Regex.Match(Read("border-top"), @"\A([1-4]px)\s+solid\s+(.+)\z");
+            if (top.Success && LegacyColor(top.Groups[2].Value) is string topColor)
+            { Put("border-top-width", top.Groups[1].Value); Put("border-top-style", "solid"); Put("border-top-color", topColor); }
+            if (Read("vertical-align").Length == 0) Put("vertical-align", node.Attribute("valign"));
+            if (Read("white-space").Length == 0 && node.Attribute("class").Split(' ').Contains("text-nowrap")) Put("white-space", "nowrap");
+        }
+        if (node.Name == "img")
+            foreach (var key in new[] { "width", "height" })
+                if (Pixel.Match(Read(key)) is { Success: true } dimension && int.TryParse(dimension.Groups["value"].Value, out var n) && n is >= 1 and <= 2500)
+                    node.Attributes[key] = n.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        if (Read("text-decoration-line").Length == 0 && Read("text-decoration") is ("underline" or "line-through" or "underline line-through" or "line-through underline" or "none")) Put("text-decoration-line", Read("text-decoration"));
+        node.Attributes["style"] = string.Join(';', properties.Select(p => $"{p.Key}:{p.Value}"));
+    }
+
+    private static string? LegacyColor(string source)
+    {
+        var raw = source.Trim().ToLowerInvariant();
+        if (HexColor.IsMatch(raw)) return raw;
+        if (Regex.IsMatch(raw, @"\A#[0-9a-f]{3}\z")) return "#" + string.Concat(raw[1..].Select(c => new string(c, 2)));
+        var named = raw switch { "black" => "#000000", "white" => "#ffffff", "red" => "#ff0000", "blue" => "#0000ff", "green" => "#008000", "yellow" => "#ffff00", "skyblue" => "#87ceeb", "gray" or "grey" => "#808080", _ => null };
+        if (named is not null) return named;
+        var rgb = Regex.Match(raw, @"\Argb\(\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})\s*\)\z");
+        if (!rgb.Success) return null;
+        var parts = Enumerable.Range(1, 3).Select(i => int.Parse(rgb.Groups[i].Value)).ToArray();
+        return parts.Any(n => n > 255) ? null : $"#{parts[0]:x2}{parts[1]:x2}{parts[2]:x2}";
+    }
+
     private static string SafeStyle(Node node)
     {
         var styles = new List<string>();
         var family = node.Style("font-family").Trim(' ', '\'', '"');
-        if (Fonts.Contains(family)) styles.Add($"font-family:'{family}'");
+        if (Fonts.Contains(family) || family == "Cedarville Cursive") styles.Add($"font-family:'{family}'");
         var fontSize = Pixel.Match(node.Style("font-size"));
         if (fontSize.Success && int.TryParse(fontSize.Groups["value"].Value, out var pixels) && pixels is >= 8 and <= 72)
             styles.Add($"font-size:{pixels}px");
+        if (Regex.IsMatch(node.Style("font-size"), @"\A(?:[6-9]|[1-4]\d|5[0-4])pt\z")) styles.Add($"font-size:{node.Style("font-size")}");
+        if (Regex.IsMatch(node.Style("font-weight"), @"\A(?:normal|bold|[1-9]00)\z")) styles.Add($"font-weight:{node.Style("font-weight")}");
+        if (node.Style("font-style") is "normal" or "italic") styles.Add($"font-style:{node.Style("font-style")}");
+        if (node.Style("text-decoration-line") is "none" or "underline" or "line-through" or "underline line-through" or "line-through underline") styles.Add($"text-decoration-line:{node.Style("text-decoration-line")}");
+        if ((node.Name is "ol" or "ul") && node.Style("list-style-type") is ("decimal" or "lower-alpha" or "upper-alpha" or "lower-roman" or "upper-roman" or "disc" or "circle" or "square")) styles.Add($"list-style-type:{node.Style("list-style-type")}");
         foreach (var colorStyle in new[] { "color", "background-color" })
         {
             var color = node.Style(colorStyle);
@@ -338,7 +424,16 @@ internal sealed class SafeEditorDocument
             if (HexColor.IsMatch(borderColor)) styles.Add($"border-color:{borderColor}");
             var width = node.Style("border-width");
             if (width is "1px" or "2px" or "3px" or "4px") styles.Add($"border-width:{width}");
-            if (styles.Any(s => s.StartsWith("border-", StringComparison.Ordinal))) styles.Add("border-style:solid");
+            if (node.Style("border-style") == "none") styles.Add("border:0");
+            else if (styles.Any(s => s.StartsWith("border-", StringComparison.Ordinal))) styles.Add("border-style:solid");
+            if (node.Name != "table" && Regex.IsMatch(node.Style("width"), @"\A(?:[1-9]\d{0,2}|1\d{3}|2000)px\z")) styles.Add($"width:{node.Style("width")}");
+            if (node.Name is "td" or "th")
+            {
+                if (node.Style("vertical-align") is "top" or "middle" or "bottom") styles.Add($"vertical-align:{node.Style("vertical-align")}");
+                if (node.Style("white-space") == "nowrap") styles.Add("white-space:nowrap");
+                if (node.Style("border-top-style") == "solid" && node.Style("border-top-width") is ("1px" or "2px" or "3px" or "4px") && HexColor.IsMatch(node.Style("border-top-color")))
+                    { styles.Add($"border-top-width:{node.Style("border-top-width")}"); styles.Add("border-top-style:solid"); styles.Add($"border-top-color:{node.Style("border-top-color")}"); }
+            }
             if (node.Name == "table" && Regex.IsMatch(node.Style("width"), @"^(?:100|[1-9]\d?(?:\.\d{1,3})?)%$",
                 RegexOptions.CultureInvariant, TimeSpan.FromSeconds(1)))
                 styles.Add($"width:{node.Style("width")}");

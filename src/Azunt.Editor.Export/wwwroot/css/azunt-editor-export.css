@@ -1,2 +1,6 @@
 .az-azunt-editor-export-actions{display:inline-flex;align-items:center;flex-wrap:wrap;gap:8px}
 .az-azunt-editor-export-actions button{font:inherit;cursor:pointer}
+.az-azunt-editor-export-actions button:disabled{opacity:.6;cursor:wait}
+.az-azunt-editor-export-status{display:inline-block;align-self:center;font-size:.875em;overflow-wrap:anywhere}
+.az-azunt-editor-export-status[data-kind="success"]{color:#287342}
+.az-azunt-editor-export-status[data-kind="error"]{color:#b42318}

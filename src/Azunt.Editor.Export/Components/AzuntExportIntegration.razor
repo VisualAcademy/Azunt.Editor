@@ -1,0 +1,97 @@
+@namespace Azunt.Editor.Export.Components
+@using Azunt.Editor.Export.Models
+@using Microsoft.JSInterop
+@using Microsoft.Extensions.Logging
+@implements IDisposable
+@inject IEditorExportService ExportService
+@inject IJSRuntime JS
+@inject ILogger<AzuntExportIntegration> Logger
+
+@if (ShowButtons)
+{
+    <div class="az-azunt-editor-export-actions" role="group" aria-label="Export document" aria-busy="@(_busy ? "true" : "false")">
+        @foreach (var command in EditorExportMenu.GetCommands(Formats))
+        {
+            <button type="button" disabled="@_busy" @onclick="() => ExportAsync(command.Format)">@command.Label</button>
+        }
+    </div>
+}
+@if (ShowStatus && !string.IsNullOrEmpty(_notice))
+{
+    <span class="az-azunt-editor-export-status" data-kind="@_kind" role="status">@_notice</span>
+}
+
+@code {
+    /// <summary>Read the live document at the time of export, rather than a cached binding.</summary>
+    [Parameter, EditorRequired] public Func<ValueTask<string>>? ReadHtml { get; set; }
+    /// <summary>Optional per-request options, including current style and page settings.</summary>
+    [Parameter] public Func<EditorExportFormat, ValueTask<EditorExportOptions>>? CreateOptions { get; set; }
+    [Parameter] public EditorExportFormats Formats { get; set; } = EditorExportFormats.All;
+    [Parameter] public bool ShowButtons { get; set; } = true;
+    [Parameter] public bool ShowStatus { get; set; } = true;
+
+    private readonly CancellationTokenSource _lifetime = new();
+    private bool _disposed;
+    private bool _busy;
+    private string? _notice;
+    private string _kind = "info";
+
+    public bool IsBusy => _busy;
+
+    /// <summary>Returns false for unrelated host commands. Recognized disabled commands are consumed.</summary>
+    public async Task<bool> TryHandleCommandAsync(string command)
+    {
+        if (!EditorExportMenu.TryGetFormat(command, out var format)) return false;
+        await ExportAsync(format);
+        return true;
+    }
+
+    public Task ExportAsync(EditorExportFormat format) => InvokeAsync(() => ExportCoreAsync(format));
+
+    private async Task ExportCoreAsync(EditorExportFormat format)
+    {
+        if (_disposed || _busy || !EditorExportMenu.IsEnabled(Formats, format)) return;
+        var cancellationToken = _lifetime.Token;
+        _busy = true;
+        _kind = "info";
+        _notice = "Preparing download…";
+        StateHasChanged();
+        try
+        {
+            var read = ReadHtml ?? throw new InvalidOperationException("An HTML source is required.");
+            var createOptions = CreateOptions;
+            var html = await read();
+            cancellationToken.ThrowIfCancellationRequested();
+            var options = createOptions is null ? new EditorExportOptions() : await createOptions(format);
+            cancellationToken.ThrowIfCancellationRequested();
+            var result = await ExportService.ExportAsync(html, format, options, cancellationToken);
+            cancellationToken.ThrowIfCancellationRequested();
+            using var stream = new MemoryStream(result.Content, writable: false);
+            using var reference = new DotNetStreamReference(stream);
+            await JS.InvokeVoidAsync("AzuntEditorExport.download", cancellationToken, result.FileName, reference);
+            _kind = "success";
+            _notice = $"Created {result.FileName} ({result.Content.Length:N0} bytes).";
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { }
+        catch (JSDisconnectedException) { }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Editor export failed for format {Format}.", format);
+            _kind = "error";
+            _notice = "Download failed. Check the application logs for details.";
+        }
+        finally
+        {
+            _busy = false;
+            if (!_disposed) StateHasChanged();
+        }
+    }
+
+    public void Dispose()
+    {
+        if (_disposed) return;
+        _disposed = true;
+        _lifetime.Cancel();
+        _lifetime.Dispose();
+    }
+}

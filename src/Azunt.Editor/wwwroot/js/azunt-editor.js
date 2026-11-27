@@ -16,7 +16,7 @@
   ]);
   const allowedTags = new Set([
     "p", "div", "h1", "h2", "h3", "h4", "strong", "b", "em", "i", "u", "s", "del", "strike", "ul", "ol", "li",
-    "blockquote", "pre", "code", "sup", "sub", "table", "thead", "tbody", "tfoot", "tr", "td", "th", "br", "hr", "img", "a", "span", "input"
+    "blockquote", "pre", "code", "sup", "sub", "table", "thead", "tbody", "tfoot", "tr", "td", "th", "br", "hr", "img", "a", "span", "input", "font"
   ]);
   const dropWithChildren = new Set([
     "script", "style", "iframe", "frame", "frameset", "object", "embed", "svg", "math", "template",
@@ -53,6 +53,9 @@
   function cleanColor(value) {
     const v = String(value || "").trim().toLowerCase();
     if (hexColor.test(v)) return v;
+    if (/^#[0-9a-f]{3}$/.test(v)) return "#" + v.slice(1).split("").map(c=>c+c).join("");
+    const names = {black:"#000000",white:"#ffffff",red:"#ff0000",blue:"#0000ff",green:"#008000",yellow:"#ffff00",skyblue:"#87ceeb",gray:"#808080",grey:"#808080"};
+    if (Object.hasOwn(names,v)) return names[v];
     const match = /^rgba?\(\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})(?:\s*,\s*1(?:\.0+)?)?\s*\)$/i.exec(v);
     if (match) {
       const numbers = match.slice(1, 4).map(Number);
@@ -104,7 +107,7 @@
       // Form controls are intentionally a tiny whitelist. A saved document must
       // not introduce text/password/file inputs or submit host application forms.
       if (tag === "input" && !["checkbox", "radio"].includes((node.getAttribute("type") || "").toLowerCase())) return;
-      const clean = document.createElement(tag);
+      const clean = document.createElement(tag === "font" ? "span" : tag);
       if (tag === "pre" && codeLanguages.includes(node.getAttribute("data-language"))) {
         const source = Array.from(node.children).find(child => child.localName === "code");
         if (source) {
@@ -134,7 +137,8 @@
         clean.setAttribute("src", src);
         clean.setAttribute("alt", (node.getAttribute("alt") || "").slice(0, 250));
         for (const dimension of ["width", "height"]) {
-          const raw = node.getAttribute(dimension);
+          const cssDimension = node.style[dimension];
+          const raw = /^\d{1,4}px$/.test(cssDimension) ? cssDimension.slice(0,-2) : node.getAttribute(dimension);
           const numeric = Number(raw);
           if (raw !== null && Number.isInteger(numeric) && numeric >= 1 && numeric <= 2500) {
             clean.setAttribute(dimension, String(numeric));
@@ -155,22 +159,39 @@
         }
       }
       // Only allow narrowly-validated formatting properties. Never carry arbitrary CSS.
-      if (tag === "span" || ["p", "div", "h1", "h2", "h3", "h4", "li", "td", "th"].includes(tag)) {
-        const family = (node.style.fontFamily || "").replace(/^['"]|['"]$/g, "");
-        if (allowedFonts.has(family)) clean.style.fontFamily = family.includes(" ") ? `"${family}"` : family;
-        const size = /^(\d{1,2})px$/.exec(node.style.fontSize || "");
-        if (size && Number(size[1]) >= 8 && Number(size[1]) <= 72) clean.style.fontSize = `${Number(size[1])}px`;
-        const color = cleanColor(node.style.color);
+      if (["span", "font", "strong", "b", "em", "i", "u", "s", "a", "ol", "ul"].includes(tag) || ["p", "div", "h1", "h2", "h3", "h4", "li", "td", "th"].includes(tag)) {
+        const rawFamily = node.style.fontFamily || (tag === "font" ? node.getAttribute("face") : "") || "";
+        const firstFamily = rawFamily.split(",")[0].trim().replace(/^['"]|['"]$/g, "");
+        const family = Array.from(allowedFonts).find(f => f.toLowerCase() === firstFamily.toLowerCase()) || (firstFamily.toLowerCase() === "cedarville cursive" ? "Cedarville Cursive" : "");
+        if (family) clean.style.fontFamily = family.includes(" ") ? `"${family}"` : family;
+        const rawSize = node.style.fontSize || "";
+        const keywords = {"xx-small":9,"x-small":10,small:13,medium:16,large:18,"x-large":24,"xx-large":32};
+        const fontSizes = [10,13,16,18,24,32,48];
+        const oldSize = tag === "font" && /^[1-7]$/.test(node.getAttribute("size") || "") ? fontSizes[Number(node.getAttribute("size"))-1] : null;
+        const size = /^(\d{1,2})(px|pt)$/.exec(rawSize);
+        if (size && Number(size[1]) >= (size[2] === "px" ? 8 : 6) && Number(size[1]) <= (size[2] === "px" ? 72 : 54)) clean.style.fontSize = rawSize;
+        else if (Object.hasOwn(keywords, rawSize)) clean.style.fontSize = `${keywords[rawSize]}px`;
+        else if (!rawSize && oldSize) clean.style.fontSize = `${oldSize}px`;
+        if (/^(?:normal|bold|[1-9]00)$/.test(node.style.fontWeight)) clean.style.fontWeight = node.style.fontWeight;
+        if (["normal", "italic"].includes(node.style.fontStyle)) clean.style.fontStyle = node.style.fontStyle;
+        if (/^(?:none|underline|line-through|underline line-through|line-through underline)$/.test(node.style.textDecorationLine)) clean.style.textDecorationLine = node.style.textDecorationLine;
+        const color = cleanColor(node.style.color || (tag === "font" ? node.getAttribute("color") : ""));
         const background = cleanColor(node.style.backgroundColor);
         if (color) clean.style.color = color;
         if (background) clean.style.backgroundColor = background;
       }
       if (["p", "div", "h1", "h2", "h3", "h4", "li", "td", "th", "blockquote"].includes(tag)) {
-        const align = (node.style.textAlign || "").toLowerCase();
+        const align = (node.style.textAlign || node.getAttribute("align") || (["center","right","left"].find(a => node.classList.contains("text-" + a)) || "")).toLowerCase();
         if (["left", "center", "right", "justify"].includes(align)) clean.style.textAlign = align;
         const margin = /^(\d{1,3})px$/.exec(node.style.marginLeft || "");
         if (margin && Number(margin[1]) <= 240 && Number(margin[1]) % 24 === 0)
           clean.style.marginLeft = `${Number(margin[1])}px`;
+      }
+      if (tag === "ol" || tag === "ul") {
+        const typeMap = {"1":"decimal", "a":"lower-alpha", "A":"upper-alpha", "i":"lower-roman", "I":"upper-roman"};
+        const listType = node.style.listStyleType || (tag === "ol" ? typeMap[node.getAttribute("type")] : node.getAttribute("type"));
+        if (["decimal","lower-alpha","upper-alpha","lower-roman","upper-roman","disc","circle","square"].includes(listType)) clean.style.listStyleType = listType;
+        if (tag === "ol" && /^[1-9]\d{0,3}$/.test(node.getAttribute("start") || "")) clean.setAttribute("start",node.getAttribute("start"));
       }
       if (tag === "tr" && /^(?:[1-9]\d{0,2}|1000)px$/.test(node.style.height))
         clean.style.height = node.style.height;
@@ -182,7 +203,20 @@
         if (borderColor || borderWidth) clean.style.borderStyle = "solid";
         // Percentage column widths are generated by the controlled resize grip.
         // Keep only finite, bounded values; arbitrary CSS still cannot persist.
-        const percent = (node.style.width || "").trim();
+        const rawWidth = (node.style.width || node.getAttribute("width") || "").trim();
+        const percent = /^\d{1,3}\.\d{4,12}%$/.test(rawWidth) && parseFloat(rawWidth) <= 100
+          ? `${Number(parseFloat(rawWidth).toFixed(3))}%` : rawWidth;
+        if (tag !== "table" && /^(?:[1-9]\d{0,2}|1\d{3}|2000)(?:px)?$/.test(rawWidth)) clean.style.width = `${parseInt(rawWidth,10)}px`;
+        if (node.style.borderStyle === "none" || node.style.borderWidth === "0px" || (tag === "table" && node.getAttribute("border") === "0")) clean.style.border = "0";
+        if (tag !== "table" && ["Right","Bottom","Left"].every(side => node.style[`border${side}Style`] === "none" || node.style[`border${side}Width`] === "0px")) clean.style.border = "0";
+        if (tag !== "table") {
+          if (["top","middle","bottom"].includes(node.style.verticalAlign || node.getAttribute("valign"))) clean.style.verticalAlign = node.style.verticalAlign || node.getAttribute("valign");
+          if (node.style.borderTopStyle === "solid" && /^[1-4]px$/.test(node.style.borderTopWidth)) {
+            const topColor = cleanColor(node.style.borderTopColor);
+            if (topColor) clean.style.borderTop = `${node.style.borderTopWidth} solid ${topColor}`;
+          }
+          if (node.style.whiteSpace === "nowrap" || node.classList.contains("text-nowrap")) clean.style.whiteSpace = "nowrap";
+        }
         if ((tag === "td" || tag === "th") && /^(?:100|[1-9]?\d(?:\.\d{1,3})?)%$/.test(percent))
           clean.style.width = percent;
         // A newly inserted table fills the content area in every document style.
@@ -2195,6 +2229,14 @@
       if (/(?:^|\s)underline(?:\s|$)/.test(decoration)) wrappers.push("u");
       if (/(?:^|\s)line-through(?:\s|$)/.test(decoration)) wrappers.push("s");
       if (!wrappers.length) continue;
+      // Semantic wrappers already carry these decorations. Keep the established
+      // clipboard contract rather than duplicating them as inline CSS.
+      if (wrappers.includes("strong")) element.style.removeProperty("font-weight");
+      if (wrappers.includes("em")) element.style.removeProperty("font-style");
+      if (wrappers.includes("u") || wrappers.includes("s")) {
+        element.style.removeProperty("text-decoration");
+        element.style.removeProperty("text-decoration-line");
+      }
       let content = document.createDocumentFragment();
       while (element.firstChild) content.appendChild(element.firstChild);
       for (const tag of wrappers) {

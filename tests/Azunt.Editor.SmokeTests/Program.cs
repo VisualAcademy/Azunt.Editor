@@ -197,6 +197,21 @@ var customCommand = new Azunt.Editor.Models.EditorCustomCommand
     Icon = "S", RequiresEdit = true
 };
 Require(customCommand.RequiresEdit && customCommand.Icon == "S", "Custom command options");
+// Legacy report fixtures, deliberately synthetic and shared in spirit with the browser regression.
+{
+    var legacyMarkup = "<p ALIGN='center'><span style='font-family:Verdana, Geneva, sans-serif;font-size:small;color:skyblue;font-weight:bold'>Report</span></p>" +
+        "<font face='Arial' size='3' color='#123'>Legacy</font><ol type='I' start='4'><li>Fourth</li></ol>" +
+        "<table width='100%' style='border:0'><tr><td class='text-right' style='width:120px;border-style:none'>Name</td>" +
+        "<td style='width:47.4561%;border:0;border-top:1px solid black;vertical-align:bottom'>Signature</td></tr></table>" +
+        "<p style='position:fixed;background-image:url(https://invalid.example/)'>Safe</p>";
+    var legacyClean = EditorViewerSanitizer.Sanitize(legacyMarkup);
+    foreach (var expected in new[] { "font-size:13px", "Verdana", "#87ceeb", "font-weight:bold", "font-size:16px", "#112233", "start=\"4\"", "list-style-type:upper-roman", "width:100%", "width:120px", "width:47.456%", "border:0", "border-top-style:solid", "border-top-color:#000000", "vertical-align:bottom", "text-align:right" })
+        Require(legacyClean.Contains(expected), "Legacy formatting is preserved: " + expected);
+    Require(!legacyClean.Contains("<font") && !legacyClean.Contains("position:") && !legacyClean.Contains("background-image") && !legacyClean.Contains("class="), "No arbitrary CSS or legacy classes are retained");
+    var browserBorder = EditorViewerSanitizer.Sanitize("<table><tr><td style='border-width:1px 0px 0px;border-top-style:solid;border-top-color:rgb(0,0,0);border-right-style:initial'>Line</td></tr></table>");
+    Require(browserBorder.Contains("border:0") && browserBorder.Contains("border-top-width:1px"), "Browser serialized top-only border survives server normalization");
+}
+
 Console.WriteLine("Azunt.Editor smoke tests passed.");
 
 static void Require(bool success, string test)

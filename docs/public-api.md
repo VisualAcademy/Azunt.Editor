@@ -301,3 +301,80 @@ to the configured page margins. The Blazor demo defaults to match-document for
 both PDF and Word; its legacy Word profiles and PDF default remain selectable.
 Existing callers do not opt in automatically; MVC/Razor hosts can pass the same
 options to their export service when they resolve the current style ID.
+
+## Common export integration (0.8.14)
+
+Both libraries remain independently installable. Register `AddAzuntEditorExport()`
+and load the Export package CSS and `azunt-editor-export.js` alongside the editor
+assets as in Azunt.Web. The optional Blazor component does not reference the core
+editor. For example (using `Azunt.Editor.Components`, `Azunt.Editor.Models`,
+`Azunt.Editor.Export.Components`, and `Azunt.Editor.Export.Models`):
+
+```razor
+<AzuntEditor @ref="editor" @bind-Value="html"
+    CustomCommands="Commands" CustomCommandInvoked="HandleCommand" />
+<AzuntExportIntegration @ref="exports" ReadHtml="ReadHtmlAsync"
+    CreateOptions="OptionsAsync" ShowButtons="false" />
+
+@code {
+    private AzuntEditor? editor;
+    private AzuntExportIntegration? exports;
+    private string html = "";
+    private static readonly IReadOnlyList<EditorCustomCommand> Commands =
+        EditorExportMenu.CreateCommands((id, label) => new EditorCustomCommand
+        { Id = id, Label = label, Group = "Export" });
+
+    private ValueTask<string> ReadHtmlAsync() => editor!.GetHtmlAsync();
+    private async ValueTask<EditorExportOptions> OptionsAsync(EditorExportFormat format)
+    {
+        var page = await editor!.GetPageSettingsAsync();
+        var style = await editor.GetDocumentStyleIdAsync();
+        return new EditorExportOptions
+        {
+            FileName = "Report", PaperSize = page.PaperSize,
+            Orientation = page.Orientation, Margin = page.Margin,
+            DocumentStyle = format == EditorExportFormat.Xlsx ? null :
+                EditorExportDocumentStyle.FromPreset(style)
+        };
+    }
+    private async Task HandleCommand(string id)
+    {
+        if (exports is not null && await exports.TryHandleCommandAsync(id)) return;
+        // Existing host command dispatch, if any.
+    }
+}
+```
+
+The example uses built-in document styles; resolve `custom:` IDs using the
+trusted host registry as described above. `CreateOptions` is optional and
+returns legacy export defaults if omitted. `ReadHtml` is required. `ShowButtons`
+defaults to true; set it false for toolbar-only operation. `ShowStatus` defaults
+to true. `Formats` is a flags enum (Pdf, Word, Excel, All, None); pass the same
+flags to `CreateCommands` to show only the enabled formats. The component
+ignores duplicate requests while busy, logs errors, cancels its export on
+disposal, and streams the resulting file. It does not own the editor, change
+its HTML, or register host commands automatically. To combine with existing
+commands, concatenate the lists (distinct IDs) and forward unhandled commands
+to the host. `azuntExportPdf`, `azuntExportWord`, and `azuntExportExcel` are
+reserved by this integration. For selection-aware host commands keep the existing
+selection callback and route these non-selection export IDs normally.
+
+MVC / Razor Pages: include the existing `azunt-editor-export.js` after the core
+editor script and add `<azunt-export-buttons editor-id="report-editor" />` inside
+the same POST form as the named editor. The real format submitter is used via
+`requestSubmit`, preserving form validation, the hidden HTML field and antiforgery
+handling. The default submit name is `exportFormat`. The server remains responsible
+for authorization, antiforgery validation, export options and returning the file.
+`EditorExportMenu.TryParseFormFormat` accepts only Pdf, Docx and Xlsx (case-insensitive).
+UI format flags are not a server authorization boundary. No extra endpoint is added.
+For dynamically inserted forms call `AzuntEditorExport.connectForms()` after adding
+markup; before replacing a connected group call `disconnectForm(group)`.
+Use one connected export group per editor. Existing tag helper usage without
+`editor-id` still renders the same three ordinary submit buttons.
+
+## Legacy HTML compatibility (0.8.15)
+
+No new API is required. Existing `setHtml` / `getHtml`, server View and HTML
+sanitization recognize additional bounded legacy formatting. Stored documents
+are not migrated automatically. See [release notes](release-0.8.15.md) before
+re-saving historical documents.

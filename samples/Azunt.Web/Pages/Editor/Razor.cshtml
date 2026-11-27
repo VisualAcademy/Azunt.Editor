@@ -30,7 +30,7 @@ else
         <azunt-editor id="azunt-razor-demo" name="Html" value="@Model.Html" content-rendering="@(browserDefault ? "BrowserDefault" : "Standard")" show-document-style-selector="true" height="340" toolbar-mode="@(classic ? "Classic" : "Compact")" show-menu-bar="@(!noteToolbar)" show-toolbar-group-labels="@showGroupLabels" upload-url="@imageUploadUrl" />
         <div class="actions">
             <button class="primary" type="submit">Save HTML</button>
-            <azunt-export-buttons />
+            <azunt-export-buttons editor-id="azunt-razor-demo" />
         </div>
     </form>
 }

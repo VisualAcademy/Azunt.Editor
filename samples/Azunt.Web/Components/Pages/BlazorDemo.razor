@@ -37,7 +37,16 @@
     </select>
 </label></p>
 
-<AzuntEditor @key="UseStoredImages" @ref="_editor" Id="azunt-blazor-demo" Name="BlazorHtml" @bind-Value="_html" Height="340" UploadUrl="@(UseStoredImages ? "/editor/demo-images" : null)"
+<p class="document-meta"><label>Editor height:
+    <select @bind="_heightMode"><option value="AutoGrow">Auto grow</option><option value="Fixed">Fixed height</option></select>
+</label> · <label>Zoom:
+    <select @bind="_zoomPercent">
+        @foreach (var zoom in new[] { 50, 75, 90, 100, 125, 150, 200 })
+        { <option value="@zoom">@(zoom)%</option> }
+    </select>
+</label></p>
+
+<AzuntEditor @key="UseStoredImages" @ref="_editor" Id="azunt-blazor-demo" Name="BlazorHtml" @bind-Value="_html" Height="340" @bind-HeightMode="_heightMode" @bind-ZoomPercent="_zoomPercent" ShowViewOptions="true" UploadUrl="@(UseStoredImages ? "/editor/demo-images" : null)"
     Mode="@_demoMode" ContentRendering="EditorContentRendering.CompactReport" CustomDocumentStyles="DemoStyles" @bind-DocumentStyleId="_documentStyleId" ShowDocumentStyleSelector="true" ToolbarMode="@(UseClassic ? "Classic" : "Compact")" ShowMenuBar="@_showMenuBar" ShowToolbarGroupLabels="@_showToolbarGroupLabels" CustomCommands="EditorCommands" CustomCommandInvoked="HandleEditorCommand" />
 
 <p class="document-meta"><label>Word output layout:
@@ -83,6 +92,8 @@
     private bool UseDeferredImages => HostEnvironment.IsDevelopment() &&
         new Uri(Navigation.Uri).Query.Contains("images=save", StringComparison.OrdinalIgnoreCase);
     private AzuntEditor? _editor;
+    private EditorHeightMode _heightMode = EditorHeightMode.Fixed;
+    private int _zoomPercent = 100;
     private string _documentStyleId = "CompactReport";
     private EditorWordLayout _wordLayout = EditorWordLayout.Compact;
     private static readonly IReadOnlyList<EditorDocumentStyle> DemoStyles = new[]

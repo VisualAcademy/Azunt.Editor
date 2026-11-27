@@ -1206,3 +1206,21 @@
   background: var(--azunt-document-header);
 }
 .az-azunt-editor .az-azunt-editor-select[data-select="documentStyle"] { max-width: 180px; }
+
+/* 0.8.12 View options: screen-only; never part of the saved HTML or print CSS. */
+@media screen {
+  .az-azunt-editor[data-view-zoom] > .az-azunt-editor-canvas {
+    zoom: var(--azunt-view-zoom, 100%);
+  }
+  .az-azunt-editor[data-view-height-mode="fixed"]:not(.az-azunt-editor-fullscreen) > .az-azunt-editor-canvas {
+    height: calc(var(--azunt-view-height, 320px) / var(--azunt-view-scale, 1));
+    min-height: 0 !important;
+    overflow: auto;
+  }
+  .az-azunt-editor[data-view-height-mode="fixed"]:not(.az-azunt-editor-fullscreen) > .az-azunt-editor-source {
+    height: var(--azunt-view-height, 320px);
+    min-height: 0 !important;
+    resize: none;
+    overflow: auto;
+  }
+}

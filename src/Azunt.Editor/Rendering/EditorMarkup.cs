@@ -46,6 +46,17 @@ public static class EditorMarkup
             manualMount: false, contentRendering: contentRendering, showDocumentStyleSelector: showDocumentStyleSelector,
             customDocumentStyles: customDocumentStyles, documentStyleId: documentStyleId);
 
+    /// <summary>Render with independent viewport options. Older overloads retain their behavior.</summary>
+    public static string Render(string id, string name, string? value, int height,
+        bool readOnly, string? uploadUrl, string toolbarMode, EditorMode mode, bool showMenuBar,
+        bool showToolbarGroupLabels, EditorContentRendering contentRendering, bool showDocumentStyleSelector,
+        IReadOnlyList<EditorDocumentStyle>? customDocumentStyles, string? documentStyleId,
+        EditorHeightMode heightMode, int zoomPercent, bool showViewOptions)
+        => RenderCore(id, name, value, height, readOnly, uploadUrl, toolbarMode, mode, showMenuBar, showToolbarGroupLabels,
+            manualMount: false, contentRendering: contentRendering, showDocumentStyleSelector: showDocumentStyleSelector,
+            customDocumentStyles: customDocumentStyles, documentStyleId: documentStyleId,
+            heightMode: heightMode, zoomPercent: zoomPercent, showViewOptions: showViewOptions);
+
     // Blazor prerendering leaves this markup static until its interactive
     // OnAfterRenderAsync callback binds the JS engine and its .NET reference.
     // Auto-mounting during DOMContentLoaded changes prerendered nodes before
@@ -53,14 +64,17 @@ public static class EditorMarkup
     internal static string RenderForBlazor(string id, string name, string? value, int height,
         bool readOnly, string? uploadUrl, string toolbarMode, EditorMode mode, bool showMenuBar = true, bool showToolbarGroupLabels = true,
         EditorContentRendering contentRendering = EditorContentRendering.Standard, bool showDocumentStyleSelector = false,
-        IReadOnlyList<EditorDocumentStyle>? customDocumentStyles = null, string? documentStyleId = null)
+        IReadOnlyList<EditorDocumentStyle>? customDocumentStyles = null, string? documentStyleId = null,
+        EditorHeightMode heightMode = EditorHeightMode.AutoGrow, int zoomPercent = 100, bool showViewOptions = false)
         => RenderCore(id, name, value, height, readOnly, uploadUrl, toolbarMode, mode, showMenuBar, showToolbarGroupLabels, manualMount: true, contentRendering: contentRendering, showDocumentStyleSelector: showDocumentStyleSelector,
-            customDocumentStyles: customDocumentStyles, documentStyleId: documentStyleId);
+            customDocumentStyles: customDocumentStyles, documentStyleId: documentStyleId,
+            heightMode: heightMode, zoomPercent: zoomPercent, showViewOptions: showViewOptions);
 
     private static string RenderCore(string id, string name, string? value, int height,
         bool readOnly, string? uploadUrl, string toolbarMode, EditorMode mode, bool showMenuBar, bool showToolbarGroupLabels, bool manualMount,
         EditorContentRendering contentRendering = EditorContentRendering.Standard, bool showDocumentStyleSelector = false,
-        IReadOnlyList<EditorDocumentStyle>? customDocumentStyles = null, string? documentStyleId = null)
+        IReadOnlyList<EditorDocumentStyle>? customDocumentStyles = null, string? documentStyleId = null,
+        EditorHeightMode heightMode = EditorHeightMode.AutoGrow, int zoomPercent = 100, bool showViewOptions = false)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(id);
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
@@ -81,10 +95,17 @@ public static class EditorMarkup
 
         static string Encode(string? raw) => HtmlEncoder.Default.Encode(raw ?? string.Empty);
         var safeHeight = Math.Clamp(height, 40, 1400);
+        if (!Enum.IsDefined(heightMode)) throw new ArgumentOutOfRangeException(nameof(heightMode));
+        if (zoomPercent is < 50 or > 200) throw new ArgumentOutOfRangeException(nameof(zoomPercent));
+        var hasViewOptions = heightMode != EditorHeightMode.AutoGrow || zoomPercent != 100 || showViewOptions;
+        var viewCss = hasViewOptions ? FormattableString.Invariant($"--azunt-view-height:{safeHeight}px;--azunt-view-zoom:{zoomPercent}%;--azunt-view-scale:{zoomPercent / 100.0}") : "";
         var w = new StringBuilder(6500 + (value?.Length ?? 0));
         w.Append("<div class=\"az-azunt-editor\" data-azunt-editor=\"true\" id=\"").Append(Encode(id))
             .Append("\" data-read-only=\"").Append(readOnly ? "true" : "false").Append('"')
             .Append(" data-editor-mode=\"").Append(viewer ? "view" : "edit").Append('"');
+        if (hasViewOptions)
+            w.Append(" data-view-height-mode=\"").Append(heightMode == EditorHeightMode.Fixed ? "fixed" : "auto-grow")
+                .Append("\" data-view-height=\"").Append(safeHeight).Append("\" data-view-zoom=\"").Append(zoomPercent).Append('"');
         var renderingMarker = contentRendering switch
         {
             EditorContentRendering.BrowserDefault => "browser-default",
@@ -100,9 +121,10 @@ public static class EditorMarkup
         if (custom is not null)
         {
             w.Append(" data-base-content-rendering=\"").Append(Encode(renderingMarker)).Append('"');
-            w.Append(" style=\"").Append(Encode(custom.CssVariables())).Append('"');
+            w.Append(" style=\"").Append(Encode(custom.CssVariables() + ";" + viewCss)).Append('"');
             renderingMarker = "custom-document";
         }
+        if (custom is null && hasViewOptions) w.Append(" style=\"").Append(Encode(viewCss)).Append('"');
         if (renderingMarker is not null)
             w.Append(" data-content-rendering=\"").Append(renderingMarker).Append('"');
         if (manualMount) w.Append(" data-azunt-mount=\"manual\"");
@@ -267,6 +289,13 @@ public static class EditorMarkup
         Button("templates", "Template", "Open document templates");
         EndGroup();
 
+        if (showViewOptions)
+        {
+            Group("View options");
+            Select("viewHeightMode", "Editor height mode", new[] { ("AutoGrow", "Auto grow"), ("Fixed", "Fixed height") });
+            Select("viewZoom", "Editor zoom", new[] { ("50", "50%"), ("75", "75%"), ("90", "90%"), ("100", "100%"), ("125", "125%"), ("150", "150%"), ("200", "200%") });
+            EndGroup();
+        }
         Group("Document");
         Button("undo", "↶", "Undo", "Ctrl+Z");
         Button("redo", "↷", "Redo", "Ctrl+Y");
@@ -477,6 +506,8 @@ public static class EditorMarkup
             {
                 w.Append("<option value=\"").Append(Encode(optionValue)).Append('"');
                 if (command == "documentStyle" && optionValue == (custom is null ? contentRendering.ToString() : "custom:" + custom.Id)) w.Append(" selected");
+                if (command == "viewHeightMode" && optionValue == heightMode.ToString()) w.Append(" selected");
+                if (command == "viewZoom" && optionValue == zoomPercent.ToString(System.Globalization.CultureInfo.InvariantCulture)) w.Append(" selected");
                 w.Append('>').Append(Encode(optionLabel)).Append("</option>");
             }
             w.Append("</select>");

@@ -122,7 +122,7 @@ internal static class DocxDocumentExporter
                 }
                 if (source.Length == 0) AppendPreformattedText("", para, codeFormat);
             }
-            else AppendInline(node, para, part, format, ref drawingId, layout.BodyImageWidth, layout.ImageHeight);
+            else if (!HasOnlyCaretBreak(node)) AppendInline(node, para, part, format, ref drawingId, layout.BodyImageWidth, layout.ImageHeight);
             body.Append(para);
             return;
         }
@@ -316,14 +316,16 @@ internal static class DocxDocumentExporter
         // Nested tables retain their text in the containing cell, not as duplicate outer rows.
         var inherited = Merge(format, node);
         W.Paragraph? current = null;
-        foreach (var child in node.Children)
+        var children = HasOnlyCaretBreak(node) ? Enumerable.Empty<SafeEditorDocument.Node>() : node.Children;
+        foreach (var child in children)
         {
             if (child.Name is "p" or "div" or "h1" or "h2" or "h3" or "h4" or "blockquote")
             {
                 current = null;
                 var paragraph = Paragraph(child, node.Style("text-align"));
-                ApplyCellSpacing(paragraph, layout);
-                AppendInline(child, paragraph, part, inherited, ref drawingId, imageWidth, layout.ImageHeight);
+                ApplyCellSpacing(paragraph, layout, Merge(inherited, child));
+                if (!HasOnlyCaretBreak(child))
+                    AppendInline(child, paragraph, part, inherited, ref drawingId, imageWidth, layout.ImageHeight);
                 cell.Append(paragraph);
                 continue;
             }
@@ -331,7 +333,7 @@ internal static class DocxDocumentExporter
             if (current is null)
             {
                 current = Paragraph(node);
-                ApplyCellSpacing(current, layout);
+                ApplyCellSpacing(current, layout, inherited);
                 cell.Append(current);
             }
             AppendInline(child, current, part, inherited, ref drawingId, imageWidth, layout.ImageHeight);
@@ -339,16 +341,41 @@ internal static class DocxDocumentExporter
         if (!cell.Elements<W.Paragraph>().Any())
         {
             var empty = Paragraph(node);
-            ApplyCellSpacing(empty, layout);
+            ApplyCellSpacing(empty, layout, inherited);
             cell.Append(empty);
         }
     }
 
-    private static void ApplyCellSpacing(W.Paragraph paragraph, WordLayoutSettings layout)
+    // A lone BR in an otherwise empty HTML block is a contenteditable caret
+    // placeholder, not two visible lines. Word already supplies a paragraph mark.
+    // Do not strip BRs from nonempty blocks, multiple BRs or preformatted code.
+    private static bool HasOnlyCaretBreak(SafeEditorDocument.Node node)
     {
+        var count = 0;
+        foreach (var child in node.Children)
+        {
+            if (child.Name == "#text" && child.Text.All(c => c is ' ' or '\t' or '\r' or '\n' or '\f')) continue;
+            if (child.Name != "br" || ++count > 1) return false;
+        }
+        return count == 1;
+    }
+
+    private static void ApplyCellSpacing(W.Paragraph paragraph, WordLayoutSettings layout, Format format)
+    {
+        var properties = paragraph.GetFirstChild<W.ParagraphProperties>();
+        if (properties is null) return;
         if (layout.CompactSpacing)
-            paragraph.GetFirstChild<W.ParagraphProperties>()?.AddChild(new W.SpacingBetweenLines
+            properties.AddChild(new W.SpacingBetweenLines
             { Before = "0", After = "0", Line = "240", LineRule = W.LineSpacingRuleValues.Auto });
+        // An empty cell has no text run. Its paragraph mark must use the table
+        // font size too, or Word may use the larger body font for the entire row.
+        if (layout.TableSize.HasValue && format.Size is int size)
+        {
+            var halfPoints = (size * 2).ToString(CultureInfo.InvariantCulture);
+            properties.AddChild(new W.ParagraphMarkRunProperties(
+                new W.FontSize { Val = halfPoints },
+                new W.FontSizeComplexScript { Val = halfPoints }));
+        }
     }
 
     private static bool TryPercentWidth(SafeEditorDocument.Node cell, out double percentage)

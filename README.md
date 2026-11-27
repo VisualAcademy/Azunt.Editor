@@ -2,7 +2,7 @@
 
 A lightweight rich-text editor for ASP.NET Core MVC, Razor Pages, and Blazor Server.
 
-Version: **0.8.11** · .NET 10
+Version: **0.8.12** · .NET 10
 
 ## Projects
 - `src/Azunt.Editor` — shared editor components, JavaScript, and CSS
@@ -386,3 +386,18 @@ See [release notes](docs/release-0.8.10.md).
 ## Custom document styles (0.8.11)
 
 Register safe, per-editor typography and table presets using `CustomDocumentStyles` and `DocumentStyleId` (`custom:<id>`). Built-in styles remain available. See [public API](docs/public-api.md#custom-document-styles-0811) and [release notes](docs/release-0.8.11.md).
+
+## Editor view options (0.8.12)
+
+Opt in to a fixed content viewport and independent display zoom:
+
+```razor
+<AzuntEditor @bind-Value="Html" Height="600"
+    HeightMode="EditorHeightMode.Fixed" ZoomPercent="100"
+    ShowViewOptions="true" />
+```
+
+Default behavior remains AutoGrow at 100% zoom. Zoom and viewport height do not
+change stored HTML or printed dimensions. See [release notes](docs/release-0.8.12.md).
+Word export also treats a solitary caret-placeholder `br` as one empty paragraph
+rather than a Word line break. Intentional multiline text is retained.

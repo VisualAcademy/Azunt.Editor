@@ -15,6 +15,12 @@
     [Parameter] public string Value { get; set; } = string.Empty;
     [Parameter] public EventCallback<string> ValueChanged { get; set; }
     [Parameter] public int Height { get; set; } = 320;
+    [Parameter] public EditorHeightMode HeightMode { get; set; } = EditorHeightMode.AutoGrow;
+    [Parameter] public int ZoomPercent { get; set; } = 100;
+    [Parameter] public bool ShowViewOptions { get; set; }
+    [Parameter] public EventCallback<EditorHeightMode> HeightModeChanged { get; set; }
+    [Parameter] public EventCallback<int> ZoomPercentChanged { get; set; }
+    private (EditorHeightMode Mode, int Height, int Zoom) _appliedView;
     [Parameter] public bool ReadOnly { get; set; }
     /// <summary>View hides editing tools and displays the HTML as a read-only document.</summary>
     [Parameter] public EditorMode Mode { get; set; } = EditorMode.Edit;
@@ -60,7 +66,8 @@
     {
         if (!string.IsNullOrWhiteSpace(Id)) _editorId = Id;
         // Hold stable markup across ValueChanged rerenders. JavaScript owns the live DOM.
-        _initialMarkup = EditorMarkup.RenderForBlazor(_editorId, Name, Value, Height, ReadOnly, UploadUrl, ToolbarMode, Mode, ShowMenuBar, ShowToolbarGroupLabels, ContentRendering, ShowDocumentStyleSelector, CustomDocumentStyles, DocumentStyleId);
+        _initialMarkup = EditorMarkup.RenderForBlazor(_editorId, Name, Value, Height, ReadOnly, UploadUrl, ToolbarMode, Mode, ShowMenuBar, ShowToolbarGroupLabels, ContentRendering, ShowDocumentStyleSelector, CustomDocumentStyles, DocumentStyleId, HeightMode, ZoomPercent, ShowViewOptions);
+        _appliedView = (HeightMode, Height, ZoomPercent);
         _appliedMode = Mode;
         _appliedContentRendering = ContentRendering;
         _appliedDocumentStyleId = DocumentStyleId;
@@ -74,6 +81,7 @@
         if (_mounted && Mode != _appliedMode)
             await SetModeAsync(Mode);
         if (_mounted) await ApplyDocumentStyleParametersAsync();
+        if (_mounted) await ApplyViewParametersAsync();
         if (_mounted && ShowMenuBar != _appliedShowMenuBar)
             await SetShowMenuBarAsync(ShowMenuBar);
         if (_mounted && ShowToolbarGroupLabels != _appliedShowToolbarGroupLabels)
@@ -100,6 +108,7 @@
             if (Mode != _appliedMode)
                 await SetModeAsync(Mode);
             await ApplyDocumentStyleParametersAsync();
+            await ApplyViewParametersAsync();
             if (ShowMenuBar != _appliedShowMenuBar)
                 await SetShowMenuBarAsync(ShowMenuBar);
             if (ShowToolbarGroupLabels != _appliedShowToolbarGroupLabels)
@@ -107,6 +116,34 @@
             if (CustomCommands is { Count: > 0 })
                 await JS.InvokeVoidAsync("AzuntEditor.setCommands", _editorId, CustomCommands);
         }
+    }
+
+    private async ValueTask ApplyViewParametersAsync()
+    {
+        if (_appliedView != (HeightMode, Height, ZoomPercent))
+            await SetViewOptionsAsync(HeightMode, Height, ZoomPercent);
+    }
+
+    /// <summary>Change viewport layout without changing HTML or output settings.</summary>
+    public async ValueTask SetViewOptionsAsync(EditorHeightMode mode, int height, int zoomPercent = 100)
+    {
+        if (!_mounted) throw new InvalidOperationException("The editor must be mounted first.");
+        if (!Enum.IsDefined(mode)) throw new ArgumentOutOfRangeException(nameof(mode));
+        if (zoomPercent is < 50 or > 200) throw new ArgumentOutOfRangeException(nameof(zoomPercent));
+        await JS.InvokeVoidAsync("AzuntEditor.setViewOptions", _editorId, mode.ToString(), height, zoomPercent);
+        HeightMode = mode; Height = height; ZoomPercent = zoomPercent;
+        _appliedView = (mode, height, zoomPercent);
+    }
+
+    [JSInvokable]
+    public async Task OnViewOptionsChanged(string mode, int zoomPercent)
+    {
+        if (!Enum.TryParse<EditorHeightMode>(mode, true, out var parsed) || !Enum.IsDefined(parsed) || zoomPercent is < 50 or > 200) return;
+        var oldMode = HeightMode; var oldZoom = ZoomPercent;
+        HeightMode = parsed; ZoomPercent = zoomPercent;
+        _appliedView = (parsed, Height, zoomPercent);
+        if (oldMode != parsed) await HeightModeChanged.InvokeAsync(parsed);
+        if (oldZoom != zoomPercent) await ZoomPercentChanged.InvokeAsync(zoomPercent);
     }
 
     [JSInvokable]

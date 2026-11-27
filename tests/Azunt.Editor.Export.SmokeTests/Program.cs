@@ -470,6 +470,36 @@ foreach (var layout in Enum.GetValues<EditorWordLayout>())
         await File.WriteAllBytesAsync(Path.Combine(wordOutputDirectory, $"{layout}.docx"), result.Content);
     }
 }
+// 0.8.12: an HTML caret placeholder must not add an extra Word line.
+foreach (var placeholderLayout in Enum.GetValues<EditorWordLayout>())
+{
+    var placeholderWord = await exporter.ExportAsync(
+        "<p><br></p><table><tr><td>a</td><td><br></td><td><p><br></p></td>" +
+        "<td> \n<br> </td><td>x<br>y</td><td><br><br></td>" +
+        "<td><p>First</p><p><br></p><p>Last</p></td></tr></table>",
+        EditorExportFormat.Docx, new EditorExportOptions { WordLayout = placeholderLayout });
+    using var placeholderArchive = new ZipArchive(new MemoryStream(placeholderWord.Content), ZipArchiveMode.Read);
+    XNamespace w = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
+    var placeholderDoc = XDocument.Parse(Read(placeholderArchive, "word/document.xml"));
+    var cells = placeholderDoc.Descendants(w + "tc").ToArray();
+    Require(cells.Length == 7, "Placeholder test cell count");
+    foreach (var cellIndex in new[] { 1, 2, 3 })
+    {
+        Require(cells[cellIndex].Elements(w + "p").Count() == 1 && !cells[cellIndex].Descendants(w + "br").Any(),
+            "Empty HTML cell produces exactly one Word paragraph without a break");
+        if (placeholderLayout == EditorWordLayout.Compact)
+            Require(cells[cellIndex].Descendants(w + "pPr").Single().Element(w + "rPr")?.Element(w + "sz")?.Attribute(w + "val")?.Value == "18",
+                "Empty compact cell uses 9pt paragraph mark");
+    }
+    Require(cells[4].Descendants(w + "br").Count() == 1 && cells[4].Descendants(w + "t").Select(t => t.Value).SequenceEqual(new[] { "x", "y" }),
+        "Intentional in-cell line break retained");
+    Require(cells[5].Descendants(w + "br").Count() == 2, "Multiple explicit breaks retained");
+    Require(cells[6].Elements(w + "p").Count() == 3 && !cells[6].Descendants(w + "br").Any(), "Intentional blank paragraph retained without extra break");
+    Require(!placeholderDoc.Descendants(w + "body").Single().Elements(w + "p").First().Descendants(w + "br").Any(), "Body caret placeholder becomes one blank paragraph");
+    using var placeholderPackage = DocumentFormat.OpenXml.Packaging.WordprocessingDocument.Open(new MemoryStream(placeholderWord.Content), false);
+    var placeholderErrors = new DocumentFormat.OpenXml.Validation.OpenXmlValidator().Validate(placeholderPackage).ToList();
+    Require(placeholderErrors.Count == 0, "Placeholder DOCX schema validation: " + string.Join("; ", placeholderErrors.Select(e => e.Description)));
+}
 var wordOverride = await exporter.ExportAsync("<table><tr><td style='font-size:14pt'>Explicit point size</td><td>Default</td></tr></table>",
     EditorExportFormat.Docx, new EditorExportOptions { WordFontSize = 11, WordTableFontSize = 8, WordTableCellPadding = 0 });
 using (var archive = new ZipArchive(new MemoryStream(wordOverride.Content), ZipArchiveMode.Read))

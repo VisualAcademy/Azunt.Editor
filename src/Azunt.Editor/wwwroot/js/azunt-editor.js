@@ -876,9 +876,10 @@
       return;
     }
     const imageRect = image.getBoundingClientRect();
+    const bounds = instance.canvas.getBoundingClientRect();
     const editorRect = instance.element.getBoundingClientRect();
     // The handle is outside contenteditable: it is never included in saved HTML.
-    if (!imageRect.width || !imageRect.height || imageRect.bottom < 0 || imageRect.top > window.innerHeight) {
+    if (!imageRect.width || !imageRect.height || imageRect.bottom < 0 || imageRect.top > window.innerHeight || imageRect.bottom > bounds.bottom || imageRect.bottom < bounds.top || imageRect.right > bounds.right || imageRect.right < bounds.left) {
       handle.hidden = true;
       return;
     }
@@ -959,7 +960,7 @@
       originalWidth: image.getAttribute("width"),
       originalHeight: image.getAttribute("height"),
       originalStyle: image.getAttribute("style"),
-      displayWidth: image.getBoundingClientRect().width,
+      displayWidth: image.getBoundingClientRect().width / viewScale(instance),
       moved: false
     };
     handle.classList.add("az-is-resizing");
@@ -972,7 +973,7 @@
     event.preventDefault();
     // Limit the size to the editable area; export preserves the chosen width.
     const maxVisible = Math.min(2500, Math.max(24, instance.canvas.clientWidth - 48));
-    const width = Math.round(Math.max(24, Math.min(maxVisible, state.displayWidth + event.clientX - state.startX)));
+    const width = Math.round(Math.max(24, Math.min(maxVisible, state.displayWidth + (event.clientX - state.startX) / viewScale(instance))));
     if (Math.abs(width - state.displayWidth) >= 1) state.moved = true;
     setImagePixelWidth(instance, state.image, width);
   }
@@ -1098,7 +1099,8 @@
     }
     const host = instance.element.getBoundingClientRect();
     const rect = table.getBoundingClientRect();
-    if (!rect.width || rect.bottom < host.top || rect.top > host.bottom) {
+    const canvasBounds = instance.canvas.getBoundingClientRect();
+    if (!rect.width || rect.bottom < canvasBounds.top || rect.top > canvasBounds.bottom) {
       clearTableHandles(instance); return;
     }
     const move = instance.tableMoveHandle;
@@ -1123,6 +1125,7 @@
       move.style.left = `${Math.max(clipLeft + 1, rect.left) - originX}px`;
       move.style.top = `${rect.top - originY - height - gap}px`;
     }
+    if (rect.top < canvasBounds.top || rect.top > canvasBounds.bottom) move.hidden = true;
     // Resize hit targets are independent of the selected cell/table.
     if (instance.tableHoverPoint) updateTableColumnHover(instance);
   }
@@ -1318,14 +1321,15 @@
     instance.canvas.focus({ preventScroll: true });
     if (instance.contextTools) instance.contextTools.hidden = true;
     remember(instance);
-    const widths = Array.from(table.rows[0].cells, c => c.getBoundingClientRect().width);
+    const scale = viewScale(instance);
+    const widths = Array.from(table.rows[0].cells, c => c.getBoundingClientRect().width / scale);
     const total = widths.reduce((a, b) => a + b, 0);
     if ((axis === "column" || axis === "outer") && total <= 0) return;
     const parent = table.parentElement;
     const parentStyle = getComputedStyle(parent);
     const availableWidth = parent.clientWidth - parseFloat(parentStyle.paddingLeft) - parseFloat(parentStyle.paddingRight);
     if (axis === "outer" && availableWidth <= 0) return;
-    const tableWidth = table.getBoundingClientRect().width;
+    const tableWidth = table.getBoundingClientRect().width / scale;
     // Respect both the column ratios and minimum CSS cell sizes. Browser
     // content constraints can still impose a larger intrinsic minimum.
     const minTableWidth = axis === "outer" ? Math.min(availableWidth, Math.max(24,
@@ -1338,7 +1342,7 @@
     const row = axis === "row" ? table.rows[index] : null;
     instance.tableColumnResize = { table, axis, index, pointerId: event.pointerId,
       startX: event.clientX, startY: event.clientY, widths, total, changed: false,
-      row, rowHeight: row?.getBoundingClientRect().height, savedHeight: row?.style.height,
+      row, rowHeight: row ? row.getBoundingClientRect().height / scale : undefined, savedHeight: row?.style.height,
       savedLayout: table.style.tableLayout, savedTableWidth: table.style.width,
       availableWidth, tableWidth, minTableWidth,
       savedWidths: axis !== "row" ? Array.from(table.rows, r => Array.from(r.cells, cell => cell.style.width)) : null };
@@ -1363,13 +1367,13 @@
     event.preventDefault();
     const index = state.index;
     if (state.axis === "row") {
-      const height = Math.max(12, Math.min(1000, Math.round(state.rowHeight + event.clientY - state.startY)));
+      const height = Math.max(12, Math.min(1000, Math.round(state.rowHeight + (event.clientY - state.startY) / viewScale(instance))));
       state.row.style.height = Math.abs(height - state.rowHeight) >= 1 ? `${height}px` : state.savedHeight;
       state.changed = state.row.style.height !== state.savedHeight;
       positionTableResizeHandle(instance, state);
       return;
     }
-    const delta = event.clientX - state.startX;
+    const delta = (event.clientX - state.startX) / viewScale(instance);
     if (state.axis === "outer") {
       const width = Math.max(state.minTableWidth, Math.min(state.availableWidth, state.tableWidth + delta));
       const changedWidth = Math.abs(width - state.tableWidth) >= 1 && Math.abs(delta) >= 1;
@@ -2687,6 +2691,18 @@
   }
 
   function runSelect(instance, field, value) {
+    if (field === "viewHeightMode" || field === "viewZoom") {
+      const id = instance.element.id, before = getViewOptions(id);
+      setViewOptions(id, field === "viewHeightMode" ? value : before.heightMode, before.height,
+        field === "viewZoom" ? Number(value) : before.zoomPercent);
+      const options = getViewOptions(id);
+      if (before.heightMode !== options.heightMode || before.zoomPercent !== options.zoomPercent) {
+        instance.element.dispatchEvent(new CustomEvent("azunt:view-options-changed", { bubbles: true, detail: options }));
+        instance.dotNetReference?.invokeMethodAsync("OnViewOptionsChanged", options.heightMode, options.zoomPercent)
+          .catch(() => message(instance, "Could not notify the host of the view change.", "error"));
+      }
+      return;
+    }
     if (field === "documentStyle") {
       const id = instance.element.id;
       const before = getDocumentStyleId(id);
@@ -2790,11 +2806,11 @@
   // Compact toolbar. The original controls are moved into the open menu,
   // rather than copied, so selects and color inputs retain their existing state.
   const menuGroups = Object.freeze({
-    file: ["Document"], edit: ["Writing tools"], view: ["Document"],
+    file: ["Document"], edit: ["Writing tools"], view: ["View options", "Document"],
     insert: ["Link", "Image"], format: ["Document style", "Text formatting", "Font and color", "Paragraph"],
     table: ["Table"], tablepicker: [], image: ["Image"], link: ["Link"], controls: [], codepicker: [],
     tools: ["Writing tools"], export: [],
-    more: ["Document style", "Text formatting", "Font and color", "Paragraph", "Link", "Table", "Image", "Writing tools", "Document"]
+    more: ["View options", "Document style", "Text formatting", "Font and color", "Paragraph", "Link", "Table", "Image", "Writing tools", "Document"]
   });
   const menuNames = new Set(Object.keys(menuGroups));
   const toggleCommands = new Set(["bold", "italic", "underline", "strike", "sup", "sub", "ul", "ol"]);
@@ -2944,7 +2960,8 @@
     const anchor = ["TD", "TH"].includes(target.tagName) && target.closest("table")
       ? target.closest("table") : target;
     const rect = anchor.getBoundingClientRect();
-    if (!rect.width || !rect.height || rect.bottom < viewport.top || rect.top > viewport.bottom) {
+    const canvasBounds = instance.canvas.getBoundingClientRect();
+    if (!rect.width || !rect.height || rect.bottom < Math.max(viewport.top, canvasBounds.top) || rect.top > Math.min(viewport.bottom, canvasBounds.bottom)) {
       tools.hidden = true;
       return;
     }
@@ -2965,6 +2982,7 @@
       positionContextTools(instance, target);
     }
     positionTableControls(instance);
+    updateResizeHandle(instance);
     // Scrolling can move the table away from a stationary mouse pointer.
     const point = instance.tableHoverPoint;
     if (point) updateTableColumnHover(instance);
@@ -3459,6 +3477,56 @@
     updateResizeHandle(instance);
   }
 
+  function viewScale(instance) { return (Number(instance.element.dataset.viewZoom) || 100) / 100; }
+
+  function getViewOptions(id) {
+    const instance = getInstance(id);
+    const root = instance.element;
+    return { heightMode: root.dataset.viewHeightMode === "fixed" ? "Fixed" : "AutoGrow",
+      height: Number(root.dataset.viewHeight) || parseInt(instance.source.style.minHeight, 10) || 320,
+      zoomPercent: Number(root.dataset.viewZoom) || 100 };
+  }
+
+  function syncViewSelectors(instance, options) {
+    const height = instance.toolbar.querySelector('[data-select="viewHeightMode"]');
+    const zoom = instance.toolbar.querySelector('[data-select="viewZoom"]');
+    if (height) height.value = options.heightMode;
+    if (zoom) {
+      zoom.querySelectorAll('[data-view-extra]').forEach(option => option.remove());
+      if (![...zoom.options].some(option => Number(option.value) === options.zoomPercent)) {
+        const option = new Option(`${options.zoomPercent}%`, String(options.zoomPercent));
+        option.dataset.viewExtra = "true"; zoom.add(option);
+      }
+      zoom.value = String(options.zoomPercent);
+    }
+  }
+
+  function setViewOptions(id, heightMode, height, zoomPercent = 100) {
+    const mode = String(heightMode).toLowerCase();
+    if (!["autogrow", "fixed"].includes(mode) || !Number.isInteger(height) ||
+        !Number.isInteger(zoomPercent) || zoomPercent < 50 || zoomPercent > 200)
+      throw new Error("Invalid editor view options. Zoom must be 50–200 percent.");
+    const instance = getInstance(id), root = instance.element;
+    height = Math.max(40, Math.min(1400, height));
+    // Cancel unfinished gestures before altering their coordinate system.
+    finishImageResize(instance, null, true);
+    finishTableMove(instance, null, true);
+    finishTableColumnResize(instance, null, true);
+    root.dataset.viewHeightMode = mode === "fixed" ? "fixed" : "auto-grow";
+    root.dataset.viewHeight = String(height);
+    root.dataset.viewZoom = String(zoomPercent);
+    root.style.setProperty("--azunt-view-height", `${height}px`);
+    root.style.setProperty("--azunt-view-zoom", `${zoomPercent}%`);
+    root.style.setProperty("--azunt-view-scale", String(zoomPercent / 100));
+    instance.canvas.style.minHeight = `${height}px`;
+    instance.source.style.minHeight = `${height}px`;
+    syncViewSelectors(instance, getViewOptions(id));
+    instance.tableHoverPoint = null;
+    updateTableColumnHover(instance, null);
+    repositionOverlays(instance);
+    updateResizeHandle(instance);
+  }
+
   function setContentRendering(id, rendering) {
     const desired = Object.keys(contentRenderings).find(key => key.toLowerCase() === String(rendering).trim().toLowerCase());
     if (!desired) throw new Error("Unknown content rendering style.");
@@ -3704,6 +3772,7 @@
       applyDocumentRendering(instance, contentRenderings[desired], null);
     }
     syncContentRenderingSelector(instance);
+    syncViewSelectors(instance, getViewOptions(element.id));
     instance.canvas.contentEditable = instance.readOnly ? "false" : "true";
     instance.canvas.addEventListener("click", event => handleCodeAction(instance, event), { signal: controller.signal });
     instance.canvas.addEventListener("dblclick", event => {
@@ -3754,7 +3823,7 @@
       const keys = target.axis === "row" ? ["ArrowUp", "ArrowDown"] : ["ArrowLeft", "ArrowRight"];
       if (!keys.includes(event.key)) return;
       event.preventDefault();
-      const pointerId = -1, delta = event.key === keys[0] ? -8 : 8;
+      const pointerId = -1, delta = (event.key === keys[0] ? -8 : 8) * viewScale(instance);
       startTableColumnResize(instance, { button: 0, preventDefault() {}, pointerId, clientX: 0, clientY: 0 }, target);
       dragTableColumnResize(instance, { pointerId, preventDefault() {}, clientX: delta, clientY: delta });
       finishTableColumnResize(instance, { pointerId });
@@ -3900,7 +3969,7 @@
       const target = event.target.closest("[data-select]");
       if (!target) return;
       runSelect(instance, target.dataset.select, target.value);
-      if (!["paper", "orientation", "margin", "imageInsertSize", "documentStyle"].includes(target.dataset.select) && target.type !== "color") target.selectedIndex = 0;
+      if (!["paper", "orientation", "margin", "imageInsertSize", "documentStyle", "viewHeightMode", "viewZoom"].includes(target.dataset.select) && target.type !== "color") target.selectedIndex = 0;
       updateFormattingState(instance);
     }, { signal });
     instance.codePanel?.querySelector("[data-code-apply]")?.addEventListener("click", () => applyCodePanel(instance), { signal });
@@ -4519,7 +4588,7 @@
     return { paperSize: instance.page.paper, orientation: instance.page.orientation, margin: instance.page.margin };
   }
 
-  window.AzuntEditor = Object.freeze({ mount, mountAll, getHtml, getHtmlStream, setHtml, setMode, getPageSettings, showStatus, unmount, sanitizeHtml, registerTemplate, registerCommand, unregisterCommand, setCommands, setToolbarMode, setContentRendering, getContentRendering, setDocumentStyle, getDocumentStyleId, registerDocumentStyles, setShowMenuBar, setShowToolbarGroupLabels, saveSelection, restoreSelection, releaseSelection, insertHtml, insertText, insertImage });
+  window.AzuntEditor = Object.freeze({ mount, mountAll, getHtml, getHtmlStream, setHtml, setMode, getPageSettings, showStatus, unmount, sanitizeHtml, registerTemplate, registerCommand, unregisterCommand, setCommands, setToolbarMode, setContentRendering, getContentRendering, setDocumentStyle, getDocumentStyleId, registerDocumentStyles, setShowMenuBar, setShowToolbarGroupLabels, setViewOptions, getViewOptions, saveSelection, restoreSelection, releaseSelection, insertHtml, insertText, insertImage });
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", mountAll, { once: true });
   else mountAll();
 })();

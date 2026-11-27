@@ -55,14 +55,25 @@ public sealed class AzuntEditorTagHelper : TagHelper
     [HtmlAttributeName("document-style-id")]
     public string? DocumentStyleId { get; set; }
 
+    [HtmlAttributeName("height-mode")]
+    public string HeightMode { get; set; } = "AutoGrow";
+
+    [HtmlAttributeName("zoom-percent")]
+    public int ZoomPercent { get; set; } = 100;
+
+    [HtmlAttributeName("show-view-options")]
+    public bool ShowViewOptions { get; set; }
+
     public override void Process(TagHelperContext context, TagHelperOutput output)
     {
         if (!Enum.TryParse<EditorMode>(Mode, true, out var mode) || !Enum.IsDefined(mode))
             throw new ArgumentException("Azunt.Editor mode must be Edit or View.", nameof(Mode));
         if (!Enum.TryParse<EditorContentRendering>(ContentRendering, true, out var contentRendering) || !Enum.IsDefined(contentRendering))
             throw new ArgumentException("Unknown Azunt.Editor content rendering style.", nameof(ContentRendering));
+        if (!Enum.TryParse<EditorHeightMode>(HeightMode, true, out var heightMode) || !Enum.IsDefined(heightMode))
+            throw new ArgumentException("Unknown editor height mode.", nameof(HeightMode));
         output.TagName = null;
         output.Content.SetHtmlContent(EditorMarkup.Render(
-            Id ?? $"azunt-editor-{Guid.NewGuid():N}", Name, Value, Height, ReadOnly, UploadUrl, ToolbarMode, mode, ShowMenuBar, ShowToolbarGroupLabels, contentRendering, ShowDocumentStyleSelector, CustomDocumentStyles, DocumentStyleId));
+            Id ?? $"azunt-editor-{Guid.NewGuid():N}", Name, Value, Height, ReadOnly, UploadUrl, ToolbarMode, mode, ShowMenuBar, ShowToolbarGroupLabels, contentRendering, ShowDocumentStyleSelector, CustomDocumentStyles, DocumentStyleId, heightMode, ZoomPercent, ShowViewOptions));
     }
 }

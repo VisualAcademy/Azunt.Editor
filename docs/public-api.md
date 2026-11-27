@@ -255,3 +255,19 @@ MVC/Razor Pages: supply `custom-document-styles="@Model.Styles"` and `document-s
 JavaScript: `AzuntEditor.registerDocumentStyles(id, styles)` replaces the per-instance list; `AzuntEditor.setDocumentStyle(id, "custom:office-report")` selects a preset and `getDocumentStyleId(id)` reads it. Use camelCase property names. The `azunt:document-style-changed` event fires for menu selections.
 
 Up to 20 styles, unique lowercase ASCII ids (letters/digits/hyphens, starting with a letter), labels up to 80 characters, font families System/Arial/Georgia/TimesNewRoman/Consolas, integer font sizes 8–32 CSS px, line height 1–2.5, document padding 0–60 px, cell padding 0–24 px, and six-digit hex colors. No arbitrary CSS. Style changes do not alter HTML; hosts must persist the style ID separately. Browser Preview/Print Match document uses the selected style. Server PDF/Word/Excel export is not automatically styled.
+
+## Editor view options (0.8.12)
+
+The viewport is independent of document style and stored HTML. `HeightMode` is
+`EditorHeightMode.AutoGrow` (default) or `EditorHeightMode.Fixed`. `Height` is the
+content area height in CSS pixels (clamped to 40–1400). `ZoomPercent` is an
+integer from 50 to 200; 100 is the default. `ShowViewOptions` opts into the toolbar
+and menu controls. Blazor supports `@bind-HeightMode`, `@bind-ZoomPercent` and
+`SetViewOptionsAsync(mode, height, zoomPercent)` after mount.
+
+MVC / Razor Pages: `height-mode="Fixed" height="600" zoom-percent="100" show-view-options="true"`.
+
+JavaScript: `AzuntEditor.setViewOptions(id, "Fixed", 600, 100)`;
+`AzuntEditor.getViewOptions(id)` returns `{heightMode, height, zoomPercent}`.
+Interactive menu selection emits `azunt:view-options-changed`. View options do
+not modify the saved HTML, undo history or print zoom.

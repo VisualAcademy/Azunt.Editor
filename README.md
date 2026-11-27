@@ -2,7 +2,7 @@
 
 A lightweight rich-text editor for ASP.NET Core MVC, Razor Pages, and Blazor Server.
 
-Version: **0.8.4** · .NET 10
+Version: **0.8.5** · .NET 10
 
 ## Projects
 - `src/Azunt.Editor` — shared editor components, JavaScript, and CSS
@@ -16,6 +16,17 @@ dotnet restore Azunt.Editor.sln
 dotnet build Azunt.Editor.sln -c Release
 dotnet run --project samples/Azunt.Web
 ```
+
+## Word export profiles (0.8.5)
+
+DOCX exports now include an explicit editable table grid, use printable page
+width when sizing columns, retain initial repeating header rows, and keep
+separate paragraphs within table cells. Images respect the page/cell bounds.
+The default `Standard` profile keeps implicit Word font sizes and padding;
+`Compact` uses 10pt body / 9pt tables and 3px cell padding, and `Comfortable`
+uses 14pt / 12pt and 8px. Explicit HTML font sizes take precedence. Word-only
+options do not change the editor, PDF, or Excel. Try `/editor/export` or see
+[0.8.5 release notes](docs/release-0.8.5.md) for usage and verification.
 
 ## PDF export profiles (0.8.4)
 

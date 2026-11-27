@@ -30,7 +30,7 @@ using (var zip = new ZipArchive(new MemoryStream(word.Content), ZipArchiveMode.R
     Require(xml.Contains("cantSplit"), "DOCX prevents table row splitting");
     Require(xml.Contains("tblHeader"), "DOCX repeats semantic header rows");
     Require(!xml.Contains("<script") && !xml.Contains("onclick"), "DOCX dangerous markup excluded");
-    Require(zip.Entries.Any(e => e.FullName.StartsWith("word/media/", StringComparison.Ordinal)), "DOCX embeds PNG image");
+    Require(zip.Entries.Any(e => e.FullName.StartsWith("word/media/", StringComparison.Ordinal) || e.FullName.StartsWith("media/", StringComparison.Ordinal)), "DOCX embeds PNG image");
     Require(xml.Contains("Document figure"), "DOCX retains image alternative text");
 }
 
@@ -121,7 +121,7 @@ using (var zip = new ZipArchive(new MemoryStream(advancedDocx.Content), ZipArchi
 {
     var xml = Read(zip, "word/document.xml");
     Require(xml.Contains("gridSpan") && xml.Contains("Merged heading"), "Word preserves horizontal cell merge");
-    Require(zip.Entries.Any(e => e.FullName.StartsWith("word/media/", StringComparison.Ordinal)),
+    Require(zip.Entries.Any(e => e.FullName.StartsWith("word/media/", StringComparison.Ordinal) || e.FullName.StartsWith("media/", StringComparison.Ordinal)),
         "Word embeds signature PNG");
 }
 var advancedXlsx = await exporter.ExportAsync(advancedHtml, EditorExportFormat.Xlsx);
@@ -400,10 +400,84 @@ Require(new EditorExportOptions().PdfLayout == EditorPdfLayout.Standard &&
     new EditorExportOptions().PdfFontSize is null && !new EditorExportOptions().PromotePdfTableHeaders,
     "PDF defaults remain backward compatible");
 
+// 0.8.5: real DOCX package checks, including schema validation, grid widths,
+// explicit formatting, paragraph boundaries, opt-in defaults and format isolation.
+var wordReport = "<p>Body text</p><p><span style='font-size:20px;color:#245ca6'><b><u>Explicit</u></b></span></p>" +
+    "<table><tr><th colspan='3'>Title</th></tr><tr><th style='width:20%'>Number</th>" +
+    "<th style='width:30%'>Department</th><th>Summary</th></tr>" +
+    "<tr><td>000123</td><td><p>First</p><p>Second</p></td><td><table><tr><td>Nested</td></tr></table></td></tr>" +
+    "<tr><th>Not a repeating header</th><th>X</th><th>Y</th></tr></table>" +
+    "<p style='margin-left:20px'>Indented</p>" +
+    $"<p><img src='data:image/png;base64,{samplePng}' width='80' alt='Signature'></p>";
+var wordOutputDirectory = Environment.GetEnvironmentVariable("AZUNT_TEST_WORD_OUTPUT");
+foreach (var layout in Enum.GetValues<EditorWordLayout>())
+{
+    var result = await exporter.ExportAsync(wordReport, EditorExportFormat.Docx, new EditorExportOptions
+    { WordLayout = layout, PaperSize = "Letter" });
+    using var archive = new ZipArchive(new MemoryStream(result.Content), ZipArchiveMode.Read);
+    XNamespace w = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
+    var document = XDocument.Parse(Read(archive, "word/document.xml"));
+    var table = document.Descendants(w + "tbl").Single();
+    var grid = table.Element(w + "tblGrid")!.Elements(w + "gridCol")
+        .Select(c => (int)c.Attribute(w + "w")!).ToArray();
+    Require(grid.Length == 3 && grid.Sum() == 12240 - 1814 && grid.All(c => c > 0), "Word grid fits printable page");
+    Require(grid[0] < grid[1] && grid[1] < grid[2], "Word grid respects partial width hints");
+    var rows = table.Elements(w + "tr").ToArray();
+    Require(rows.Length == 4 && rows[0].Descendants(w + "gridSpan").Single().Attribute(w + "val")!.Value == "3",
+        "Merged heading and nested table do not alter outer grid");
+    Require(rows[0].Descendants(w + "tblHeader").Any() && rows[1].Descendants(w + "tblHeader").Any() &&
+        !rows[3].Descendants(w + "tblHeader").Any(), "Only initial headers repeat");
+    var paragraphs = rows[2].Elements(w + "tc").ElementAt(1).Elements(w + "p").Select(p => p.Value).ToArray();
+    Require(paragraphs.SequenceEqual(new[] { "First", "Second" }), "Word retains separate cell paragraphs");
+    Require(document.Descendants(w + "t").Count(t => t.Value == "Nested") == 1 &&
+        document.Descendants(w + "t").Any(t => t.Value == "000123"), "Nested text once, identifier unchanged");
+    var explicitRun = document.Descendants(w + "r").Single(run => run.Element(w + "t")?.Value == "Explicit");
+    Require(explicitRun.Descendants(w + "sz").Single().Attribute(w + "val")!.Value == "30", "Explicit font size wins");
+    var tableRun = rows[2].Descendants(w + "r").First();
+    if (layout == EditorWordLayout.Standard)
+    {
+        Require(!tableRun.Descendants(w + "sz").Any() && !table.Descendants(w + "tblCellMar").Any(),
+            "Standard preserves implicit font and padding");
+    }
+    else
+    {
+        var expected = layout == EditorWordLayout.Compact ? 18 : 24;
+        Require((int)tableRun.Descendants(w + "sz").Single().Attribute(w + "val")! == expected, "Word table profile font");
+        Require(table.Descendants(w + "tblCellMar").Any(), "Word table padding emitted");
+    }
+    using var package = DocumentFormat.OpenXml.Packaging.WordprocessingDocument.Open(new MemoryStream(result.Content), false);
+    var errors = new DocumentFormat.OpenXml.Validation.OpenXmlValidator().Validate(package).ToList();
+    Require(errors.Count == 0, "DOCX schema validation: " + string.Join("; ", errors.Select(e => e.Description)));
+    if (!string.IsNullOrWhiteSpace(wordOutputDirectory))
+    {
+        Directory.CreateDirectory(wordOutputDirectory);
+        await File.WriteAllBytesAsync(Path.Combine(wordOutputDirectory, $"{layout}.docx"), result.Content);
+    }
+}
+var wordOverride = await exporter.ExportAsync("<table><tr><td style='font-size:14pt'>Explicit point size</td><td>Default</td></tr></table>",
+    EditorExportFormat.Docx, new EditorExportOptions { WordFontSize = 11, WordTableFontSize = 8, WordTableCellPadding = 0 });
+using (var archive = new ZipArchive(new MemoryStream(wordOverride.Content), ZipArchiveMode.Read))
+{
+    var xml = Read(archive, "word/document.xml");
+    Require(xml.Contains("w:val=\"28\"") && xml.Contains("w:val=\"16\""), "Word respects point sizes and explicit override");
+}
+foreach (var invalid in new[] { new EditorExportOptions { WordFontSize = 7 }, new EditorExportOptions { WordTableFontSize = 37 },
+    new EditorExportOptions { WordTableCellPadding = -1 }, new EditorExportOptions { WordTableCellPadding = 25 },
+    new EditorExportOptions { WordLayout = (EditorWordLayout)99 } })
+{
+    var invalidRejected = false;
+    try { await exporter.ExportAsync(html, EditorExportFormat.Docx, invalid); }
+    catch (ArgumentOutOfRangeException) { invalidRejected = true; }
+    Require(invalidRejected, "Invalid Word options rejected");
+    var unaffected = await exporter.ExportAsync(html, EditorExportFormat.Xlsx, invalid);
+    using var archive = new ZipArchive(new MemoryStream(unaffected.Content), ZipArchiveMode.Read);
+    Require(Read(archive, "xl/worksheets/sheet1.xml").Contains("EGM-001"), "Excel ignores Word options");
+}
+
 if (Environment.GetEnvironmentVariable("AZUNT_TEST_PDF") == "1")
 {
     var pdf = await exporter.ExportAsync(html, EditorExportFormat.Pdf,
-        new EditorExportOptions { ShowPageNumbers = true });
+        new EditorExportOptions { ShowPageNumbers = true, WordFontSize = 7 });
     Require(Encoding.ASCII.GetString(pdf.Content, 0, 5) == "%PDF-", "PDF header");
     var report = "<h2>PDF density test</h2><table><tbody><tr><th>Report number</th><th>Department</th></tr>" +
         string.Concat(Enumerable.Range(1, 80).Select(i => $"<tr><td>R-{i:D6}</td><td>Accounting</td></tr>")) +

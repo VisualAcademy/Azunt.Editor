@@ -9,7 +9,7 @@
 @inject ILogger<ExportDemo> Logger
 
 <h1>Azunt.Editor — Export Demo</h1>
-<p>Compare PDF print density and test Word and Excel with the same editable sample content. All data is fictional.</p>
+<p>Compare PDF and Word export profiles and test Excel with the same editable sample content. All data is fictional.</p>
 <div class="actions" role="group" aria-label="Load sample content">
     <button type="button" disabled="@Unavailable" @onclick='() => LoadAsync("document")'>Sample Document</button>
     <button type="button" disabled="@Unavailable" @onclick='() => LoadAsync("report")'>Sample Report</button>
@@ -25,10 +25,14 @@
     <label>PDF body size (pt) <input type="number" min="8" max="36" placeholder="Profile default" @bind="_bodySize" /></label>
     <label>PDF table size (pt) <input type="number" min="8" max="36" placeholder="Profile default" @bind="_tableSize" /></label>
     <label>PDF cell padding (px) <input type="number" min="0" max="24" placeholder="Profile default" @bind="_cellPadding" /></label>
+    <label>Word profile <select @bind="_wordLayout"><option value="Standard">Standard</option><option value="Compact">Compact</option><option value="Comfortable">Comfortable</option></select></label>
+    <label>Word body size (pt) <input type="number" min="8" max="36" placeholder="Profile default" @bind="_wordBodySize" /></label>
+    <label>Word table size (pt) <input type="number" min="8" max="36" placeholder="Profile default" @bind="_wordTableSize" /></label>
+    <label>Word cell padding (px) <input type="number" min="0" max="24" placeholder="Profile default" @bind="_wordCellPadding" /></label>
     <label><input type="checkbox" @bind="_pageNumbers" /> PDF page numbers</label>
     <label><input type="checkbox" @bind="_repeatHeaders" /> Repeat initial header row in PDF</label>
 </fieldset>
-<p class="document-meta">These export settings override the editor's page settings for this demo only. PDF density does not change the editor, Word or Excel.</p>
+<p class="document-meta">These export settings override the editor's page settings for this demo only. PDF and Word profiles are independent and do not change the editor or Excel.</p>
 <div class="actions">
     <button type="button" class="primary" disabled="@Unavailable" @onclick="() => ExportAsync(EditorExportFormat.Pdf)">Download PDF</button>
     <button type="button" disabled="@Unavailable" @onclick="() => ExportAsync(EditorExportFormat.Docx)">Download Word</button>
@@ -49,6 +53,8 @@
     private string _paper = "Letter", _orientation = "portrait", _margin = "normal";
     private EditorPdfLayout _layout = EditorPdfLayout.Compact;
     private int? _bodySize, _tableSize, _cellPadding;
+    private EditorWordLayout _wordLayout = EditorWordLayout.Compact;
+    private int? _wordBodySize, _wordTableSize, _wordCellPadding;
     private bool _pageNumbers = true, _repeatHeaders = true;
     private string? _notice;
 
@@ -105,10 +111,12 @@
         {
             var options = new EditorExportOptions
             {
-                FileName = $"Azunt-Sample-{(format == EditorExportFormat.Pdf ? _layout.ToString() : format.ToString())}",
+                FileName = $"Azunt-Sample-{(format == EditorExportFormat.Pdf ? _layout.ToString() : format == EditorExportFormat.Docx ? $"Word-{_wordLayout}" : format.ToString())}",
                 Title = "Azunt Sample Report", PaperSize = _paper, Orientation = _orientation, Margin = _margin,
                 PdfLayout = _layout, PdfFontSize = _bodySize, PdfTableFontSize = _tableSize,
                 PdfTableCellPadding = _cellPadding,
+                WordLayout = _wordLayout, WordFontSize = _wordBodySize, WordTableFontSize = _wordTableSize,
+                WordTableCellPadding = _wordCellPadding,
                 ShowPageNumbers = _pageNumbers, PromotePdfTableHeaders = _repeatHeaders,
                 SpreadsheetDateColumns = new[] { "Date" }, SpreadsheetNumberColumns = new[] { "Quantity" },
                 SpreadsheetCulture = "en-US"
@@ -124,6 +132,11 @@
             (ex.ParamName is nameof(EditorExportOptions.PdfFontSize) or nameof(EditorExportOptions.PdfTableFontSize) or nameof(EditorExportOptions.PdfTableCellPadding)))
         {
             _notice = "PDF font sizes must be 8–36 points and cell padding 0–24 pixels."; _failed = true;
+        }
+        catch (ArgumentOutOfRangeException ex) when (format == EditorExportFormat.Docx &&
+            (ex.ParamName is nameof(EditorExportOptions.WordFontSize) or nameof(EditorExportOptions.WordTableFontSize) or nameof(EditorExportOptions.WordTableCellPadding)))
+        {
+            _notice = "Word font sizes must be 8–36 points and cell padding 0–24 pixels."; _failed = true;
         }
         catch (Exception ex)
         {

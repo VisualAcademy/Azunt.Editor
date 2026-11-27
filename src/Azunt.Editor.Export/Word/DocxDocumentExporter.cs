@@ -4,6 +4,7 @@ using Azunt.Editor.Export.Models;
 using DocumentFormat.OpenXml;
 using DocumentFormat.OpenXml.Packaging;
 using System.Buffers.Binary;
+using System.Globalization;
 using System.Text.RegularExpressions;
 using A = DocumentFormat.OpenXml.Drawing;
 using DW = DocumentFormat.OpenXml.Drawing.Wordprocessing;
@@ -26,9 +27,6 @@ internal static class DocxDocumentExporter
             var main = package.AddMainDocumentPart();
             var body = new W.Body();
             main.Document = new W.Document(body);
-            uint drawingId = 1;
-            foreach (var child in document.Root.Children) AppendBlock(child, body, main, ref drawingId);
-            if (!body.Elements<W.Paragraph>().Any() && !body.Elements<W.Table>().Any()) body.Append(new W.Paragraph());
             var landscape = settings.Orientation.Equals("landscape", StringComparison.OrdinalIgnoreCase);
             var size = settings.PaperSize switch
             {
@@ -37,6 +35,21 @@ internal static class DocxDocumentExporter
                 _ => (Width: 11906U, Height: 16838U)
             };
             var margin = settings.Margin switch { "narrow" => 454, "wide" => 1417, _ => 907 };
+            var pageWidth = (int)(landscape ? size.Height : size.Width) - margin * 2;
+            var pageHeight = (int)(landscape ? size.Width : size.Height) - margin * 2;
+            var layout = WordLayoutSettings.Create(settings, pageWidth, pageHeight);
+            if (layout.BodySize is int bodySize)
+            {
+                var styles = main.AddNewPart<StyleDefinitionsPart>();
+                styles.Styles = new W.Styles(new W.DocDefaults(
+                    new W.RunPropertiesDefault(new W.RunPropertiesBaseStyle(
+                        new W.FontSize { Val = (bodySize * 2).ToString(CultureInfo.InvariantCulture) },
+                        new W.FontSizeComplexScript { Val = (bodySize * 2).ToString(CultureInfo.InvariantCulture) }))));
+                styles.Styles.Save();
+            }
+            uint drawingId = 1;
+            foreach (var child in document.Root.Children) AppendBlock(child, body, main, layout, ref drawingId);
+            if (!body.Elements<W.Paragraph>().Any() && !body.Elements<W.Table>().Any()) body.Append(new W.Paragraph());
             body.Append(new W.SectionProperties(
                 new W.PageSize { Width = landscape ? size.Height : size.Width,
                                  Height = landscape ? size.Width : size.Height,
@@ -48,7 +61,7 @@ internal static class DocxDocumentExporter
         return buffer.ToArray();
     }
 
-    private static void AppendBlock(SafeEditorDocument.Node node, W.Body body, MainDocumentPart part, ref uint drawingId)
+    private static void AppendBlock(SafeEditorDocument.Node node, W.Body body, MainDocumentPart part, WordLayoutSettings layout, ref uint drawingId)
     {
         if (node.Name == "hr")
         {
@@ -64,7 +77,7 @@ internal static class DocxDocumentExporter
         }
         if (node.Name == "table")
         {
-            body.Append(BuildTable(node, part, ref drawingId));
+            body.Append(BuildTable(node, part, layout, ref drawingId));
             return;
         }
         if (node.Name is "ul" or "ol")
@@ -75,7 +88,7 @@ internal static class DocxDocumentExporter
                 i++;
                 var para = Paragraph(item);
                 para.Append(new W.Run(new W.Text(node.Name == "ul" ? "• " : $"{i}. ")));
-                AppendInline(item, para, part, new Format(), ref drawingId);
+                AppendInline(item, para, part, new Format(), ref drawingId, layout.BodyImageWidth, layout.ImageHeight);
                 body.Append(para);
             }
             return;
@@ -96,7 +109,7 @@ internal static class DocxDocumentExporter
                 // Code is stored as plain text; do not generate syntax-markup in the file.
                 // Word requires explicit break/tab elements: newlines inside w:t are not rendered.
                 var properties = para.GetFirstChild<W.ParagraphProperties>();
-                properties?.Append(new W.Shading { Val = W.ShadingPatternValues.Clear, Fill = "F1F5F9" });
+                properties?.AddChild(new W.Shading { Val = W.ShadingPatternValues.Clear, Fill = "F1F5F9" });
                 var code = node.Children.FirstOrDefault(child => child.Name == "code");
                 var codeFormat = new Format(Font: "Consolas", Size: 10, Color: "0F172A");
                 var source = code?.PlainText() ?? node.PlainText();
@@ -109,7 +122,7 @@ internal static class DocxDocumentExporter
                 }
                 if (source.Length == 0) AppendPreformattedText("", para, codeFormat);
             }
-            else AppendInline(node, para, part, format, ref drawingId);
+            else AppendInline(node, para, part, format, ref drawingId, layout.BodyImageWidth, layout.ImageHeight);
             body.Append(para);
             return;
         }
@@ -121,7 +134,7 @@ internal static class DocxDocumentExporter
         if (node.Name == "img")
         {
             var para = new W.Paragraph();
-            AppendInline(node, para, part, new Format(), ref drawingId);
+            AppendInline(node, para, part, new Format(), ref drawingId, layout.BodyImageWidth, layout.ImageHeight);
             if (para.ChildElements.Count > 0) body.Append(para);
             return;
         }
@@ -131,7 +144,7 @@ internal static class DocxDocumentExporter
                 body.Append(new W.Paragraph(new W.Run(new W.Text(node.Text) { Space = SpaceProcessingModeValues.Preserve })));
             return;
         }
-        foreach (var child in node.Children) AppendBlock(child, body, part, ref drawingId);
+        foreach (var child in node.Children) AppendBlock(child, body, part, layout, ref drawingId);
     }
 
     private static void AppendPreformattedText(string source, W.Paragraph paragraph, Format format)
@@ -151,10 +164,11 @@ internal static class DocxDocumentExporter
         if (source.Length == 0) paragraph.Append(Run("", format));
     }
 
-    private static W.Paragraph Paragraph(SafeEditorDocument.Node node)
+    private static W.Paragraph Paragraph(SafeEditorDocument.Node node, string fallbackAlignment = "")
     {
         var para = new W.Paragraph();
         var align = node.Style("text-align");
+        if (align.Length == 0) align = fallbackAlignment;
         var justification = align switch
         {
             "center" => W.JustificationValues.Center,
@@ -165,12 +179,12 @@ internal static class DocxDocumentExporter
         var properties = new W.ParagraphProperties(new W.Justification { Val = justification });
         var indent = node.Style("margin-left");
         if (int.TryParse(indent.TrimEnd('p', 'x'), out var pixels) && pixels is > 0 and <= 240 && indent.EndsWith("px", StringComparison.Ordinal))
-            properties.Append(new W.Indentation { Left = (pixels * 15).ToString(System.Globalization.CultureInfo.InvariantCulture) });
+            properties.AddChild(new W.Indentation { Left = (pixels * 15).ToString(System.Globalization.CultureInfo.InvariantCulture) });
         para.Append(properties);
         return para;
     }
 
-    private static W.Table BuildTable(SafeEditorDocument.Node node, MainDocumentPart part, ref uint drawingId)
+    private static W.Table BuildTable(SafeEditorDocument.Node node, MainDocumentPart part, WordLayoutSettings layout, ref uint drawingId)
     {
         var color = node.Style("border-color").TrimStart('#');
         if (color.Length != 6 || !color.All(Uri.IsHexDigit)) color = "AEB8C6";
@@ -187,40 +201,154 @@ internal static class DocxDocumentExporter
             new W.TableWidth { Width = "5000", Type = W.TableWidthUnitValues.Pct }, borders);
         if (node.Style("table-layout") == "fixed")
             tableProperties.Append(new W.TableLayout { Type = W.TableLayoutValues.Fixed });
-        var table = new W.Table(tableProperties);
-        foreach (var rowNode in node.DescendantsAndSelf().Where(e => e.Name == "tr"))
+        if (layout.CellPadding is int padding)
+        {
+            // Use the Office 2007-compatible left/right margin elements.
+            var twips = padding * 15;
+            var value = twips.ToString(CultureInfo.InvariantCulture);
+            tableProperties.Append(new W.TableCellMarginDefault(
+                $"<w:tblCellMar xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\">" +
+                $"<w:top w:w=\"{value}\" w:type=\"dxa\"/><w:left w:w=\"{value}\" w:type=\"dxa\"/>" +
+                $"<w:bottom w:w=\"{value}\" w:type=\"dxa\"/><w:right w:w=\"{value}\" w:type=\"dxa\"/></w:tblCellMar>"));
+        }
+        var rows = TableRows(node).Select(row => row.Children.Where(c => c.Name is "td" or "th").ToList())
+            .Where(cells => cells.Count > 0).ToList();
+        if (rows.Count == 0) rows.Add(new List<SafeEditorDocument.Node> { new("td") });
+        var columnCount = rows.Max(cells => cells.Sum(CellSpan));
+        var widths = ColumnWidths(rows, columnCount, layout.PageWidth);
+        var grid = new W.TableGrid();
+        foreach (var width in widths)
+            grid.Append(new W.GridColumn { Width = width.ToString(CultureInfo.InvariantCulture) });
+        var table = new W.Table(tableProperties, grid);
+        var initialHeader = true;
+        foreach (var cells in rows)
         {
             var row = new W.TableRow();
-            var cells = rowNode.Children.Where(e => e.Name is "td" or "th").ToList();
-            // Keep each row together. Repeat semantic header rows on subsequent pages.
-            var rowProperties = new W.TableRowProperties(new W.CantSplit());
-            if (cells.Count > 0 && cells.All(c => c.Name == "th"))
-                rowProperties.Append(new W.TableHeader());
+            // Only contiguous initial header rows can be repeated by Word.
+            var rowProperties = new W.TableRowProperties();
+            var missing = columnCount - cells.Sum(CellSpan);
+            if (missing > 0) rowProperties.Append(new W.GridAfter { Val = missing });
+            rowProperties.Append(new W.CantSplit());
+            initialHeader = initialHeader && cells.All(c => c.Name == "th");
+            if (initialHeader) rowProperties.Append(new W.TableHeader());
             row.Append(rowProperties);
-            var logicalColumns = cells.Sum(c => int.TryParse(c.Attribute("colspan"), out var span) && span is >= 2 and <= 12 ? span : 1);
-            var cellImageMaxWidth = Math.Clamp(640 / Math.Max(logicalColumns, 1), 120, 480);
+            var column = 0;
             foreach (var cellNode in cells)
             {
+                var span = CellSpan(cellNode);
+                var width = 0;
+                for (var i = 0; i < span; i++) width += widths[column + i];
+                column += span;
                 var cell = new W.TableCell();
                 var cellProperties = new W.TableCellProperties();
                 if (TryPercentWidth(cellNode, out var percentage))
                     cellProperties.Append(new W.TableCellWidth
                     {
                         Type = W.TableWidthUnitValues.Pct,
-                        Width = ((int)Math.Round(percentage * 50)).ToString(System.Globalization.CultureInfo.InvariantCulture)
+                        Width = ((int)Math.Round(percentage * 50)).ToString(CultureInfo.InvariantCulture)
                     });
-                if (int.TryParse(cellNode.Attribute("colspan"), out var span) && span is >= 2 and <= 12)
-                    cellProperties.Append(new W.GridSpan { Val = span });
-                if (cellProperties.HasChildren) cell.Append(cellProperties);
-                var para = Paragraph(cellNode);
-                AppendInline(cellNode, para, part,
-                    cellNode.Name == "th" ? new Format(Bold: true) : new Format(), ref drawingId, cellImageMaxWidth);
-                cell.Append(para);
+                else cellProperties.Append(new W.TableCellWidth
+                {
+                    Type = W.TableWidthUnitValues.Dxa,
+                    Width = width.ToString(CultureInfo.InvariantCulture)
+                });
+                if (span > 1) cellProperties.Append(new W.GridSpan { Val = span });
+                cell.Append(cellProperties);
+                // The grid and cell padding determine the available image width,
+                // including horizontally merged cells. Leave a small border allowance.
+                var imageWidth = Math.Clamp((width - (layout.CellPadding ?? 7) * 30 - 30) / 15, 1, 480);
+                var format = new Format(Bold: cellNode.Name == "th", Size: layout.TableSize);
+                AppendCellContent(cellNode, cell, part, layout, format, imageWidth, ref drawingId);
                 row.Append(cell);
             }
             table.Append(row);
         }
         return table;
+    }
+
+    private static IEnumerable<SafeEditorDocument.Node> TableRows(SafeEditorDocument.Node table)
+    {
+        foreach (var child in table.Children)
+        {
+            if (child.Name == "tr") yield return child;
+            else if (child.Name is "thead" or "tbody" or "tfoot")
+                foreach (var row in child.Children.Where(c => c.Name == "tr")) yield return row;
+        }
+    }
+
+    private static int CellSpan(SafeEditorDocument.Node cell) =>
+        int.TryParse(cell.Attribute("colspan"), out var span) && span is >= 2 and <= 12 ? span : 1;
+
+    private static int[] ColumnWidths(List<List<SafeEditorDocument.Node>> rows, int count, int pageWidth)
+    {
+        // Prefer a full unmerged row with explicit width hints; a leading title
+        // spanning the table must not define the individual column widths.
+        var hint = rows.Where(cells => cells.Count == count && cells.All(c => CellSpan(c) == 1))
+            .OrderByDescending(cells => cells.Count(c => TryPercentWidth(c, out _))).FirstOrDefault();
+        var weights = new double[count];
+        if (hint is not null)
+            for (var i = 0; i < count; i++)
+                if (TryPercentWidth(hint[i], out var percent)) weights[i] = percent;
+        var specified = weights.Sum();
+        var unspecified = weights.Count(w => w == 0);
+        var fallback = unspecified == 0 ? 0 : specified < 100 ? (100 - specified) / unspecified : 100.0 / count;
+        for (var i = 0; i < count; i++) if (weights[i] == 0) weights[i] = fallback;
+        var total = weights.Sum();
+        // Reserve at least one twip per column; rounding cannot produce a zero-width grid.
+        var target = Math.Max(pageWidth, count);
+        var result = new int[count];
+        var assigned = 0;
+        double cumulative = 0;
+        for (var i = 0; i < count; i++)
+        {
+            cumulative += weights[i];
+            var boundary = i == count - 1 ? target - count : (int)Math.Round((target - count) * cumulative / total);
+            result[i] = 1 + boundary - assigned;
+            assigned = boundary;
+        }
+        return result;
+    }
+
+    private static void AppendCellContent(SafeEditorDocument.Node node, W.TableCell cell, MainDocumentPart part,
+        WordLayoutSettings layout, Format format, int imageWidth, ref uint drawingId)
+    {
+        // Direct paragraph blocks stay separately editable instead of concatenating their text.
+        // Nested tables retain their text in the containing cell, not as duplicate outer rows.
+        var inherited = Merge(format, node);
+        W.Paragraph? current = null;
+        foreach (var child in node.Children)
+        {
+            if (child.Name is "p" or "div" or "h1" or "h2" or "h3" or "h4" or "blockquote")
+            {
+                current = null;
+                var paragraph = Paragraph(child, node.Style("text-align"));
+                ApplyCellSpacing(paragraph, layout);
+                AppendInline(child, paragraph, part, inherited, ref drawingId, imageWidth, layout.ImageHeight);
+                cell.Append(paragraph);
+                continue;
+            }
+            if (child.Name == "#text" && string.IsNullOrWhiteSpace(child.Text) && current is null) continue;
+            if (current is null)
+            {
+                current = Paragraph(node);
+                ApplyCellSpacing(current, layout);
+                cell.Append(current);
+            }
+            AppendInline(child, current, part, inherited, ref drawingId, imageWidth, layout.ImageHeight);
+        }
+        if (!cell.Elements<W.Paragraph>().Any())
+        {
+            var empty = Paragraph(node);
+            ApplyCellSpacing(empty, layout);
+            cell.Append(empty);
+        }
+    }
+
+    private static void ApplyCellSpacing(W.Paragraph paragraph, WordLayoutSettings layout)
+    {
+        if (layout.CompactSpacing)
+            paragraph.GetFirstChild<W.ParagraphProperties>()?.AddChild(new W.SpacingBetweenLines
+            { Before = "0", After = "0", Line = "240", LineRule = W.LineSpacingRuleValues.Auto });
     }
 
     private static bool TryPercentWidth(SafeEditorDocument.Node cell, out double percentage)
@@ -234,7 +362,7 @@ internal static class DocxDocumentExporter
     }
 
     private static void AppendInline(SafeEditorDocument.Node node, W.Paragraph para, MainDocumentPart part,
-        Format parent, ref uint drawingId, int maxImageWidth = 560)
+        Format parent, ref uint drawingId, int maxImageWidth = 560, int maxImageHeight = 1200)
     {
         if (node.Name == "#text")
         {
@@ -245,7 +373,7 @@ internal static class DocxDocumentExporter
         if (node.Name == "br") { para.Append(new W.Run(new W.Break())); return; }
         if (node.Name == "img")
         {
-            var image = ImageRun(node, part, ref drawingId, maxImageWidth);
+            var image = ImageRun(node, part, ref drawingId, maxImageWidth, maxImageHeight);
             if (image is not null) para.Append(image);
             return;
         }
@@ -266,11 +394,11 @@ internal static class DocxDocumentExporter
             else
             {
                 foreach (var child in node.Children)
-                    AppendInline(child, para, part, next, ref drawingId, maxImageWidth);
+                    AppendInline(child, para, part, next, ref drawingId, maxImageWidth, maxImageHeight);
             }
             return;
         }
-        foreach (var child in node.Children) AppendInline(child, para, part, next, ref drawingId, maxImageWidth);
+        foreach (var child in node.Children) AppendInline(child, para, part, next, ref drawingId, maxImageWidth, maxImageHeight);
     }
 
     private static Format Merge(Format current, SafeEditorDocument.Node node)
@@ -280,6 +408,9 @@ internal static class DocxDocumentExporter
         if (cssSize.EndsWith("px", StringComparison.OrdinalIgnoreCase) &&
             int.TryParse(cssSize[..^2], out var pixels) && pixels is >= 8 and <= 72)
             size = (int)Math.Round(pixels * 0.75);
+        else if (cssSize.EndsWith("pt", StringComparison.OrdinalIgnoreCase) &&
+            int.TryParse(cssSize[..^2], NumberStyles.None, CultureInfo.InvariantCulture, out var points) && points is >= 6 and <= 54)
+            size = points;
         var font = node.Style("font-family").Trim(' ', '\'', '"');
         var color = node.Style("color");
         var highlight = node.Style("background-color");
@@ -300,25 +431,30 @@ internal static class DocxDocumentExporter
     private static W.Run Run(string text, Format format)
     {
         var properties = new W.RunProperties();
-        if (format.Bold) properties.Append(new W.Bold());
-        if (format.Italic) properties.Append(new W.Italic());
-        if (format.Underline) properties.Append(new W.Underline { Val = W.UnderlineValues.Single });
-        if (format.Strike) properties.Append(new W.Strike());
+        if (format.Bold) properties.AddChild(new W.Bold());
+        if (format.Italic) properties.AddChild(new W.Italic());
+        if (format.Underline) properties.AddChild(new W.Underline { Val = W.UnderlineValues.Single });
+        if (format.Strike) properties.AddChild(new W.Strike());
         if (format.Script is "sup" or "sub")
-            properties.Append(new W.VerticalTextAlignment
+            properties.AddChild(new W.VerticalTextAlignment
             {
                 Val = format.Script == "sup" ? W.VerticalPositionValues.Superscript : W.VerticalPositionValues.Subscript
             });
-        if (!string.IsNullOrEmpty(format.Font)) properties.Append(new W.RunFonts
+        if (!string.IsNullOrEmpty(format.Font)) properties.AddChild(new W.RunFonts
         { Ascii = format.Font, HighAnsi = format.Font, EastAsia = format.Font });
-        if (format.Size is > 0) properties.Append(new W.FontSize { Val = (format.Size.Value * 2).ToString() });
-        if (!string.IsNullOrEmpty(format.Color)) properties.Append(new W.Color { Val = format.Color });
-        if (!string.IsNullOrEmpty(format.Highlight)) properties.Append(new W.Shading { Fill = format.Highlight });
+        if (format.Size is > 0)
+        {
+            var size = (format.Size.Value * 2).ToString(CultureInfo.InvariantCulture);
+            properties.AddChild(new W.FontSize { Val = size });
+            properties.AddChild(new W.FontSizeComplexScript { Val = size });
+        }
+        if (!string.IsNullOrEmpty(format.Color)) properties.AddChild(new W.Color { Val = format.Color });
+        if (!string.IsNullOrEmpty(format.Highlight)) properties.AddChild(new W.Shading { Fill = format.Highlight });
         return new W.Run(properties, new W.Text(text) { Space = SpaceProcessingModeValues.Preserve });
     }
 
     private static W.Run? ImageRun(SafeEditorDocument.Node node, MainDocumentPart main, ref uint drawingId,
-        int maxWidth = 560)
+        int maxWidth = 560, int maxHeight = 1200)
     {
         if (!SafeEditorDocument.TryImage(node, out var mime, out var bytes)) return null;
         var part = main.AddImagePart(mime);
@@ -334,12 +470,12 @@ internal static class DocxDocumentExporter
         var scaledHeight = width * (double)sourceHeight / Math.Max(1, sourceWidth);
         // Never force tiny images to a 20px height: it distorts 1x1 icons and signatures.
         // If height exceeds the printable limit, scale *both* axes proportionally.
-        if (scaledHeight > 1200)
+        if (scaledHeight > maxHeight)
         {
-            width = Math.Max(1, (int)Math.Floor(width * 1200.0 / scaledHeight));
+            width = Math.Max(1, (int)Math.Floor(width * maxHeight / scaledHeight));
             scaledHeight = width * (double)sourceHeight / Math.Max(1, sourceWidth);
         }
-        var height = Math.Clamp((int)Math.Round(scaledHeight), 1, 1200);
+        var height = Math.Clamp((int)Math.Round(scaledHeight), 1, maxHeight);
         var cx = (long)width * 9525;
         var cy = (long)height * 9525;
         var id = drawingId++;

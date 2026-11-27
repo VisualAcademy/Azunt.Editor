@@ -356,6 +356,8 @@ internal sealed class ViewerSafeEditorDocument
             var width = node.Style("border-width");
             if (width is "1px" or "2px" or "3px" or "4px") styles.Add($"border-width:{width}");
             if (styles.Any(s => s.StartsWith("border-", StringComparison.Ordinal))) styles.Add("border-style:solid");
+            if (node.Name == "table" && node.Style("width") == "100%")
+                styles.Add("width:100%");
             if (node.Name == "table" && node.Style("table-layout") == "fixed")
                 styles.Add("table-layout:fixed");
             if (node.Name is "td" or "th")

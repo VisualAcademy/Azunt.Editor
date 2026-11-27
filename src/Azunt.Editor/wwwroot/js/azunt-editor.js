@@ -185,6 +185,8 @@
         const percent = (node.style.width || "").trim();
         if ((tag === "td" || tag === "th") && /^(?:100|[1-9]?\d(?:\.\d{1,3})?)%$/.test(percent))
           clean.style.width = percent;
+        // A newly inserted table fills the content area in every document style.
+        if (tag === "table" && percent === "100%") clean.style.width = "100%";
         if (tag === "table" && node.style.tableLayout === "fixed")
           clean.style.tableLayout = "fixed";
       }
@@ -1771,6 +1773,7 @@
     if (instance.readOnly || instance.sourceMode || !Number.isInteger(rows) || !Number.isInteger(columns) ||
         rows < 1 || columns < 1 || rows > 10 || columns > 10) return;
     const table = document.createElement("table");
+    table.style.width = "100%";
     const body = table.createTBody();
     for (let rowNumber = 0; rowNumber < rows; rowNumber++) {
       const row = body.insertRow();

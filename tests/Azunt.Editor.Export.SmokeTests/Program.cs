@@ -108,6 +108,10 @@ Require(resizedTableHtml.Contains("width:41.500%") && resizedTableHtml.Contains(
 Require(!resizedTableHtml.Contains("position:"), "Export HTML drops unsupported CSS");
 Require(!EditorHtmlSanitizer.Sanitize("<td style='width:500%'>Bad</td>").Contains("width:"),
     "Export HTML rejects invalid column widths");
+Require(EditorHtmlSanitizer.Sanitize("<table style='width:100%'><tr><td>New</td></tr></table>").Contains("width:100%"),
+    "New full-width tables retain their width");
+Require(!EditorHtmlSanitizer.Sanitize("<table style='width:999%;position:fixed'><tr><td>Bad</td></tr></table>").Contains("width:"),
+    "Invalid table widths remain rejected");
 var rowResizeExportHtml = EditorHtmlSanitizer.Sanitize(
     "<table><tr style='height:80px;position:fixed'><td>Row</td></tr>" +
     "<tr style='height:9999px'><td>Invalid</td></tr></table>");

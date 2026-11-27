@@ -82,6 +82,10 @@ Require(resizedViewer.Contains("width:63.333%") && resizedViewer.Contains("width
 Require(!resizedViewer.Contains("position:"), "Unsupported table CSS is removed");
 Require(!EditorViewerSanitizer.Sanitize("<td style='width:999%;width:calc(100%)'>Bad</td>").Contains("width:"),
     "Disallowed percentage widths are rejected in View");
+Require(EditorViewerSanitizer.Sanitize("<table style='width:100%'><tr><td>New</td></tr></table>").Contains("width:100%"),
+    "New full-width tables retain their width");
+Require(!EditorViewerSanitizer.Sanitize("<table style='width:999%;position:fixed'><tr><td>Bad</td></tr></table>").Contains("width:"),
+    "Invalid table widths remain rejected");
 var rowResizeViewer = EditorViewerSanitizer.Sanitize(
     "<table><tr style='height:80px;position:fixed'><td>Row</td></tr>" +
     "<tr style='height:9999px'><td>Invalid</td></tr></table>");

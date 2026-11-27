@@ -27,18 +27,26 @@
 </button></p>
 
 <p class="document-meta"><label>Content rendering:
-    <select @bind="_contentRendering">
+    <select @bind="_documentStyleId">
         <option value="Standard">Standard</option>
         <option value="BrowserDefault">Browser Default</option>
         <option value="CompactReport">Compact Report</option>
         <option value="BusinessDocument">Business Document</option>
         <option value="Minimal">Minimal</option>
+        <option value="custom:office-report">Office Report (Custom)</option>
     </select>
 </label></p>
 
 <AzuntEditor @key="UseStoredImages" @ref="_editor" Id="azunt-blazor-demo" Name="BlazorHtml" @bind-Value="_html" Height="340" UploadUrl="@(UseStoredImages ? "/editor/demo-images" : null)"
-    Mode="@_demoMode" @bind-ContentRendering="_contentRendering" ShowDocumentStyleSelector="true" ToolbarMode="@(UseClassic ? "Classic" : "Compact")" ShowMenuBar="@_showMenuBar" ShowToolbarGroupLabels="@_showToolbarGroupLabels" CustomCommands="EditorCommands" CustomCommandInvoked="HandleEditorCommand" />
+    Mode="@_demoMode" ContentRendering="EditorContentRendering.CompactReport" CustomDocumentStyles="DemoStyles" @bind-DocumentStyleId="_documentStyleId" ShowDocumentStyleSelector="true" ToolbarMode="@(UseClassic ? "Classic" : "Compact")" ShowMenuBar="@_showMenuBar" ShowToolbarGroupLabels="@_showToolbarGroupLabels" CustomCommands="EditorCommands" CustomCommandInvoked="HandleEditorCommand" />
 
+<p class="document-meta"><label>Word output layout:
+    <select @bind="_wordLayout">
+        <option value="Compact">Compact</option>
+        <option value="Standard">Standard</option>
+        <option value="Comfortable">Comfortable</option>
+    </select>
+</label></p>
 <div class="actions">
     <button class="primary" @onclick="SaveAsync">Save HTML</button>
     <button @onclick="RestoreAsync">Restore saved HTML</button>
@@ -75,7 +83,14 @@
     private bool UseDeferredImages => HostEnvironment.IsDevelopment() &&
         new Uri(Navigation.Uri).Query.Contains("images=save", StringComparison.OrdinalIgnoreCase);
     private AzuntEditor? _editor;
-    private EditorContentRendering _contentRendering = EditorContentRendering.CompactReport;
+    private string _documentStyleId = "CompactReport";
+    private EditorWordLayout _wordLayout = EditorWordLayout.Compact;
+    private static readonly IReadOnlyList<EditorDocumentStyle> DemoStyles = new[]
+    {
+        new EditorDocumentStyle { Id = "office-report", Name = "Office Report (Custom)", FontFamily = "Arial",
+            FontSize = 12, TableFontSize = 11, LineHeight = 1.25, Padding = 12,
+            CellPaddingVertical = 2, CellPaddingHorizontal = 4, HeaderColor = "#e8eff6" }
+    };
     private EditorMode _demoMode = EditorMode.Edit;
     private bool _showMenuBar = true;
     private bool _showToolbarGroupLabels = true;
@@ -147,7 +162,8 @@
             var result = await ExportService.ExportAsync(html, format, new EditorExportOptions
             {
                 FileName = "Azunt-Blazor-Report", Title = "Blazor editor report",
-                PaperSize = page.PaperSize, Orientation = page.Orientation, Margin = page.Margin
+                PaperSize = page.PaperSize, Orientation = page.Orientation, Margin = page.Margin,
+                WordLayout = _wordLayout
             });
             using var stream = new MemoryStream(result.Content, writable: false);
             using var reference = new DotNetStreamReference(stream);

@@ -49,6 +49,12 @@ public sealed class AzuntEditorTagHelper : TagHelper
     [HtmlAttributeName("show-document-style-selector")]
     public bool ShowDocumentStyleSelector { get; set; }
 
+    [HtmlAttributeName("custom-document-styles")]
+    public IReadOnlyList<EditorDocumentStyle>? CustomDocumentStyles { get; set; }
+
+    [HtmlAttributeName("document-style-id")]
+    public string? DocumentStyleId { get; set; }
+
     public override void Process(TagHelperContext context, TagHelperOutput output)
     {
         if (!Enum.TryParse<EditorMode>(Mode, true, out var mode) || !Enum.IsDefined(mode))
@@ -57,6 +63,6 @@ public sealed class AzuntEditorTagHelper : TagHelper
             throw new ArgumentException("Unknown Azunt.Editor content rendering style.", nameof(ContentRendering));
         output.TagName = null;
         output.Content.SetHtmlContent(EditorMarkup.Render(
-            Id ?? $"azunt-editor-{Guid.NewGuid():N}", Name, Value, Height, ReadOnly, UploadUrl, ToolbarMode, mode, ShowMenuBar, ShowToolbarGroupLabels, contentRendering, ShowDocumentStyleSelector));
+            Id ?? $"azunt-editor-{Guid.NewGuid():N}", Name, Value, Height, ReadOnly, UploadUrl, ToolbarMode, mode, ShowMenuBar, ShowToolbarGroupLabels, contentRendering, ShowDocumentStyleSelector, CustomDocumentStyles, DocumentStyleId));
     }
 }

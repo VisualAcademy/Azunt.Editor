@@ -43,6 +43,25 @@ foreach (var (style, marker) in new[] {
     Require(styleMarkup.Contains("&lt;p&gt;Report&lt;/p&gt;"), "Style does not mutate HTML");
 }
 
+// Custom presets are application-agnostic and encoded in initial server markup.
+var customPreset = new EditorDocumentStyle { Id = "office-report", Name = "Office & Report", FontSize = 12, TableFontSize = 11 };
+var customMarkup = EditorMarkup.Render("custom", "Html", "<p>Report</p>", 320,
+    false, null, "Compact", EditorMode.View, true, true, EditorContentRendering.CompactReport, true,
+    new[] { customPreset }, "custom:office-report");
+Require(customMarkup.Contains("data-content-rendering=\"custom-document\""), "Custom style marker");
+Require(customMarkup.Contains("--azunt-document-size:12px"), "Custom CSS variables");
+Require(customMarkup.Contains("value=\"custom:office-report\" selected"), "Custom option selected");
+Require(customMarkup.Contains("<p>Report</p>"), "Custom style preserves viewer content");
+foreach (var invalidCustomStyles in new[] { new[] { customPreset, customPreset },
+    new[] { customPreset with { BorderColor = "red;display:none" } } })
+{
+    var invalidCustomRejected = false;
+    try { EditorMarkup.Render("custom", "Html", "", 320, false, null, "Compact", EditorMode.Edit,
+        true, true, EditorContentRendering.Standard, true, invalidCustomStyles, "custom:office-report"); }
+    catch (ArgumentException) { invalidCustomRejected = true; }
+    Require(invalidCustomRejected, "Invalid custom preset rejected");
+}
+
 var malicious = EditorMarkup.Render("x\" onmouseover=\"alert(1)", "Html", "</textarea><script>alert(1)</script>");
 Require(!malicious.Contains("</textarea><script>", StringComparison.OrdinalIgnoreCase), "Initial value safely encoded");
 Require(!malicious.Contains("id=\"x\" onmouseover", StringComparison.Ordinal), "ID safely encoded");

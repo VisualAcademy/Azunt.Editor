@@ -245,3 +245,13 @@ Only built-in document rules are shared; host CSS is not copied. Printing uses
 light colors and actual paper margins, and can wrap code and paginate tables.
 Browser PDF output via Print / Save as PDF is covered; server PDF, DOCX and XLSX
 remain independent. Persist `ContentRendering` separately if needed.
+
+## Custom document styles (0.8.11)
+
+Blazor: supply `CustomDocumentStyles` (an `IReadOnlyList<EditorDocumentStyle>`) and optionally bind `DocumentStyleId` to a built-in enum name or `custom:<id>`. The list is captured at initialization; recreate the component to change the list. `ShowDocumentStyleSelector` enables the menu. `DocumentStyleId` takes precedence over `ContentRendering`; do not bind both as competing settings. `SetDocumentStyleAsync` and `GetDocumentStyleIdAsync` provide imperative access. `ContentRendering` remains the fallback built-in style.
+
+MVC/Razor Pages: supply `custom-document-styles="@Model.Styles"` and `document-style-id="custom:office-report"` to the tag helper.
+
+JavaScript: `AzuntEditor.registerDocumentStyles(id, styles)` replaces the per-instance list; `AzuntEditor.setDocumentStyle(id, "custom:office-report")` selects a preset and `getDocumentStyleId(id)` reads it. Use camelCase property names. The `azunt:document-style-changed` event fires for menu selections.
+
+Up to 20 styles, unique lowercase ASCII ids (letters/digits/hyphens, starting with a letter), labels up to 80 characters, font families System/Arial/Georgia/TimesNewRoman/Consolas, integer font sizes 8–32 CSS px, line height 1–2.5, document padding 0–60 px, cell padding 0–24 px, and six-digit hex colors. No arbitrary CSS. Style changes do not alter HTML; hosts must persist the style ID separately. Browser Preview/Print Match document uses the selected style. Server PDF/Word/Excel export is not automatically styled.

@@ -1142,9 +1142,9 @@
 
 /* Optional document styles. Keep the legacy Standard rules untouched.
    Document presentation is light, independent of application/toolbar theme. */
-.az-azunt-editor:is([data-content-rendering="compact-report"], [data-content-rendering="business-document"], [data-content-rendering="minimal"]) > .az-azunt-editor-canvas {
-  font: var(--azunt-document-size)/var(--azunt-document-line) system-ui, -apple-system, "Segoe UI", Arial, sans-serif;
-  color: #202124;
+.az-azunt-editor:is([data-content-rendering="compact-report"], [data-content-rendering="business-document"], [data-content-rendering="minimal"], [data-content-rendering="custom-document"]) > .az-azunt-editor-canvas {
+  font: var(--azunt-document-size)/var(--azunt-document-line) var(--azunt-document-font, system-ui, -apple-system, "Segoe UI", Arial, sans-serif);
+  color: var(--azunt-document-color, #202124);
   color-scheme: light;
   background: #fff;
   padding: var(--azunt-document-padding);
@@ -1179,20 +1179,20 @@
   --azunt-document-border: #e1e4e8;
   --azunt-document-header: #fafafa;
 }
-.az-azunt-editor:is([data-content-rendering="compact-report"], [data-content-rendering="business-document"], [data-content-rendering="minimal"]) > .az-azunt-editor-canvas p {
+.az-azunt-editor:is([data-content-rendering="compact-report"], [data-content-rendering="business-document"], [data-content-rendering="minimal"], [data-content-rendering="custom-document"]) > .az-azunt-editor-canvas p {
   margin: .45em 0;
 }
-.az-azunt-editor:is([data-content-rendering="compact-report"], [data-content-rendering="business-document"], [data-content-rendering="minimal"]) > .az-azunt-editor-canvas table {
+.az-azunt-editor:is([data-content-rendering="compact-report"], [data-content-rendering="business-document"], [data-content-rendering="minimal"], [data-content-rendering="custom-document"]) > .az-azunt-editor-canvas table {
   width: auto;
   max-width: 100%;
   font-size: var(--azunt-document-cell-size);
   margin: 8px 0;
   border-collapse: collapse;
 }
-.az-azunt-editor:is([data-content-rendering="compact-report"], [data-content-rendering="business-document"], [data-content-rendering="minimal"]) > .az-azunt-editor-canvas table:is([style*="table-layout: fixed"], [style*="table-layout:fixed"]) {
+.az-azunt-editor:is([data-content-rendering="compact-report"], [data-content-rendering="business-document"], [data-content-rendering="minimal"], [data-content-rendering="custom-document"]) > .az-azunt-editor-canvas table:is([style*="table-layout: fixed"], [style*="table-layout:fixed"]) {
   width: 100%;
 }
-.az-azunt-editor:is([data-content-rendering="compact-report"], [data-content-rendering="business-document"], [data-content-rendering="minimal"]) > .az-azunt-editor-canvas :is(th, td) {
+.az-azunt-editor:is([data-content-rendering="compact-report"], [data-content-rendering="business-document"], [data-content-rendering="minimal"], [data-content-rendering="custom-document"]) > .az-azunt-editor-canvas :is(th, td) {
   min-width: 0;
   padding: var(--azunt-document-cell-padding);
   border: 1px solid var(--azunt-document-border);
@@ -1202,7 +1202,7 @@
   color: inherit;
   vertical-align: top;
 }
-.az-azunt-editor:is([data-content-rendering="compact-report"], [data-content-rendering="business-document"], [data-content-rendering="minimal"]) > .az-azunt-editor-canvas th {
+.az-azunt-editor:is([data-content-rendering="compact-report"], [data-content-rendering="business-document"], [data-content-rendering="minimal"], [data-content-rendering="custom-document"]) > .az-azunt-editor-canvas th {
   background: var(--azunt-document-header);
 }
 .az-azunt-editor .az-azunt-editor-select[data-select="documentStyle"] { max-width: 180px; }

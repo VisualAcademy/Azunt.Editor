@@ -1,4 +1,5 @@
 using System.Text;
+using System.Text.Json;
 using System.Text.Encodings.Web;
 using Azunt.Editor.Models;
 
@@ -36,23 +37,45 @@ public static class EditorMarkup
         => RenderCore(id, name, value, height, readOnly, uploadUrl, toolbarMode, mode, showMenuBar, showToolbarGroupLabels,
             manualMount: false, contentRendering: contentRendering, showDocumentStyleSelector: showDocumentStyleSelector);
 
+    /// <summary>Render with host-defined document styles. Existing overloads are retained.</summary>
+    public static string Render(string id, string name, string? value, int height,
+        bool readOnly, string? uploadUrl, string toolbarMode, EditorMode mode, bool showMenuBar,
+        bool showToolbarGroupLabels, EditorContentRendering contentRendering, bool showDocumentStyleSelector,
+        IReadOnlyList<EditorDocumentStyle>? customDocumentStyles, string? documentStyleId)
+        => RenderCore(id, name, value, height, readOnly, uploadUrl, toolbarMode, mode, showMenuBar, showToolbarGroupLabels,
+            manualMount: false, contentRendering: contentRendering, showDocumentStyleSelector: showDocumentStyleSelector,
+            customDocumentStyles: customDocumentStyles, documentStyleId: documentStyleId);
+
     // Blazor prerendering leaves this markup static until its interactive
     // OnAfterRenderAsync callback binds the JS engine and its .NET reference.
     // Auto-mounting during DOMContentLoaded changes prerendered nodes before
     // Blazor has attached, which can disrupt hydration and command binding.
     internal static string RenderForBlazor(string id, string name, string? value, int height,
         bool readOnly, string? uploadUrl, string toolbarMode, EditorMode mode, bool showMenuBar = true, bool showToolbarGroupLabels = true,
-        EditorContentRendering contentRendering = EditorContentRendering.Standard, bool showDocumentStyleSelector = false)
-        => RenderCore(id, name, value, height, readOnly, uploadUrl, toolbarMode, mode, showMenuBar, showToolbarGroupLabels, manualMount: true, contentRendering: contentRendering, showDocumentStyleSelector: showDocumentStyleSelector);
+        EditorContentRendering contentRendering = EditorContentRendering.Standard, bool showDocumentStyleSelector = false,
+        IReadOnlyList<EditorDocumentStyle>? customDocumentStyles = null, string? documentStyleId = null)
+        => RenderCore(id, name, value, height, readOnly, uploadUrl, toolbarMode, mode, showMenuBar, showToolbarGroupLabels, manualMount: true, contentRendering: contentRendering, showDocumentStyleSelector: showDocumentStyleSelector,
+            customDocumentStyles: customDocumentStyles, documentStyleId: documentStyleId);
 
     private static string RenderCore(string id, string name, string? value, int height,
         bool readOnly, string? uploadUrl, string toolbarMode, EditorMode mode, bool showMenuBar, bool showToolbarGroupLabels, bool manualMount,
-        EditorContentRendering contentRendering = EditorContentRendering.Standard, bool showDocumentStyleSelector = false)
+        EditorContentRendering contentRendering = EditorContentRendering.Standard, bool showDocumentStyleSelector = false,
+        IReadOnlyList<EditorDocumentStyle>? customDocumentStyles = null, string? documentStyleId = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(id);
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
         if (!Enum.IsDefined(mode)) throw new ArgumentOutOfRangeException(nameof(mode));
         if (!Enum.IsDefined(contentRendering)) throw new ArgumentOutOfRangeException(nameof(contentRendering));
+        var styles = EditorDocumentStyle.Validate(customDocumentStyles);
+        EditorDocumentStyle? custom = null;
+        if (documentStyleId is not null)
+        {
+            if (documentStyleId.StartsWith("custom:", StringComparison.Ordinal))
+                custom = styles.FirstOrDefault(style => style.Id == documentStyleId[7..])
+                    ?? throw new ArgumentException("Unknown custom document style.", nameof(documentStyleId));
+            else if (!Enum.TryParse<EditorContentRendering>(documentStyleId, true, out contentRendering) || !Enum.IsDefined(contentRendering))
+                throw new ArgumentException("Unknown document style.", nameof(documentStyleId));
+        }
         var viewer = mode == EditorMode.View;
         var toolbarTabIndex = readOnly ? "" : " tabindex=\"-1\"";
 
@@ -70,6 +93,16 @@ public static class EditorMarkup
             EditorContentRendering.Minimal => "minimal",
             _ => null
         };
+        if (styles.Length > 0)
+            w.Append(" data-document-styles=\"").Append(Encode(JsonSerializer.Serialize(styles, new JsonSerializerOptions(JsonSerializerDefaults.Web)))).Append('"');
+        if (documentStyleId is not null)
+            w.Append(" data-document-style-id=\"").Append(Encode(custom is null ? contentRendering.ToString() : documentStyleId)).Append('"');
+        if (custom is not null)
+        {
+            w.Append(" data-base-content-rendering=\"").Append(Encode(renderingMarker)).Append('"');
+            w.Append(" style=\"").Append(Encode(custom.CssVariables())).Append('"');
+            renderingMarker = "custom-document";
+        }
         if (renderingMarker is not null)
             w.Append(" data-content-rendering=\"").Append(renderingMarker).Append('"');
         if (manualMount) w.Append(" data-azunt-mount=\"manual\"");
@@ -138,7 +171,7 @@ public static class EditorMarkup
                 ("Standard", "Standard"), ("BrowserDefault", "Browser Default"),
                 ("CompactReport", "Compact Report"), ("BusinessDocument", "Business Document"),
                 ("Minimal", "Minimal")
-            });
+            }.Concat(styles.Select(style => ("custom:" + style.Id, style.Name))).ToArray());
             EndGroup();
         }
 
@@ -443,7 +476,7 @@ public static class EditorMarkup
             foreach (var (optionValue, optionLabel) in options)
             {
                 w.Append("<option value=\"").Append(Encode(optionValue)).Append('"');
-                if (command == "documentStyle" && optionValue == contentRendering.ToString()) w.Append(" selected");
+                if (command == "documentStyle" && optionValue == (custom is null ? contentRendering.ToString() : "custom:" + custom.Id)) w.Append(" selected");
                 w.Append('>').Append(Encode(optionLabel)).Append("</option>");
             }
             w.Append("</select>");

@@ -2,7 +2,7 @@
 
 A lightweight rich-text editor for ASP.NET Core MVC, Razor Pages, and Blazor Server.
 
-Version: **0.8.10** · .NET 10
+Version: **0.8.11** · .NET 10
 
 ## Projects
 - `src/Azunt.Editor` — shared editor components, JavaScript, and CSS
@@ -382,3 +382,7 @@ editing canvas padding is not added a second time. The print window uses a
 light document, including when the editor UI is dark. No HTML or host style
 selection is changed. The optional server-side export package is unchanged.
 See [release notes](docs/release-0.8.10.md).
+
+## Custom document styles (0.8.11)
+
+Register safe, per-editor typography and table presets using `CustomDocumentStyles` and `DocumentStyleId` (`custom:<id>`). Built-in styles remain available. See [public API](docs/public-api.md#custom-document-styles-0811) and [release notes](docs/release-0.8.11.md).

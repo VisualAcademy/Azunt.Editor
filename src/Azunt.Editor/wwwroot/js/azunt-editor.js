@@ -2571,7 +2571,8 @@
     const html = readHtml(instance);
     const sharedCss = sharedPrintDocumentCss();
     const rendering = getContentRendering(instance.element.id);
-    const renderingLabel = { Standard: "Standard", BrowserDefault: "Browser Default",
+    const custom = instance.documentStyles.get(instance.customDocumentStyle);
+    const renderingLabel = custom?.name || { Standard: "Standard", BrowserDefault: "Browser Default",
       CompactReport: "Compact Report", BusinessDocument: "Business Document", Minimal: "Minimal" }[rendering];
     const paper = allowedPageSizes.has(instance.page.paper) ? instance.page.paper : "A4";
     const orientation = allowedOrientations.has(instance.page.orientation) ? instance.page.orientation : "portrait";
@@ -2652,8 +2653,10 @@
       page.dataset.printProfile = match ? "document" : select.value;
       documentRoot.className = match ? "az-azunt-editor" : "";
       content.className = match ? "az-azunt-editor-canvas" : "";
-      if (match && contentRenderings[rendering]) documentRoot.dataset.contentRendering = contentRenderings[rendering];
+      if (match && custom) documentRoot.dataset.contentRendering = "custom-document";
+      else if (match && contentRenderings[rendering]) documentRoot.dataset.contentRendering = contentRenderings[rendering];
       else delete documentRoot.dataset.contentRendering;
+      applyCustomStyle(documentRoot, match ? custom : null);
     };
     select.value = sharedCss ? "document" : "standard";
     applyProfile();
@@ -2685,16 +2688,24 @@
 
   function runSelect(instance, field, value) {
     if (field === "documentStyle") {
-      const before = getContentRendering(instance.element.id);
-      setContentRendering(instance.element.id, value);
-      const rendering = getContentRendering(instance.element.id);
-      if (before !== rendering) {
-        // Presentation changes are separate from the HTML change/history pipeline.
-        instance.element.dispatchEvent(new CustomEvent("azunt:content-rendering-changed", {
+      const id = instance.element.id;
+      const before = getDocumentStyleId(id);
+      setDocumentStyle(id, value);
+      const styleId = getDocumentStyleId(id);
+      const rendering = getContentRendering(id);
+      if (before !== styleId) {
+        instance.element.dispatchEvent(new CustomEvent("azunt:document-style-changed", {
+          bubbles: true, detail: { styleId, rendering }
+        }));
+        if (!styleId.startsWith("custom:")) instance.element.dispatchEvent(new CustomEvent("azunt:content-rendering-changed", {
           bubbles: true, detail: { rendering }
         }));
-        if (instance.dotNetReference) instance.dotNetReference.invokeMethodAsync("OnContentRenderingChanged", rendering)
-          .catch(() => message(instance, "Could not notify the host of the document style change.", "error"));
+        if (instance.dotNetReference) {
+          const customApi = instance.documentStyles.size || before.startsWith("custom:") || instance.element.hasAttribute("data-document-style-id");
+          const call = customApi ? instance.dotNetReference.invokeMethodAsync("OnDocumentStyleChanged", styleId, rendering)
+            : instance.dotNetReference.invokeMethodAsync("OnContentRenderingChanged", rendering);
+          call.catch(() => message(instance, "Could not notify the host of the document style change.", "error"));
+        }
       }
       return;
     }
@@ -3377,30 +3388,104 @@
   const contentRenderings = Object.freeze({ Standard: "", BrowserDefault: "browser-default",
     CompactReport: "compact-report", BusinessDocument: "business-document", Minimal: "minimal" });
 
+  // Custom styles are per instance, use validated scalar values, and never
+  // inject host-provided CSS or modify the saved HTML.
+  const documentFonts = Object.freeze({ System: 'system-ui, -apple-system, "Segoe UI", Arial, sans-serif',
+    Arial: 'Arial, sans-serif', Georgia: 'Georgia, serif', TimesNewRoman: '"Times New Roman", serif',
+    Consolas: 'Consolas, monospace' });
+  const customStyleProperties = ['--azunt-document-font', '--azunt-document-size', '--azunt-document-line',
+    '--azunt-document-padding', '--azunt-document-cell-size', '--azunt-document-cell-padding',
+    '--azunt-document-border', '--azunt-document-header', '--azunt-document-color'];
+
+  function validateDocumentStyles(styles) {
+    if (!Array.isArray(styles) || styles.length > 20) throw new Error("Expected up to 20 custom document styles.");
+    const result = new Map();
+    for (const style of styles) {
+      const { id, name, fontFamily = "System", fontSize = 13, tableFontSize = 12, lineHeight = 1.4,
+        padding = 12, cellPaddingVertical = 3, cellPaddingHorizontal = 5,
+        borderColor = "#cbd2da", headerColor = "#f1f4f7", textColor = "#202124" } = style || {};
+      const integer = (v, min, max) => Number.isInteger(v) && v >= min && v <= max;
+      const color = v => typeof v === "string" && /^#[0-9a-f]{6}$/i.test(v);
+      if (typeof id !== "string" || !/^[a-z][a-z0-9-]{0,39}$/.test(id) || result.has(id) ||
+          typeof name !== "string" || !name.trim() || name.length > 80 || !Object.hasOwn(documentFonts, fontFamily) ||
+          !integer(fontSize, 8, 32) || !integer(tableFontSize, 8, 32) ||
+          typeof lineHeight !== "number" || !Number.isFinite(lineHeight) || lineHeight < 1 || lineHeight > 2.5 ||
+          !integer(padding, 0, 60) || !integer(cellPaddingVertical, 0, 24) || !integer(cellPaddingHorizontal, 0, 24) ||
+          !color(borderColor) || !color(headerColor) || !color(textColor)) throw new Error("Invalid or duplicate custom document style.");
+      result.set(id, { id, name: name.trim(), fontFamily, fontSize, tableFontSize, lineHeight, padding,
+        cellPaddingVertical, cellPaddingHorizontal, borderColor, headerColor, textColor });
+    }
+    return result;
+  }
+
+  function applyCustomStyle(root, style) {
+    const values = style ? [documentFonts[style.fontFamily], `${style.fontSize}px`, String(style.lineHeight),
+      `${style.padding}px`, `${style.tableFontSize}px`, `${style.cellPaddingVertical}px ${style.cellPaddingHorizontal}px`,
+      style.borderColor, style.headerColor, style.textColor] : [];
+    customStyleProperties.forEach((key, index) => style ? root.style.setProperty(key, values[index]) : root.style.removeProperty(key));
+  }
+
   function getContentRendering(id) {
-    const marker = getInstance(id).element.dataset.contentRendering || "";
+    const instance = getInstance(id);
+    const marker = instance.customDocumentStyle ? instance.baseContentRendering : instance.element.dataset.contentRendering || "";
     return Object.keys(contentRenderings).find(key => contentRenderings[key] === marker) || "Standard";
+  }
+
+  function getDocumentStyleId(id) {
+    const instance = getInstance(id);
+    return instance.customDocumentStyle ? `custom:${instance.customDocumentStyle}` : getContentRendering(id);
   }
 
   function syncContentRenderingSelector(instance) {
     const select = instance.toolbar?.querySelector('[data-select="documentStyle"]');
-    if (select) select.value = getContentRendering(instance.element.id);
+    if (!select) return;
+    Array.from(select.options).filter(option => option.value.startsWith("custom:")).forEach(option => option.remove());
+    for (const style of instance.documentStyles.values()) select.add(new Option(style.name, `custom:${style.id}`));
+    select.value = getDocumentStyleId(instance.element.id);
+  }
+
+  function applyDocumentRendering(instance, marker, custom) {
+    if ((instance.element.dataset.contentRendering || "") === marker && instance.customDocumentStyle === (custom?.id || null)) return;
+    if (instance.imageResize) finishImageResize(instance, null, true);
+    finishTableMove(instance, null, true);
+    finishTableColumnResize(instance, null, true);
+    if (marker) instance.element.dataset.contentRendering = marker;
+    else delete instance.element.dataset.contentRendering;
+    instance.customDocumentStyle = custom?.id || null;
+    // Do not touch host-owned inline properties on ordinary built-in editors.
+    if (custom || instance.hasCustomStyleProperties) applyCustomStyle(instance.element, custom);
+    instance.hasCustomStyleProperties = !!custom;
+    if (instance.tableMoveHandle) repositionOverlays(instance);
+    updateResizeHandle(instance);
   }
 
   function setContentRendering(id, rendering) {
     const desired = Object.keys(contentRenderings).find(key => key.toLowerCase() === String(rendering).trim().toLowerCase());
     if (!desired) throw new Error("Unknown content rendering style.");
     const instance = getInstance(id);
-    const marker = contentRenderings[desired];
-    if ((instance.element.dataset.contentRendering || "") !== marker) {
-      // Cancel transient drag dimensions before changing layout.
-      if (instance.imageResize) finishImageResize(instance, null, true);
-      finishTableMove(instance, null, true);
-      finishTableColumnResize(instance, null, true);
-      if (marker) instance.element.dataset.contentRendering = marker;
-      else delete instance.element.dataset.contentRendering;
-      repositionOverlays(instance);
-      updateResizeHandle(instance);
+    instance.baseContentRendering = contentRenderings[desired];
+    applyDocumentRendering(instance, contentRenderings[desired], null);
+    syncContentRenderingSelector(instance);
+  }
+
+  function setDocumentStyle(id, styleId) {
+    const instance = getInstance(id);
+    if (typeof styleId === "string" && styleId.startsWith("custom:")) {
+      const custom = instance.documentStyles.get(styleId.slice(7));
+      if (!custom) throw new Error("Unknown custom document style.");
+      applyDocumentRendering(instance, "custom-document", custom);
+      syncContentRenderingSelector(instance);
+    } else setContentRendering(id, styleId);
+  }
+
+  function registerDocumentStyles(id, styles) {
+    const instance = getInstance(id);
+    const validated = validateDocumentStyles(styles); // atomic: invalid lists leave the editor unchanged
+    instance.documentStyles = validated;
+    if (instance.customDocumentStyle) {
+      const custom = validated.get(instance.customDocumentStyle);
+      if (custom) { applyCustomStyle(instance.element, custom); repositionOverlays(instance); updateResizeHandle(instance); }
+      else setContentRendering(id, getContentRendering(id));
     }
     syncContentRenderingSelector(instance);
   }
@@ -3536,6 +3621,9 @@
     const pendingHtml = previous?.canvas ? readHtml(previous) : "";
     const previousBlazorCommands = previous?.blazorCommands;
     const sameRoot = previous && previous.element === element;
+    const registeredStyles = sameRoot ? previous.documentStyles : validateDocumentStyles(JSON.parse(element.dataset.documentStyles || "[]"));
+    const initialStyleId = sameRoot ? (previous.customDocumentStyle ? `custom:${previous.customDocumentStyle}` : null) : element.dataset.documentStyleId;
+    const baseContentRendering = sameRoot ? previous.baseContentRendering : (element.dataset.baseContentRendering ?? element.dataset.contentRendering ?? "");
     if (previous) {
       dotNetReference = dotNetReference || previous.dotNetReference;
       unmount(element.id);
@@ -3543,6 +3631,8 @@
     const controller = new AbortController();
     const instance = {
       element, controller, canvas: currentCanvas,
+      documentStyles: registeredStyles, baseContentRendering, customDocumentStyle: null,
+      hasCustomStyleProperties: !!(sameRoot && previous.hasCustomStyleProperties),
       toolbar: element.querySelector(".az-azunt-editor-toolbar"),
       value: element.querySelector("[data-azunt-value]"),
       images: element.querySelector("[data-azunt-images]"),
@@ -3602,6 +3692,17 @@
       ? (previous.historySelections || []).slice() : [null];
     instance.historyIndex = oldHistory?.length ? previous.historyIndex : 0;
     instances.set(element.id, instance);
+    // Restore registered custom style after DOM hydration or a same-root remount.
+    if (initialStyleId?.startsWith("custom:")) {
+      const custom = registeredStyles.get(initialStyleId.slice(7));
+      if (!custom) throw new Error("Unknown custom document style.");
+      applyDocumentRendering(instance, "custom-document", custom);
+    } else if (initialStyleId) {
+      const desired = Object.keys(contentRenderings).find(key => key.toLowerCase() === initialStyleId.trim().toLowerCase());
+      if (!desired) throw new Error("Unknown document style.");
+      instance.baseContentRendering = contentRenderings[desired];
+      applyDocumentRendering(instance, contentRenderings[desired], null);
+    }
     syncContentRenderingSelector(instance);
     instance.canvas.contentEditable = instance.readOnly ? "false" : "true";
     instance.canvas.addEventListener("click", event => handleCodeAction(instance, event), { signal: controller.signal });
@@ -4418,7 +4519,7 @@
     return { paperSize: instance.page.paper, orientation: instance.page.orientation, margin: instance.page.margin };
   }
 
-  window.AzuntEditor = Object.freeze({ mount, mountAll, getHtml, getHtmlStream, setHtml, setMode, getPageSettings, showStatus, unmount, sanitizeHtml, registerTemplate, registerCommand, unregisterCommand, setCommands, setToolbarMode, setContentRendering, getContentRendering, setShowMenuBar, setShowToolbarGroupLabels, saveSelection, restoreSelection, releaseSelection, insertHtml, insertText, insertImage });
+  window.AzuntEditor = Object.freeze({ mount, mountAll, getHtml, getHtmlStream, setHtml, setMode, getPageSettings, showStatus, unmount, sanitizeHtml, registerTemplate, registerCommand, unregisterCommand, setCommands, setToolbarMode, setContentRendering, getContentRendering, setDocumentStyle, getDocumentStyleId, registerDocumentStyles, setShowMenuBar, setShowToolbarGroupLabels, saveSelection, restoreSelection, releaseSelection, insertHtml, insertText, insertImage });
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", mountAll, { once: true });
   else mountAll();
 })();

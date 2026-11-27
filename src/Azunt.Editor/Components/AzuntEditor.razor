@@ -24,6 +24,11 @@
     [Parameter] public EventCallback<EditorContentRendering> ContentRenderingChanged { get; set; }
     /// <summary>Enable the document style selector in the initial toolbar markup.</summary>
     [Parameter] public bool ShowDocumentStyleSelector { get; set; }
+    /// <summary>Host-defined presets, captured at initial render. Recreate the component to replace the list.</summary>
+    [Parameter] public IReadOnlyList<EditorDocumentStyle>? CustomDocumentStyles { get; set; }
+    /// <summary>Built-in enum name or custom:id. When provided, takes precedence over ContentRendering.</summary>
+    [Parameter] public string? DocumentStyleId { get; set; }
+    [Parameter] public EventCallback<string> DocumentStyleIdChanged { get; set; }
     [Parameter] public string? UploadUrl { get; set; }
     [Parameter] public string ToolbarMode { get; set; } = "Compact";
     /// <summary>Display the Compact toolbar's menu row (File, Edit, View, etc.).</summary>
@@ -41,6 +46,7 @@
     private bool _rendered;
     private EditorMode _appliedMode = EditorMode.Edit;
     private EditorContentRendering _appliedContentRendering = EditorContentRendering.Standard;
+    private string? _appliedDocumentStyleId;
     private bool _appliedShowMenuBar = true;
     private bool _appliedShowToolbarGroupLabels = true;
     private long _lastAppliedRevision;
@@ -54,9 +60,10 @@
     {
         if (!string.IsNullOrWhiteSpace(Id)) _editorId = Id;
         // Hold stable markup across ValueChanged rerenders. JavaScript owns the live DOM.
-        _initialMarkup = EditorMarkup.RenderForBlazor(_editorId, Name, Value, Height, ReadOnly, UploadUrl, ToolbarMode, Mode, ShowMenuBar, ShowToolbarGroupLabels, ContentRendering, ShowDocumentStyleSelector);
+        _initialMarkup = EditorMarkup.RenderForBlazor(_editorId, Name, Value, Height, ReadOnly, UploadUrl, ToolbarMode, Mode, ShowMenuBar, ShowToolbarGroupLabels, ContentRendering, ShowDocumentStyleSelector, CustomDocumentStyles, DocumentStyleId);
         _appliedMode = Mode;
         _appliedContentRendering = ContentRendering;
+        _appliedDocumentStyleId = DocumentStyleId;
         _appliedShowMenuBar = ShowMenuBar;
         _appliedShowToolbarGroupLabels = ShowToolbarGroupLabels;
     }
@@ -66,8 +73,7 @@
     {
         if (_mounted && Mode != _appliedMode)
             await SetModeAsync(Mode);
-        if (_mounted && ContentRendering != _appliedContentRendering)
-            await SetContentRenderingAsync(ContentRendering);
+        if (_mounted) await ApplyDocumentStyleParametersAsync();
         if (_mounted && ShowMenuBar != _appliedShowMenuBar)
             await SetShowMenuBarAsync(ShowMenuBar);
         if (_mounted && ShowToolbarGroupLabels != _appliedShowToolbarGroupLabels)
@@ -93,8 +99,7 @@
             // pending; apply that request after the engine is ready.
             if (Mode != _appliedMode)
                 await SetModeAsync(Mode);
-            if (ContentRendering != _appliedContentRendering)
-                await SetContentRenderingAsync(ContentRendering);
+            await ApplyDocumentStyleParametersAsync();
             if (ShowMenuBar != _appliedShowMenuBar)
                 await SetShowMenuBarAsync(ShowMenuBar);
             if (ShowToolbarGroupLabels != _appliedShowToolbarGroupLabels)
@@ -172,6 +177,45 @@
         _appliedShowToolbarGroupLabels = show;
     }
 
+    private async ValueTask ApplyDocumentStyleParametersAsync()
+    {
+        if (DocumentStyleId is not null)
+        {
+            if (!string.Equals(DocumentStyleId, _appliedDocumentStyleId, StringComparison.Ordinal))
+                await SetDocumentStyleAsync(DocumentStyleId);
+        }
+        else if (_appliedDocumentStyleId is not null || ContentRendering != _appliedContentRendering)
+            await SetContentRenderingAsync(ContentRendering);
+    }
+
+    /// <summary>Apply a built-in or registered custom preset without modifying HTML.</summary>
+    public async ValueTask SetDocumentStyleAsync(string styleId)
+    {
+        if (!_mounted) throw new InvalidOperationException("The editor must be mounted before its document style can be changed.");
+        await JS.InvokeVoidAsync("AzuntEditor.setDocumentStyle", _editorId, styleId);
+        DocumentStyleId = await GetDocumentStyleIdAsync();
+        _appliedDocumentStyleId = DocumentStyleId;
+        _appliedContentRendering = await GetContentRenderingAsync();
+        if (!DocumentStyleId.StartsWith("custom:", StringComparison.Ordinal)) ContentRendering = _appliedContentRendering;
+    }
+
+    public ValueTask<string> GetDocumentStyleIdAsync()
+        => JS.InvokeAsync<string>("AzuntEditor.getDocumentStyleId", _editorId);
+
+    [JSInvokable]
+    public async Task OnDocumentStyleChanged(string styleId, string rendering)
+    {
+        if (!Enum.TryParse<EditorContentRendering>(rendering, true, out var parsed) || !Enum.IsDefined(parsed)) return;
+        DocumentStyleId = _appliedDocumentStyleId = styleId;
+        _appliedContentRendering = parsed;
+        if (!styleId.StartsWith("custom:", StringComparison.Ordinal))
+        {
+            ContentRendering = parsed;
+            await ContentRenderingChanged.InvokeAsync(parsed);
+        }
+        await DocumentStyleIdChanged.InvokeAsync(styleId);
+    }
+
     /// <summary>Change document presentation without replacing HTML or changing the undo history.</summary>
     public async ValueTask SetContentRenderingAsync(EditorContentRendering rendering)
     {
@@ -180,6 +224,8 @@
         await JS.InvokeVoidAsync("AzuntEditor.setContentRendering", _editorId, rendering.ToString());
         ContentRendering = rendering;
         _appliedContentRendering = rendering;
+        if (DocumentStyleId is not null) DocumentStyleId = rendering.ToString();
+        _appliedDocumentStyleId = DocumentStyleId;
     }
 
     [JSInvokable]

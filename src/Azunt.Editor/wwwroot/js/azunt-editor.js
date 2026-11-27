@@ -3179,6 +3179,24 @@
     updateContextTools(instance);
   }
 
+  // Presentation is kept on the host, not in document HTML or history.
+  function setContentRendering(id, rendering) {
+    const desired = String(rendering).trim().toLowerCase();
+    if (desired !== "standard" && desired !== "browserdefault")
+      throw new Error("Content rendering must be Standard or BrowserDefault.");
+    const instance = getInstance(id);
+    const native = desired === "browserdefault";
+    if ((instance.element.dataset.contentRendering === "browser-default") === native) return;
+    // Do not carry transient dimensions from a partially completed drag into the new layout.
+    if (instance.imageResize) finishImageResize(instance, null, true);
+    finishTableMove(instance, null, true);
+    finishTableColumnResize(instance, null, true);
+    if (native) instance.element.dataset.contentRendering = "browser-default";
+    else delete instance.element.dataset.contentRendering;
+    repositionOverlays(instance);
+    updateResizeHandle(instance);
+  }
+
   // Controls only the menu row, not command availability or the saved document.
   function setShowMenuBar(id, show) {
     const instance = getInstance(id);
@@ -4190,7 +4208,7 @@
     return { paperSize: instance.page.paper, orientation: instance.page.orientation, margin: instance.page.margin };
   }
 
-  window.AzuntEditor = Object.freeze({ mount, mountAll, getHtml, getHtmlStream, setHtml, setMode, getPageSettings, showStatus, unmount, sanitizeHtml, registerTemplate, registerCommand, unregisterCommand, setCommands, setToolbarMode, setShowMenuBar, setShowToolbarGroupLabels, saveSelection, restoreSelection, releaseSelection, insertHtml, insertText, insertImage });
+  window.AzuntEditor = Object.freeze({ mount, mountAll, getHtml, getHtmlStream, setHtml, setMode, getPageSettings, showStatus, unmount, sanitizeHtml, registerTemplate, registerCommand, unregisterCommand, setCommands, setToolbarMode, setContentRendering, setShowMenuBar, setShowToolbarGroupLabels, saveSelection, restoreSelection, releaseSelection, insertHtml, insertText, insertImage });
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", mountAll, { once: true });
   else mountAll();
 })();

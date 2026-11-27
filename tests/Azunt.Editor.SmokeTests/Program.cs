@@ -19,6 +19,16 @@ foreach (System.Text.RegularExpressions.Match control in toolbarControls)
 Require(safe.Contains("aria-keyshortcuts=\"Alt+F10\""), "Canvas advertises keyboard toolbar shortcut");
 
 
+// Native rendering is opt-in; existing overloads generate unchanged root markup.
+Require(!safe.Contains("data-content-rendering="), "Legacy default is Standard");
+foreach (var renderingMode in new[] { EditorMode.Edit, EditorMode.View })
+{
+    var nativeMarkup = EditorMarkup.Render("native", "Html", "<p>Native</p>", 320,
+        false, null, "Compact", renderingMode, true, true, EditorContentRendering.BrowserDefault);
+    Require(nativeMarkup.Contains("data-content-rendering=\"browser-default\""), "Native rendering marker");
+    Require(nativeMarkup.Contains(renderingMode == EditorMode.View ? "<p>Native</p>" : "&lt;p&gt;Native&lt;/p&gt;"), "HTML preserved by native mode");
+}
+
 var malicious = EditorMarkup.Render("x\" onmouseover=\"alert(1)", "Html", "</textarea><script>alert(1)</script>");
 Require(!malicious.Contains("</textarea><script>", StringComparison.OrdinalIgnoreCase), "Initial value safely encoded");
 Require(!malicious.Contains("id=\"x\" onmouseover", StringComparison.Ordinal), "ID safely encoded");

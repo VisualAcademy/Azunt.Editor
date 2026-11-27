@@ -190,3 +190,20 @@ Complex block fragments use the existing paste behavior, not a new document
 layout engine. The host must authenticate the user and authorize the chosen
 image/signature, validate HTML on save, and enforce its own storage policy.
 An image insertion does not certify or cryptographically sign a document.
+
+## Content rendering (0.8.8)
+
+`EditorContentRendering.Standard` preserves the existing editor presentation.
+`EditorContentRendering.BrowserDefault` uses browser-like typography, paragraph
+spacing and natural table widths for sanitized HTML. Set `ContentRendering` on
+the Blazor component, `content-rendering` on the Tag Helper, or use the new
+`EditorMarkup.Render` overload with `contentRendering` as its final argument.
+
+After mounting, `AzuntEditor.setContentRendering(id, "BrowserDefault")` or
+`await editor.SetContentRenderingAsync(EditorContentRendering.BrowserDefault)`
+changes the view without editing the HTML. Use `Standard` to return. This is
+a host presentation option, not a saved document style. The same setting must
+be supplied when reopening in Edit or View. Existing Preview, Print and export
+rendering are unchanged. The HTML allowlist is unchanged; arbitrary CSS, legacy
+HTML attributes and external style sheets are not newly supported. Fixed-layout
+tables retain full canvas width to support the existing column-resize contract.

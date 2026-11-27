@@ -1,6 +1,7 @@
 @model EditorDemoViewModel
 @inject Microsoft.AspNetCore.Hosting.IWebHostEnvironment HostEnvironment
 @{
+    var browserDefault = Context.Request.Query["rendering"] == "browser";
     var view = Context.Request.Query["mode"] == "view";
     var classic = Context.Request.Query["toolbar"] == "classic";
     var showGroupLabels = Context.Request.Query["labels"] != "false";
@@ -10,6 +11,7 @@
         (Context.Request.Query["images"] == "save");
     var imageUploadUrl = storedImages ? "/editor/demo-images" : null;
     var queryParameters = new List<string>();
+    if (browserDefault) queryParameters.Add("rendering=browser");
     if (storedImages) queryParameters.Add("images=stored");
     else if (saveImagesOnSubmit) queryParameters.Add("images=save");
     if (!showGroupLabels) queryParameters.Add("labels=false");
@@ -22,16 +24,17 @@
 <p class="document-meta">Toolbar: <a href="?">Compact</a> · <a href="?toolbar=note">Notes (one row)</a> · <a href="?toolbar=note&amp;labels=false">Notes (no group labels)</a> · <a href="?toolbar=classic">Classic</a></p>
 <h1>Azunt.Editor — MVC</h1>
 <p class="document-meta">Mode: <a href="?">Edit</a> · <a href="?mode=view">View</a></p>
+<p class="document-meta">Content rendering: <a href="?">Standard</a> · <a href="?rendering=browser">Browser Default</a> · <a href="?rendering=browser&amp;mode=view">Browser Default (View)</a></p>
 <p>Submit the form to test MVC model binding and session-scoped HTML persistence.</p>
 @if (view)
 {
-    <azunt-editor id="azunt-mvc-demo" name="Html" value="@Model.Html" mode="View" />
+    <azunt-editor id="azunt-mvc-demo" name="Html" value="@Model.Html" content-rendering="@(browserDefault ? "BrowserDefault" : "Standard")" mode="View" />
 }
 else
 {
     <form action="@formAction" method="post">
         @Html.AntiForgeryToken()
-        <azunt-editor id="azunt-mvc-demo" name="Html" value="@Model.Html" height="340" toolbar-mode="@(classic ? "Classic" : "Compact")" show-menu-bar="@(!noteToolbar)" show-toolbar-group-labels="@showGroupLabels" upload-url="@imageUploadUrl" />
+        <azunt-editor id="azunt-mvc-demo" name="Html" value="@Model.Html" content-rendering="@(browserDefault ? "BrowserDefault" : "Standard")" height="340" toolbar-mode="@(classic ? "Classic" : "Compact")" show-menu-bar="@(!noteToolbar)" show-toolbar-group-labels="@showGroupLabels" upload-url="@imageUploadUrl" />
         <div class="actions">
             <button class="primary" type="submit">Save HTML</button>
             <azunt-export-buttons />

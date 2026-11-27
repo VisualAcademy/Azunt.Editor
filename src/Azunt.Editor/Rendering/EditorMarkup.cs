@@ -22,20 +22,30 @@ public static class EditorMarkup
         bool readOnly, string? uploadUrl, string toolbarMode, EditorMode mode, bool showMenuBar, bool showToolbarGroupLabels)
         => RenderCore(id, name, value, height, readOnly, uploadUrl, toolbarMode, mode, showMenuBar, showToolbarGroupLabels, manualMount: false);
 
+    /// <summary>Render with an explicit content rendering policy, without changing existing overloads.</summary>
+    public static string Render(string id, string name, string? value, int height,
+        bool readOnly, string? uploadUrl, string toolbarMode, EditorMode mode, bool showMenuBar,
+        bool showToolbarGroupLabels, EditorContentRendering contentRendering)
+        => RenderCore(id, name, value, height, readOnly, uploadUrl, toolbarMode, mode, showMenuBar, showToolbarGroupLabels,
+            manualMount: false, contentRendering: contentRendering);
+
     // Blazor prerendering leaves this markup static until its interactive
     // OnAfterRenderAsync callback binds the JS engine and its .NET reference.
     // Auto-mounting during DOMContentLoaded changes prerendered nodes before
     // Blazor has attached, which can disrupt hydration and command binding.
     internal static string RenderForBlazor(string id, string name, string? value, int height,
-        bool readOnly, string? uploadUrl, string toolbarMode, EditorMode mode, bool showMenuBar = true, bool showToolbarGroupLabels = true)
-        => RenderCore(id, name, value, height, readOnly, uploadUrl, toolbarMode, mode, showMenuBar, showToolbarGroupLabels, manualMount: true);
+        bool readOnly, string? uploadUrl, string toolbarMode, EditorMode mode, bool showMenuBar = true, bool showToolbarGroupLabels = true,
+        EditorContentRendering contentRendering = EditorContentRendering.Standard)
+        => RenderCore(id, name, value, height, readOnly, uploadUrl, toolbarMode, mode, showMenuBar, showToolbarGroupLabels, manualMount: true, contentRendering: contentRendering);
 
     private static string RenderCore(string id, string name, string? value, int height,
-        bool readOnly, string? uploadUrl, string toolbarMode, EditorMode mode, bool showMenuBar, bool showToolbarGroupLabels, bool manualMount)
+        bool readOnly, string? uploadUrl, string toolbarMode, EditorMode mode, bool showMenuBar, bool showToolbarGroupLabels, bool manualMount,
+        EditorContentRendering contentRendering = EditorContentRendering.Standard)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(id);
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
         if (!Enum.IsDefined(mode)) throw new ArgumentOutOfRangeException(nameof(mode));
+        if (!Enum.IsDefined(contentRendering)) throw new ArgumentOutOfRangeException(nameof(contentRendering));
         var viewer = mode == EditorMode.View;
         var toolbarTabIndex = readOnly ? "" : " tabindex=\"-1\"";
 
@@ -45,6 +55,8 @@ public static class EditorMarkup
         w.Append("<div class=\"az-azunt-editor\" data-azunt-editor=\"true\" id=\"").Append(Encode(id))
             .Append("\" data-read-only=\"").Append(readOnly ? "true" : "false").Append('"')
             .Append(" data-editor-mode=\"").Append(viewer ? "view" : "edit").Append('"');
+        if (contentRendering == EditorContentRendering.BrowserDefault)
+            w.Append(" data-content-rendering=\"browser-default\"");
         if (manualMount) w.Append(" data-azunt-mount=\"manual\"");
         if (!string.IsNullOrWhiteSpace(uploadUrl))
             w.Append(" data-upload-url=\"").Append(Encode(uploadUrl)).Append('"');

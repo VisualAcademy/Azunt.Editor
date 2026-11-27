@@ -18,6 +18,8 @@
     [Parameter] public bool ReadOnly { get; set; }
     /// <summary>View hides editing tools and displays the HTML as a read-only document.</summary>
     [Parameter] public EditorMode Mode { get; set; } = EditorMode.Edit;
+    /// <summary>On-screen document appearance; does not change saved HTML.</summary>
+    [Parameter] public EditorContentRendering ContentRendering { get; set; } = EditorContentRendering.Standard;
     [Parameter] public string? UploadUrl { get; set; }
     [Parameter] public string ToolbarMode { get; set; } = "Compact";
     /// <summary>Display the Compact toolbar's menu row (File, Edit, View, etc.).</summary>
@@ -34,6 +36,7 @@
     private bool _mounted;
     private bool _rendered;
     private EditorMode _appliedMode = EditorMode.Edit;
+    private EditorContentRendering _appliedContentRendering = EditorContentRendering.Standard;
     private bool _appliedShowMenuBar = true;
     private bool _appliedShowToolbarGroupLabels = true;
     private long _lastAppliedRevision;
@@ -47,8 +50,9 @@
     {
         if (!string.IsNullOrWhiteSpace(Id)) _editorId = Id;
         // Hold stable markup across ValueChanged rerenders. JavaScript owns the live DOM.
-        _initialMarkup = EditorMarkup.RenderForBlazor(_editorId, Name, Value, Height, ReadOnly, UploadUrl, ToolbarMode, Mode, ShowMenuBar, ShowToolbarGroupLabels);
+        _initialMarkup = EditorMarkup.RenderForBlazor(_editorId, Name, Value, Height, ReadOnly, UploadUrl, ToolbarMode, Mode, ShowMenuBar, ShowToolbarGroupLabels, ContentRendering);
         _appliedMode = Mode;
+        _appliedContentRendering = ContentRendering;
         _appliedShowMenuBar = ShowMenuBar;
         _appliedShowToolbarGroupLabels = ShowToolbarGroupLabels;
     }
@@ -58,6 +62,8 @@
     {
         if (_mounted && Mode != _appliedMode)
             await SetModeAsync(Mode);
+        if (_mounted && ContentRendering != _appliedContentRendering)
+            await SetContentRenderingAsync(ContentRendering);
         if (_mounted && ShowMenuBar != _appliedShowMenuBar)
             await SetShowMenuBarAsync(ShowMenuBar);
         if (_mounted && ShowToolbarGroupLabels != _appliedShowToolbarGroupLabels)
@@ -83,6 +89,8 @@
             // pending; apply that request after the engine is ready.
             if (Mode != _appliedMode)
                 await SetModeAsync(Mode);
+            if (ContentRendering != _appliedContentRendering)
+                await SetContentRenderingAsync(ContentRendering);
             if (ShowMenuBar != _appliedShowMenuBar)
                 await SetShowMenuBarAsync(ShowMenuBar);
             if (ShowToolbarGroupLabels != _appliedShowToolbarGroupLabels)
@@ -158,6 +166,16 @@
         await JS.InvokeVoidAsync("AzuntEditor.setShowToolbarGroupLabels", _editorId, show);
         ShowToolbarGroupLabels = show;
         _appliedShowToolbarGroupLabels = show;
+    }
+
+    /// <summary>Change document presentation without replacing HTML or changing the undo history.</summary>
+    public async ValueTask SetContentRenderingAsync(EditorContentRendering rendering)
+    {
+        if (!Enum.IsDefined(rendering)) throw new ArgumentOutOfRangeException(nameof(rendering));
+        if (!_mounted) throw new InvalidOperationException("The editor must be mounted before its content rendering can be changed.");
+        await JS.InvokeVoidAsync("AzuntEditor.setContentRendering", _editorId, rendering.ToString());
+        ContentRendering = rendering;
+        _appliedContentRendering = rendering;
     }
 
     /// <summary>Change between Edit and View without replacing or losing the current HTML.</summary>

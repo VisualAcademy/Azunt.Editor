@@ -2,7 +2,7 @@
 
 A lightweight rich-text editor for ASP.NET Core MVC, Razor Pages, and Blazor Server.
 
-Version: **0.8.7** · .NET 10
+Version: **0.8.8** · .NET 10
 
 ## Projects
 - `src/Azunt.Editor` — shared editor components, JavaScript, and CSS
@@ -345,3 +345,9 @@ More panel headings, accessible names, tooltips and command availability are unc
 The sample host includes `/editor/mvc/multiple`, `/editor/razor-pages/multiple`, and `/editor/blazor/multiple`. Each demonstrates three inline editors, dynamic add/remove, two modal editors with HTML retained on close, and escaped HTML snapshots. MVC/Razor Pages snapshots are client-side; Blazor snapshots are in component memory. None persist to a database. Use unique IDs for simultaneously mounted editors; call `AzuntEditor.unmount(id)` before removing dynamically mounted MVC/Razor DOM. Blazor components dispose their own instances.
 
 Run `python tests/editor-multiple-browser.py` for the Chromium fixture regression (requires Playwright and BeautifulSoup; optional `CHROMIUM_PATH`). This exercises the shared JavaScript engine and sample module, not a live ASP.NET Core or SignalR host. Run the sample project locally to verify the three integration routes.
+
+## Browser-default content rendering (0.8.8)
+
+Opt in with `ContentRendering="EditorContentRendering.BrowserDefault"` (Blazor)
+or `content-rendering="BrowserDefault"` (MVC/Razor Pages). Standard remains
+the default. See [release notes](docs/release-0.8.8.md) for scope and limitations.

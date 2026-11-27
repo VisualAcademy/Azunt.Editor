@@ -2394,17 +2394,25 @@
     const win = window.open("", "_blank", "width=1000,height=850");
     if (!win) return message(instance, "Please allow popups to preview or print.", "warning");
     win.opener = null;
+    const [width, height] = { A4: [210, 297], Letter: [215.9, 279.4], Legal: [215.9, 355.6] }[paper];
+    const [pageWidth, pageHeight] = orientation === "landscape" ? [height, width] : [width, height];
     const style = `@page{size:${paper} ${orientation};margin:${margin}}` +
-      `*{box-sizing:border-box}body{font:12pt/1.5 Arial,sans-serif;color:#1e293b;margin:0}` +
-      `#azunt-print-controls{position:sticky;top:0;padding:12px;background:#e2e8f0;z-index:10}` +
-      `#azunt-print-controls button{padding:8px 15px;cursor:pointer}` +
-      `.az-azunt-print-page{margin:15px auto;padding:${margin};background:#fff;max-width:${orientation === "landscape" ? "297mm" : "210mm"};min-height:200mm;box-shadow:0 1px 12px #ccc}` +
+      `*{box-sizing:border-box}body{font:12pt/1.5 Arial,sans-serif;color:#1e293b;margin:0;background:#e9edf2}` +
+      `#azunt-print-controls{position:sticky;top:0;padding:12px;background:#e2e8f0;z-index:10;display:flex;align-items:center;gap:12px;flex-wrap:wrap}` +
+      `#azunt-print-controls button,#azunt-print-controls select{padding:8px 12px;cursor:pointer;font:inherit}` +
+      `.az-azunt-print-page{margin:15px auto;padding:${margin};background:#fff;width:${pageWidth}mm;min-height:${pageHeight}mm;box-shadow:0 1px 12px #ccc;overflow-wrap:break-word}` +
       `.az-azunt-print-page img{max-width:100%;height:auto}` +
       `.az-azunt-print-page table{border-collapse:collapse;width:100%;break-inside:auto}` +
-      `.az-azunt-print-page tr{break-inside:avoid}` +
+      `.az-azunt-print-page thead{display:table-header-group}.az-azunt-print-page tfoot{display:table-footer-group}` +
+      `.az-azunt-print-page tr{break-inside:avoid;page-break-inside:avoid}` +
       `.az-azunt-print-page hr[data-azunt-page-break="true"]{break-before:page;page-break-before:always;border:0;margin:0;height:0}` +
       `.az-azunt-print-page th,.az-azunt-print-page td{border:1px solid #aaa;padding:6px}` +
-      `@media print{#azunt-print-controls{display:none}.az-azunt-print-page{margin:0;padding:0;max-width:none;min-height:0;box-shadow:none}}`;
+      `.az-azunt-print-page[data-print-profile="compact"]{font-size:10pt;line-height:1.2}` +
+      `.az-azunt-print-page[data-print-profile="compact"] :is(td,th){font-size:9pt;padding:3px;border-width:.5px}` +
+      `.az-azunt-print-page[data-print-profile="comfortable"]{font-size:14pt;line-height:1.6}` +
+      `.az-azunt-print-page[data-print-profile="comfortable"] :is(td,th){font-size:12pt;padding:8px}` +
+      `.az-azunt-print-page pre{white-space:pre-wrap;overflow-wrap:anywhere}` +
+      `@media print{body{background:#fff}#azunt-print-controls{display:none}.az-azunt-print-page{margin:0;padding:0;width:auto;min-height:0;box-shadow:none}}`;
     win.document.open();
     win.document.write("<!doctype html><html><head><meta charset='utf-8'><title>Azunt Editor — Print Preview</title></head><body></body></html>");
     win.document.close();
@@ -2416,20 +2424,49 @@
     const button = win.document.createElement("button");
     button.type = "button";
     button.textContent = "Print / Save as PDF";
-    button.addEventListener("click", () => win.print());
+    button.disabled = true;
     controls.appendChild(button);
-    controls.appendChild(win.document.createTextNode(`  ${paper} · ${orientation} · ${instance.page.margin} margins`));
+    const label = win.document.createElement("label");
+    label.textContent = "Layout: ";
+    const select = win.document.createElement("select");
+    select.setAttribute("aria-label", "Print layout");
+    for (const name of ["Standard", "Compact", "Comfortable"]) {
+      const option = win.document.createElement("option");
+      option.value = name.toLowerCase(); option.textContent = name;
+      select.appendChild(option);
+    }
+    label.appendChild(select); controls.appendChild(label);
+    controls.appendChild(win.document.createTextNode(`${paper} · ${orientation} · ${instance.page.margin} margins`));
+    const status = win.document.createElement("span");
+    status.setAttribute("role", "status"); status.textContent = "Preparing images…";
+    controls.appendChild(status);
     const page = win.document.createElement("main");
     page.className = "az-azunt-print-page";
+    page.dataset.printProfile = "standard";
     page.innerHTML = html; // Already restricted by sanitizeHtml; do not inject raw user HTML.
     win.document.body.append(controls, page);
-    const ready = Array.from(page.querySelectorAll("img")).map(image => image.complete
-      ? Promise.resolve()
-      : new Promise(resolve => {
-          image.addEventListener("load", resolve, { once: true });
-          image.addEventListener("error", resolve, { once: true });
-        }));
-    if (!previewOnly) Promise.all(ready).then(() => { if (!win.closed) { win.focus(); win.print(); } });
+    select.addEventListener("change", () => { page.dataset.printProfile = select.value; });
+    const images = Array.from(page.querySelectorAll("img"));
+    const ready = images.map(image => image.complete ? Promise.resolve() :
+      new Promise(resolve => {
+        image.addEventListener("load", resolve, { once: true });
+        image.addEventListener("error", resolve, { once: true });
+      }));
+    if (win.document.fonts) ready.push(win.document.fonts.ready.catch(() => {}));
+    // A stalled remote image must not leave Print permanently disabled.
+    let timer;
+    const timeout = new Promise(resolve => { timer = window.setTimeout(resolve, 10000); });
+    const prepared = Promise.race([Promise.all(ready), timeout]).then(() => {
+      window.clearTimeout(timer);
+      if (win.closed) return false;
+      const missing = images.some(image => !image.complete || !image.naturalWidth);
+      status.textContent = missing ? "Some images could not load. Check the preview before printing." : "";
+      button.disabled = false;
+      return !missing;
+    });
+    button.addEventListener("click", () => { if (!win.closed) { win.focus(); win.print(); } });
+    // On image failure show the preview instead of silently printing incomplete content.
+    if (!previewOnly) prepared.then(ok => { if (ok && !win.closed) { win.focus(); win.print(); } });
   }
 
   function runSelect(instance, field, value) {

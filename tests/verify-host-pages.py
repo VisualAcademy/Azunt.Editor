@@ -12,6 +12,6 @@ for path in ['/editor/mvc', '/editor/razor-pages', '/editor/blazor', '/editor/ex
     for marker in ['Azunt.Editor', 'data-azunt-editor', 'data-toolbar-mode="compact"', 'data-azunt-menu="format"']:
         assert marker in page, f'{path}: expected marker {marker} is missing'
     if path == '/editor/export':
-        for marker in ['Export Demo', 'Multi-page Report', 'PDF profile', 'Word profile', 'Download PDF', 'Download Word', 'Download Excel']:
+        for marker in ['Export Demo', 'Multi-page Report', 'PDF profile', 'Word profile', 'Import document', 'Download PDF', 'Download Word', 'Download Excel']:
             assert marker in page, f'{path}: expected export marker {marker} is missing'
     print('PASS:', path)

@@ -2,11 +2,11 @@
 
 A lightweight rich-text editor for ASP.NET Core MVC, Razor Pages, and Blazor Server.
 
-Version: **0.8.5** · .NET 10
+Version: **0.8.6** · .NET 10
 
 ## Projects
 - `src/Azunt.Editor` — shared editor components, JavaScript, and CSS
-- `src/Azunt.Editor.Export` — PDF, Word, and Excel export
+- `src/Azunt.Editor.Export` — PDF, Word, and Excel export; optional document import
 - `samples/Azunt.Web` — MVC, Razor Pages, and Blazor Server examples
 - `tests` — smoke and browser tests
 
@@ -16,6 +16,22 @@ dotnet restore Azunt.Editor.sln
 dotnet build Azunt.Editor.sln -c Release
 dotnet run --project samples/Azunt.Web
 ```
+
+## Print and document import (0.8.6)
+
+Browser Print Preview uses the selected A4, Letter or Legal dimensions and
+supports Standard, Compact and Comfortable print profiles without changing the
+editor document or server PDF settings. Printing waits for images and fonts,
+with a bounded wait and a visible warning for missing images. The preview is a
+continuous paper-width view; final pagination is determined by browser printing.
+
+Optional `Azunt.Editor.Export.Import.EditorDocumentImporter.Import(fileName, bytes)`
+converts UTF-8 `.html`, `.htm`, `.txt` and basic `.docx` body content into restricted,
+editable HTML with fidelity warnings. No additional package is needed. Import is
+explicit, bounded and does not retrieve external resources. Word styles, sections,
+numbering and advanced objects are not reproduced in full. The `/editor/export`
+demo requires an explicit Replace editor content action after reading a file.
+See [0.8.6 release notes](docs/release-0.8.6.md) for limits and integration guidance.
 
 ## Word export profiles (0.8.5)
 

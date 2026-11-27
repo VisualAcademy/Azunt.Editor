@@ -3,6 +3,8 @@
 @using Azunt.Editor.Components
 @using Azunt.Editor.Models
 @using Azunt.Editor.Export.Models
+@using Azunt.Editor.Export.Import
+@using Microsoft.AspNetCore.Components.Forms
 @using Microsoft.JSInterop
 @inject IEditorExportService ExportService
 @inject IJSRuntime JS
@@ -16,6 +18,23 @@
     <button type="button" disabled="@Unavailable" @onclick='() => LoadAsync("long")'>Multi-page Report</button>
     <button type="button" disabled="@Unavailable" @onclick='() => LoadAsync("images")'>Images &amp; Signature</button>
 </div>
+<fieldset disabled="@Unavailable">
+    <legend>Import document</legend>
+    <label>Choose HTML, text or Word (.docx) <InputFile OnChange="ReadImportAsync" accept=".html,.htm,.txt,.docx" /></label>
+    <p class="document-meta">Up to 8 MiB. The current document is not changed until you confirm replacement.</p>
+    @if (_pendingImport is not null)
+    {
+        <p role="status">Ready to import: @_importName</p>
+        @foreach (var warning in _pendingImport.Warnings)
+        {
+            <p class="document-meta">@warning</p>
+        }
+        <div class="actions">
+            <button type="button" @onclick="ApplyImportAsync">Replace editor content</button>
+            <button type="button" @onclick="CancelImport">Cancel import</button>
+        </div>
+    }
+</fieldset>
 <fieldset class="export-demo-settings" disabled="@_busy">
     <legend>Export settings</legend>
     <label>Paper size <select @bind="_paper"><option>A4</option><option>Letter</option><option>Legal</option></select></label>
@@ -57,6 +76,58 @@
     private int? _wordBodySize, _wordTableSize, _wordCellPadding;
     private bool _pageNumbers = true, _repeatHeaders = true;
     private string? _notice;
+    private EditorImportResult? _pendingImport;
+    private string? _importName;
+
+    private async Task ReadImportAsync(InputFileChangeEventArgs args)
+    {
+        if (Unavailable) return;
+        _busy = true; _failed = false; _pendingImport = null; _importName = null;
+        _notice = "Reading import file…";
+        try
+        {
+            var file = args.File;
+            await using var input = file.OpenReadStream(EditorDocumentImporter.MaxFileBytes);
+            using var buffer = new MemoryStream();
+            await input.CopyToAsync(buffer);
+            _pendingImport = EditorDocumentImporter.Import(file.Name, buffer.ToArray());
+            _importName = file.Name;
+            _notice = "File read successfully. Replace editor content only when ready.";
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "Import demo could not read a document.");
+            _notice = "Import failed. Use a supported UTF-8 HTML/text or DOCX file within the size limit.";
+            _failed = true;
+        }
+        finally { _busy = false; }
+    }
+
+    private void CancelImport()
+    {
+        _pendingImport = null; _importName = null;
+        _notice = "Import cancelled. Editor content is unchanged."; _failed = false;
+    }
+
+    private async Task ApplyImportAsync()
+    {
+        if (Unavailable || _editor is null || _pendingImport is null) return;
+        _busy = true; _failed = false;
+        try
+        {
+            var html = _pendingImport.Html;
+            await _editor.SetHtmlAsync(html);
+            _html = html;
+            _pendingImport = null; _importName = null;
+            _notice = "Document imported. Review formatting before saving or exporting.";
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Import demo could not replace editor content.");
+            _notice = "Could not apply imported content. Check the application logs."; _failed = true;
+        }
+        finally { _busy = false; }
+    }
 
     private static readonly IReadOnlyList<EditorCustomCommand> Commands = new[] {
         new EditorCustomCommand { Id = "downloadPdf", Label = "Download PDF", Group = "Export" },

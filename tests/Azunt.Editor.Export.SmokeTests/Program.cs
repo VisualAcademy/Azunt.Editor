@@ -1,5 +1,6 @@
 using Azunt.Editor.Export.Models;
 using Azunt.Editor.Export.Html;
+using Azunt.Editor.Export.Import;
 using Azunt.Editor.Export.Services;
 using Microsoft.Extensions.DependencyInjection;
 using System.IO.Compression;
@@ -472,6 +473,34 @@ foreach (var invalid in new[] { new EditorExportOptions { WordFontSize = 7 }, ne
     var unaffected = await exporter.ExportAsync(html, EditorExportFormat.Xlsx, invalid);
     using var archive = new ZipArchive(new MemoryStream(unaffected.Content), ZipArchiveMode.Read);
     Require(Read(archive, "xl/worksheets/sheet1.xml").Contains("EGM-001"), "Excel ignores Word options");
+}
+
+// 0.8.6: opt-in document import; no host or network dependency.
+var importedWord = EditorDocumentImporter.Import("sample.docx", word.Content);
+Require(importedWord.Html.Contains("Export test") && importedWord.Html.Contains("EGM-001"), "DOCX import retains body and table text");
+Require(importedWord.Html.Contains("<table>") && importedWord.Html.Contains("<strong>") && importedWord.Html.Contains("Bold"), "DOCX import retains editable table and bold text");
+Require(importedWord.Html.Contains("data:image/png;base64,") && importedWord.Html.Contains("Document figure"), "DOCX import retains embedded raster image");
+Require(importedWord.Html.Contains("data-azunt-page-break"), "DOCX import retains explicit page break");
+var importedText = EditorDocumentImporter.Import("sample.txt", Encoding.UTF8.GetBytes("First <tag>\r\n\r\nSecond & last"));
+Require(importedText.Html.Contains("&lt;tag&gt;") && importedText.Html.Contains("<p><br></p>") && importedText.Html.Contains("&amp; last"), "Text import escapes markup and preserves paragraphs");
+var importedHtml = EditorDocumentImporter.Import("sample.html", Encoding.UTF8.GetBytes("<html><head><title>Hidden</title></head><body><p onclick='bad()'>Keep</p><img src='https://example.com/pixel'><script>bad()</script></body></html>"));
+Require(importedHtml.Html.Contains("Keep") && !importedHtml.Html.Contains("Hidden") && !importedHtml.Html.Contains("bad()") && !importedHtml.Html.Contains("example.com"), "HTML import sanitizes and excludes external images");
+foreach (var badImport in new[] { ("bad.docx", Encoding.UTF8.GetBytes("not a zip")), ("bad.exe", new byte[] { 1 }), ("empty.txt", Array.Empty<byte>()), ("large.txt", new byte[EditorDocumentImporter.MaxFileBytes + 1]) })
+{
+    var importRejected = false;
+    try { EditorDocumentImporter.Import(badImport.Item1, badImport.Item2); }
+    catch (Exception ex) when (ex is ArgumentException or InvalidDataException or NotSupportedException) { importRejected = true; }
+    Require(importRejected, "Invalid import rejected: " + badImport.Item1);
+}
+using (var invalidZip = new MemoryStream())
+{
+    using (var archive = new ZipArchive(invalidZip, ZipArchiveMode.Create, leaveOpen: true))
+    using (var writer = new StreamWriter(archive.CreateEntry("[Content_Types].xml").Open()))
+        writer.Write("<!DOCTYPE Types [<!ENTITY x SYSTEM 'file:///secret'>]><Types>&x;</Types>");
+    var xmlDtdRejected = false;
+    try { EditorDocumentImporter.Import("xxe.docx", invalidZip.ToArray()); }
+    catch (System.Xml.XmlException) { xmlDtdRejected = true; }
+    Require(xmlDtdRejected, "DOCX XML DTD rejected");
 }
 
 if (Environment.GetEnvironmentVariable("AZUNT_TEST_PDF") == "1")

@@ -186,7 +186,7 @@
         if ((tag === "td" || tag === "th") && /^(?:100|[1-9]?\d(?:\.\d{1,3})?)%$/.test(percent))
           clean.style.width = percent;
         // A newly inserted table fills the content area in every document style.
-        if (tag === "table" && percent === "100%") clean.style.width = "100%";
+        if (tag === "table" && /^(?:100|[1-9]\d?(?:\.\d{1,3})?)%$/.test(percent)) clean.style.width = percent;
         if (tag === "table" && node.style.tableLayout === "fixed")
           clean.style.tableLayout = "fixed";
       }
@@ -1081,9 +1081,9 @@
     if (instance.tableDropMarker) instance.tableDropMarker.hidden = true;
   }
 
-  function rectangularTable(table) {
+  function rectangularTable(table, minColumns = 2) {
     const rows = Array.from(table?.rows || []);
-    if (!rows.length || rows[0].cells.length < 2 || rows[0].cells.length > 10) return false;
+    if (!rows.length || rows[0].cells.length < minColumns || rows[0].cells.length > 10) return false;
     return rows.every(row => row.cells.length === rows[0].cells.length &&
       Array.from(row.cells).every(cell => cell.colSpan === 1 && cell.rowSpan === 1));
   }
@@ -1103,8 +1103,26 @@
     }
     const move = instance.tableMoveHandle;
     move.hidden = false;
-    move.style.left = `${Math.max(2, rect.left - host.left - 21)}px`;
-    move.style.top = `${rect.top - host.top + 2}px`;
+    // Never clamp the grip INTO a cell: narrow document padding is valid.
+    // Prefer the outside left gutter; use the space above the table when a
+    // viewport/overflow ancestor would clip that gutter.
+    const gap = 4;
+    const width = move.offsetWidth, height = move.offsetHeight;
+    let clipLeft = 0;
+    for (let parent = instance.element; parent; parent = parent.parentElement) {
+      if (/^(hidden|clip|auto|scroll)$/.test(getComputedStyle(parent).overflowX))
+        clipLeft = Math.max(clipLeft, parent.getBoundingClientRect().left + parent.clientLeft);
+    }
+    const left = rect.left - width - gap;
+    const originX = host.left + instance.element.clientLeft;
+    const originY = host.top + instance.element.clientTop;
+    if (left >= clipLeft + 1) {
+      move.style.left = `${left - originX}px`;
+      move.style.top = `${rect.top - originY + 2}px`;
+    } else {
+      move.style.left = `${Math.max(clipLeft + 1, rect.left) - originX}px`;
+      move.style.top = `${rect.top - originY - height - gap}px`;
+    }
     // Resize hit targets are independent of the selected cell/table.
     if (instance.tableHoverPoint) updateTableColumnHover(instance);
   }
@@ -1127,9 +1145,12 @@
   function tableResizeTargetAt(instance, x, y) {
     const front = document.elementFromPoint(x, y);
     if (!front || (front !== instance.tableColumnHandle && !instance.canvas.contains(front))) return null;
-    const cell = document.elementsFromPoint(x, y)
+    const cellAt = (px) => document.elementsFromPoint(px, y)
       .filter(el => el !== instance.tableColumnHandle && instance.canvas.contains(el))
       .map(el => el.closest("td,th")).find(Boolean);
+    // The right edge is also reachable from the small gutter outside a table.
+    const directCell = cellAt(x);
+    const cell = directCell || cellAt(x - 5);
     const table = cell?.closest("table");
     if (!editableTable(instance, table)) return null;
     const rect = cell.getBoundingClientRect();
@@ -1140,12 +1161,15 @@
       if (index >= 0 && distance <= 5) candidates.push({ table, axis, index, distance });
     };
     const col = cell.cellIndex;
-    if ((Math.abs(x - rect.left) <= 5 || Math.abs(x - rect.right) <= 5) && rectangularTable(table)) {
+    const tableRect = table.getBoundingClientRect();
+    if (rectangularTable(table, 1) && y >= tableRect.top && y <= tableRect.bottom)
+      add("outer", 0, Math.abs(x - tableRect.right));
+    if (directCell && (Math.abs(x - rect.left) <= 5 || Math.abs(x - rect.right) <= 5) && rectangularTable(table)) {
       if (col > 0) add("column", col - 1, Math.abs(x - rect.left));
       if (col < row.cells.length - 1) add("column", col, Math.abs(x - rect.right));
     }
     // Row heights are safe for horizontal merges, but not vertical spans.
-    if ((Math.abs(y - rowRect.top) <= 5 || Math.abs(y - rowRect.bottom) <= 5) &&
+    if (directCell && (Math.abs(y - rowRect.top) <= 5 || Math.abs(y - rowRect.bottom) <= 5) &&
         Array.from(table.rows).every(r => Array.from(r.cells).every(c => c.rowSpan === 1))) {
       if (row.rowIndex > 0) add("row", row.rowIndex - 1, Math.abs(y - rowRect.top));
       add("row", row.rowIndex, Math.abs(y - rowRect.bottom));
@@ -1162,7 +1186,7 @@
     const left = Math.max(rect.left, canvas.left), right = Math.min(rect.right, canvas.right);
     const top = Math.max(rect.top, canvas.top), bottom = Math.min(rect.bottom, canvas.bottom);
     handle.dataset.resizeAxis = axis;
-    handle.setAttribute("aria-label", axis === "row" ? "Resize table row" : "Resize table column");
+    handle.setAttribute("aria-label", axis === "row" ? "Resize table row" : axis === "outer" ? "Resize table width" : "Resize table column");
     handle.title = "";
     if (axis === "row") {
       const edge = table.rows[index].getBoundingClientRect().bottom;
@@ -1171,7 +1195,7 @@
       handle.style.width = `${Math.max(0, right - left)}px`;
       handle.style.height = "10px";
     } else {
-      const edge = table.rows[0].cells[index].getBoundingClientRect().right;
+      const edge = axis === "outer" ? rect.right : table.rows[0].cells[index].getBoundingClientRect().right;
       handle.style.left = `${edge - host.left - 5}px`;
       handle.style.top = `${top - host.top}px`;
       handle.style.width = "10px";
@@ -1288,6 +1312,7 @@
     if (event.button !== 0 || !editableTable(instance, table) || instance.tableMove || instance.tableColumnResize) return;
     const { axis, index } = target;
     if (axis === "column" && (!rectangularTable(table) || index < 0 || index >= table.rows[0].cells.length - 1)) return;
+    if (axis === "outer" && !rectangularTable(table, 1)) return;
     if (axis === "row" && (!table.rows[index] || Array.from(table.rows).some(r => Array.from(r.cells).some(c => c.rowSpan !== 1)))) return;
     event.preventDefault();
     instance.canvas.focus({ preventScroll: true });
@@ -1295,13 +1320,28 @@
     remember(instance);
     const widths = Array.from(table.rows[0].cells, c => c.getBoundingClientRect().width);
     const total = widths.reduce((a, b) => a + b, 0);
-    if (axis === "column" && total <= 0) return;
+    if ((axis === "column" || axis === "outer") && total <= 0) return;
+    const parent = table.parentElement;
+    const parentStyle = getComputedStyle(parent);
+    const availableWidth = parent.clientWidth - parseFloat(parentStyle.paddingLeft) - parseFloat(parentStyle.paddingRight);
+    if (axis === "outer" && availableWidth <= 0) return;
+    const tableWidth = table.getBoundingClientRect().width;
+    // Respect both the column ratios and minimum CSS cell sizes. Browser
+    // content constraints can still impose a larger intrinsic minimum.
+    const minTableWidth = axis === "outer" ? Math.min(availableWidth, Math.max(24,
+      ...widths.map((width, col) => {
+        const css = getComputedStyle(table.rows[0].cells[col]);
+        const minimum = Math.max(12, parseFloat(css.minWidth) || 0,
+          parseFloat(css.paddingLeft) + parseFloat(css.paddingRight) + 2);
+        return minimum * total / Math.max(1, width);
+      }))) : 0;
     const row = axis === "row" ? table.rows[index] : null;
     instance.tableColumnResize = { table, axis, index, pointerId: event.pointerId,
       startX: event.clientX, startY: event.clientY, widths, total, changed: false,
       row, rowHeight: row?.getBoundingClientRect().height, savedHeight: row?.style.height,
-      savedLayout: table.style.tableLayout,
-      savedWidths: axis === "column" ? Array.from(table.rows, r => Array.from(r.cells, cell => cell.style.width)) : null };
+      savedLayout: table.style.tableLayout, savedTableWidth: table.style.width,
+      availableWidth, tableWidth, minTableWidth,
+      savedWidths: axis !== "row" ? Array.from(table.rows, r => Array.from(r.cells, cell => cell.style.width)) : null };
     instance.tableColumnHandle.classList.add("az-is-dragging");
     positionTableResizeHandle(instance, target);
     try { instance.tableColumnHandle.setPointerCapture(event.pointerId); } catch (_) { /* optional */ }
@@ -1311,7 +1351,8 @@
     table.style.tableLayout = "fixed";
     for (const row of Array.from(table.rows)) {
       for (let col = 0; col < widths.length; col++) {
-        row.cells[col].style.width = `${(widths[col] * 100 / total).toFixed(3)}%`;
+        const percent = (widths[col] * 100 / total).toFixed(3);
+        row.cells[col].style.width = percent === "100.000" ? "100%" : `${percent}%`;
       }
     }
   }
@@ -1329,6 +1370,21 @@
       return;
     }
     const delta = event.clientX - state.startX;
+    if (state.axis === "outer") {
+      const width = Math.max(state.minTableWidth, Math.min(state.availableWidth, state.tableWidth + delta));
+      const changedWidth = Math.abs(width - state.tableWidth) >= 1 && Math.abs(delta) >= 1;
+      if (!changedWidth && !state.changed) return;
+      if (changedWidth) {
+        const percent = Math.max(1, Math.min(100, width * 100 / state.availableWidth));
+        state.table.style.width = `${Number(percent.toFixed(3))}%`;
+        applyTableColumnWidths(state.table, state.widths, state.total);
+      } else {
+        restoreTableResizeStyles(state);
+      }
+      state.changed = changedWidth;
+      positionTableResizeHandle(instance, state);
+      return;
+    }
     const minWidth = Math.min(50, (state.widths[index] + state.widths[index + 1]) / 2);
     const left = Math.max(minWidth, Math.min(state.widths[index] + state.widths[index + 1] - minWidth, state.widths[index] + delta));
     if (Math.abs(left - state.widths[index]) < 1 && !state.changed) return;
@@ -1338,6 +1394,13 @@
     applyTableColumnWidths(state.table, next, state.total);
     state.changed = Math.abs(left - state.widths[index]) >= 1;
     positionTableResizeHandle(instance, state);
+  }
+
+  function restoreTableResizeStyles(state) {
+    state.table.style.tableLayout = state.savedLayout;
+    if (state.axis === "outer") state.table.style.width = state.savedTableWidth;
+    for (const [r, row] of Array.from(state.table.rows).entries())
+      for (const [c, cell] of Array.from(row.cells).entries()) cell.style.width = state.savedWidths[r][c];
   }
 
   function finishTableColumnResize(instance, event, cancel = false) {
@@ -1351,14 +1414,10 @@
     } catch (_) { /* capture may already be lost */ }
     if ((cancel || !state.changed) && instance.canvas.contains(state.table)) {
       if (state.axis === "row") state.row.style.height = state.savedHeight;
-      else {
-        state.table.style.tableLayout = state.savedLayout;
-        for (const [r, row] of Array.from(state.table.rows).entries())
-          for (const [c, cell] of Array.from(row.cells).entries()) cell.style.width = state.savedWidths[r][c];
-      }
+      else restoreTableResizeStyles(state);
     } else if (state.changed && instance.canvas.contains(state.table)) {
       changed(instance);
-      message(instance, state.axis === "row" ? "Row height updated. Use Undo to restore it." : "Column widths updated. Use Undo to restore them.", "success");
+      message(instance, state.axis === "row" ? "Row height updated. Use Undo to restore it." : state.axis === "outer" ? "Table width updated. Use Undo to restore it." : "Column widths updated. Use Undo to restore them.", "success");
     }
     if (event?.pointerType === "mouse" || event?.pointerType === "pen")
       instance.tableHoverPoint = { x: event.clientX, y: event.clientY };

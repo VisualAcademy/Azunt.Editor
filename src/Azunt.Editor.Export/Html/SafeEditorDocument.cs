@@ -339,8 +339,9 @@ internal sealed class SafeEditorDocument
             var width = node.Style("border-width");
             if (width is "1px" or "2px" or "3px" or "4px") styles.Add($"border-width:{width}");
             if (styles.Any(s => s.StartsWith("border-", StringComparison.Ordinal))) styles.Add("border-style:solid");
-            if (node.Name == "table" && node.Style("width") == "100%")
-                styles.Add("width:100%");
+            if (node.Name == "table" && Regex.IsMatch(node.Style("width"), @"^(?:100|[1-9]\d?(?:\.\d{1,3})?)%$",
+                RegexOptions.CultureInvariant, TimeSpan.FromSeconds(1)))
+                styles.Add($"width:{node.Style("width")}");
             if (node.Name == "table" && node.Style("table-layout") == "fixed")
                 styles.Add("table-layout:fixed");
             if (node.Name is "td" or "th")

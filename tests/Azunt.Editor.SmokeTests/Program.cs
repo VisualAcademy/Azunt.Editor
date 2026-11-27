@@ -84,6 +84,11 @@ Require(!EditorViewerSanitizer.Sanitize("<td style='width:999%;width:calc(100%)'
     "Disallowed percentage widths are rejected in View");
 Require(EditorViewerSanitizer.Sanitize("<table style='width:100%'><tr><td>New</td></tr></table>").Contains("width:100%"),
     "New full-width tables retain their width");
+Require(EditorViewerSanitizer.Sanitize("<table style='width:62.125%'><tr><td>Resized</td></tr></table>").Contains("width:62.125%"),
+    "Resized table width survives sanitization");
+foreach (var invalidOuterWidth in new[] { "0%", "100.1%", "-10%", "80px", "calc(50%)" })
+    Require(!EditorViewerSanitizer.Sanitize($"<table style='width:{invalidOuterWidth}'><tr><td>Bad</td></tr></table>").Contains("width:"),
+        "Invalid outer width is rejected");
 Require(!EditorViewerSanitizer.Sanitize("<table style='width:999%;position:fixed'><tr><td>Bad</td></tr></table>").Contains("width:"),
     "Invalid table widths remain rejected");
 var rowResizeViewer = EditorViewerSanitizer.Sanitize(

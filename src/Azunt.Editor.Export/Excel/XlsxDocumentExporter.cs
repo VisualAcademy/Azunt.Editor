@@ -1,4 +1,6 @@
 using Azunt.Editor.Export.Html;
+using Azunt.Editor.Export.Models;
+using System.Text.RegularExpressions;
 using DocumentFormat.OpenXml;
 using DocumentFormat.OpenXml.Packaging;
 using System.Buffers.Binary;
@@ -21,7 +23,7 @@ internal static class XlsxDocumentExporter
     private const long MaxCombinedImageBytes = 30L * 1024 * 1024;
     private const int PixelsPerReservedRow = 21;
 
-    public static byte[] Export(SafeEditorDocument document)
+    public static byte[] Export(SafeEditorDocument document, EditorExportOptions options)
     {
         using var buffer = new MemoryStream();
         using (var package = SpreadsheetDocument.Create(buffer, SpreadsheetDocumentType.Workbook, true))
@@ -52,6 +54,8 @@ internal static class XlsxDocumentExporter
             long totalImageBytes = 0;
             DrawingsPart? drawingsPart = null;
             var mergedRanges = new List<string>();
+            var columnWidths = new double[100];
+            var tableRows = new List<(S.Row Row, List<(int Column, int Span, string Text)> Cells)>();
 
             foreach (var node in document.Root.Children) WriteBlock(node);
             if (rowNumber == 0) AppendRow(["Document"]);
@@ -60,16 +64,32 @@ internal static class XlsxDocumentExporter
             for (var i = 0; i < textWidths.Length; i++)
             {
                 if (textWidths[i] <= 0 && resizedWidths[i] <= 0) continue;
+                columnWidths[i] = Math.Clamp(Math.Max(textWidths[i] + 2.5, resizedWidths[i]), 14.0, 58.0);
                 columns.Append(new S.Column
                 {
                     Min = (uint)i + 1,
                     Max = (uint)i + 1,
-                    Width = Math.Clamp(Math.Max(textWidths[i] + 2.5, resizedWidths[i]), 14.0, 58.0),
+                    Width = columnWidths[i],
                     CustomWidth = true
                 });
             }
             if (columns.HasChildren)
                 worksheetPart.Worksheet.InsertBefore(columns, sheetData);
+
+            // Calculate wrap heights after all column widths are known.
+            foreach (var (row, cells) in tableRows)
+            {
+                var lines = 1;
+                foreach (var (column, span, text) in cells)
+                {
+                    var width = Enumerable.Range(column, span).Sum(i => columnWidths[i] > 0 ? columnWidths[i] : 14);
+                    var capacity = Math.Max(1, (int)(width - 2));
+                    lines = Math.Max(lines, text.Split('\n').Sum(line => Math.Max(1,
+                        (int)Math.Ceiling((double)line.Sum(ch => ch > 0xFF ? 2 : 1) / capacity))));
+                }
+                row.Height = Math.Min(409, Math.Max(row.Height?.Value ?? 0, 5 + 15.0 * lines));
+                row.CustomHeight = true;
+            }
 
             if (mergedRanges.Count > 0)
             {
@@ -93,35 +113,68 @@ internal static class XlsxDocumentExporter
             {
                 if (node.Name == "table")
                 {
-                    // Honor user-resized columns when the first unmerged row has
-                    // a complete, valid percentage distribution. Do not guess for spans.
-                    var firstRow = node.DescendantsAndSelf().FirstOrDefault(n => n.Name == "tr");
-                    if (firstRow is not null) CaptureColumnWidths(firstRow);
-                    foreach (var tr in node.DescendantsAndSelf().Where(n => n.Name == "tr"))
+                    // Only this table's rows: nested tables stay inside their containing cell.
+                    var rows = TableRows(node).ToList();
+                    if (rows.Count == 0) return;
+                    CaptureColumnWidths(rows[0]);
+                    var headerTypes = new Dictionary<int, string>();
+                    var first = true;
+                    foreach (var tr in rows)
                     {
-                        var cells = tr.Children.Where(n => n.Name is "td" or "th")
-                            .Take(100).ToList();
+                        var cells = tr.Children.Where(n => n.Name is "td" or "th").ToList();
                         if (cells.Count == 0) continue;
-                        var values = new List<string>();
-                        var rowImages = new List<(SafeEditorDocument.Node Image, int Column)>();
+                        var header = cells.All(c => c.Name == "th");
+                        if (rowNumber >= MaxRows) throw new InvalidOperationException("Excel row limit for this export was exceeded.");
+                        var row = new S.Row { RowIndex = ++rowNumber };
+                        var measured = new List<(int Column, int Span, string Text)>();
+                        var column = 0;
+                        var imageHeight = 0;
                         foreach (var cell in cells)
                         {
-                            var firstColumn = values.Count;
-                            if (firstColumn >= 100) break;
-                            var span = int.TryParse(cell.Attribute("colspan"), out var parsed) && parsed is >= 2 and <= 12
-                                ? Math.Min(parsed, 100 - firstColumn) : 1;
-                            values.Add(Normalize(cell.PlainText()));
-                            for (var blank = 1; blank < span; blank++) values.Add("");
+                            var span = int.TryParse(cell.Attribute("colspan"), out var parsed) && parsed is >= 2 and <= 12 ? parsed : 1;
+                            if (column + span > 100) throw new InvalidOperationException("Excel table exceeds the 100-column export limit.");
+                            var raw = TableCellText(cell);
+                            if (raw.Length > 32767) throw new InvalidOperationException("An Excel table cell exceeds 32,767 characters.");
+                            var text = Normalize(raw);
+                            if (first && header && span == 1)
+                            {
+                                if (options.SpreadsheetDateColumns.Any(h => string.Equals(h, text, StringComparison.OrdinalIgnoreCase))) headerTypes[column] = "date";
+                                else if (options.SpreadsheetNumberColumns.Any(h => string.Equals(h, text, StringComparison.OrdinalIgnoreCase))) headerTypes[column] = "number";
+                            }
+                            var style = header ? 1U : 3U;
+                            var value = TextCell(column, text, style);
+                            if (!header && span == 1 && headerTypes.TryGetValue(column, out var type))
+                            {
+                                if (type == "date" && TryDate(text, options.SpreadsheetCulture, out var serial))
+                                    {
+                                    value = NumberCell(column, serial.ToString("R", CultureInfo.InvariantCulture), 4U);
+                                    resizedWidths[column] = Math.Max(resizedWidths[column], 23);
+                                }
+                                else if (type == "number" && TryNumber(text, out var number))
+                                    value = NumberCell(column, number, 5U);
+                            }
+                            row.Append(value);
+                            // Keep border formatting in the covered cells too.
+                            for (var offset = 1; offset < span; offset++) row.Append(TextCell(column + offset, "", style));
                             if (span > 1)
-                                mergedRanges.Add($"{ColumnName(firstColumn)}{rowNumber + 1}:{ColumnName(firstColumn + span - 1)}{rowNumber + 1}");
-                            rowImages.AddRange(cell.DescendantsAndSelf().Where(n => n.Name == "img")
-                                .Select(image => (Image: image, Column: firstColumn)));
+                                mergedRanges.Add($"{ColumnName(column)}{rowNumber}:{ColumnName(column + span - 1)}{rowNumber}");
+                            var longest = text.Split('\n').Select(line => line.Sum(ch => ch > 0xFF ? 2 : 1)).DefaultIfEmpty(0).Max();
+                            for (var offset = 0; offset < span; offset++)
+                                textWidths[column + offset] = Math.Max(textWidths[column + offset], Math.Min(55, Math.Ceiling((double)longest / span)));
+                            measured.Add((column, span, text));
+                            // Images inside tables must not insert artificial data rows.
+                            var cellImageHeight = 0;
+                            foreach (var image in cell.DescendantsAndSelf().Where(n => n.Name == "img"))
+                                cellImageHeight += AddImage(image, rowNumber - 1, column, cellImageHeight);
+                            if (cellImageHeight > 530)
+                                throw new InvalidOperationException("Images in one Excel cell exceed the supported row height.");
+                            imageHeight = Math.Max(imageHeight, cellImageHeight);
+                            column += span;
                         }
-                        AppendRow(values.ToArray(), cells.All(c => c.Name == "th") ? 1U : 0U);
-                        var maxHeight = 0;
-                        foreach (var (image, column) in rowImages)
-                            maxHeight = Math.Max(maxHeight, AddImage(image, rowNumber - 1, column));
-                        ReserveImageRows(maxHeight);
+                        if (imageHeight > 0) { row.Height = Math.Min(409, imageHeight * .75 + 20); row.CustomHeight = true; }
+                        sheetData.Append(row);
+                        tableRows.Add((row, measured));
+                        first = false;
                     }
                     AppendRow([""]);
                     return;
@@ -233,7 +286,7 @@ internal static class XlsxDocumentExporter
                 }
             }
 
-            int AddImage(SafeEditorDocument.Node node, uint zeroBasedRow, int column)
+            int AddImage(SafeEditorDocument.Node node, uint zeroBasedRow, int column, int pixelOffset = 0)
             {
                 if (!SafeEditorDocument.TryImage(node, out var mime, out var data)) return 0;
                 if (drawingId > MaxImages || totalImageBytes + data.Length > MaxCombinedImageBytes)
@@ -288,7 +341,7 @@ internal static class XlsxDocumentExporter
                         ColumnId = new Xdr.ColumnId(column.ToString(CultureInfo.InvariantCulture)),
                         ColumnOffset = new Xdr.ColumnOffset("0"),
                         RowId = new Xdr.RowId(zeroBasedRow.ToString(CultureInfo.InvariantCulture)),
-                        RowOffset = new Xdr.RowOffset("0")
+                        RowOffset = new Xdr.RowOffset(((long)pixelOffset * emuPerPixel).ToString(CultureInfo.InvariantCulture))
                     },
                     new Xdr.Extent { Cx = cx, Cy = cy },
                     picture,
@@ -303,6 +356,19 @@ internal static class XlsxDocumentExporter
                 for (var i = 0; i < count; i++) AppendRow([]);
                 AppendRow([""]);
             }
+
+            S.Cell TextCell(int column, string text, uint style) => new S.Cell
+            {
+                CellReference = ColumnName(column) + rowNumber.ToString(CultureInfo.InvariantCulture),
+                DataType = S.CellValues.InlineString, StyleIndex = style,
+                InlineString = new S.InlineString(new S.Text(text) { Space = SpaceProcessingModeValues.Preserve })
+            };
+
+            S.Cell NumberCell(int column, string value, uint style) => new S.Cell
+            {
+                CellReference = ColumnName(column) + rowNumber.ToString(CultureInfo.InvariantCulture),
+                DataType = S.CellValues.Number, StyleIndex = style, CellValue = new S.CellValue(value)
+            };
 
             void AppendRow(string[] cells, uint styleIndex = 0U)
             {
@@ -340,11 +406,78 @@ internal static class XlsxDocumentExporter
         return buffer.ToArray();
     }
 
+    private static IEnumerable<SafeEditorDocument.Node> TableRows(SafeEditorDocument.Node table)
+    {
+        foreach (var child in table.Children)
+        {
+            if (child.Name == "tr") yield return child;
+            else if (child.Name is "thead" or "tbody" or "tfoot")
+                foreach (var row in child.Children.Where(c => c.Name == "tr")) yield return row;
+        }
+    }
+
+    private static string TableCellText(SafeEditorDocument.Node node)
+    {
+        var output = new StringBuilder();
+        Visit(node);
+        return output.ToString().Trim();
+        void Visit(SafeEditorDocument.Node item)
+        {
+            if (item.Name == "#text")
+                output.Append(Regex.Replace(item.Text, @"[\t\r\n ]+", " "));
+            else if (item.Name == "br") output.Append('\n');
+            else if (item.Name == "input") output.Append(SafeEditorDocument.FormControlGlyph(item));
+            else
+            {
+                var block = item.Name is "p" or "div" or "li" or "tr";
+                if (block && output.Length > 0 && output[^1] != '\n') output.Append('\n');
+                foreach (var child in item.Children) Visit(child);
+                if (block && output.Length > 0 && output[^1] != '\n') output.Append('\n');
+                if (item.Name is "td" or "th" && !ReferenceEquals(item, node)) output.Append(' ');
+            }
+        }
+    }
+
+    private static bool TryDate(string text, string cultureName, out double serial)
+    {
+        serial = 0;
+        var culture = string.Equals(cultureName, "en-US", StringComparison.OrdinalIgnoreCase)
+            ? CultureInfo.GetCultureInfo("en-US") : CultureInfo.InvariantCulture;
+        // Only explicit, four-digit-year date formats; no ambiguous free-form parsing.
+        string[] formats = culture.Name == "en-US"
+            ? ["yyyy-MM-dd", "yyyy-MM-dd HH:mm:ss", "yyyy-MM-dd HH:mm", "yyyy-MM-dd'T'HH:mm:ss",
+                "M/d/yyyy", "M/d/yyyy h:mm:ss tt", "M/d/yyyy h:mm tt", "M/d/yyyy H:mm:ss", "M/d/yyyy H:mm"]
+            : ["yyyy-MM-dd", "yyyy-MM-dd HH:mm:ss", "yyyy-MM-dd HH:mm", "yyyy-MM-dd'T'HH:mm:ss"];
+        if (!DateTime.TryParseExact(text, formats, culture, DateTimeStyles.AllowWhiteSpaces, out var date) ||
+            date < new DateTime(1900, 3, 1)) return false;
+        serial = date.ToOADate();
+        return true;
+    }
+
+    private static bool TryNumber(string text, out string number)
+    {
+        number = "";
+        // Do not coerce identifiers, leading zeroes, formula-like text, or values beyond Excel precision.
+        if (!Regex.IsMatch(text, @"^-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?$", RegexOptions.CultureInvariant) ||
+            text.Count(char.IsDigit) > 15 ||
+            !decimal.TryParse(text, NumberStyles.AllowLeadingSign | NumberStyles.AllowDecimalPoint,
+                CultureInfo.InvariantCulture, out var value)) return false;
+        number = value.ToString(CultureInfo.InvariantCulture);
+        return true;
+    }
+
     private static S.Stylesheet CreateStylesheet()
     {
-        // Format 0: default, 1: table header, 2: preformatted code.
-        // Open XML requires None and Gray125 fills to precede custom fills.
+        // Keep style 0/1/2 IDs stable for existing exports; add body/date/number formats.
+        S.CellFormat TableFormat(uint font, uint fill, uint number = 0U) => new S.CellFormat(
+            new S.Alignment { Vertical = S.VerticalAlignmentValues.Center, WrapText = true })
+        {
+            FontId = font, FillId = fill, BorderId = 1U, NumberFormatId = number,
+            ApplyFont = true, ApplyFill = true, ApplyBorder = true, ApplyAlignment = true,
+            ApplyNumberFormat = number != 0U
+        };
         return new S.Stylesheet(
+            new S.NumberingFormats(new S.NumberingFormat { NumberFormatId = 164U, FormatCode = "yyyy-mm-dd hh:mm:ss" }) { Count = 1U },
             new S.Fonts(
                 new S.Font(),
                 new S.Font(new S.Bold()),
@@ -352,16 +485,22 @@ internal static class XlsxDocumentExporter
             new S.Fills(
                 new S.Fill(new S.PatternFill { PatternType = S.PatternValues.None }),
                 new S.Fill(new S.PatternFill { PatternType = S.PatternValues.Gray125 }),
-                new S.Fill(new S.PatternFill(
-                    new S.ForegroundColor { Rgb = "FFF1F5F9" },
+                new S.Fill(new S.PatternFill(new S.ForegroundColor { Rgb = "FFF1F5F9" },
+                    new S.BackgroundColor { Indexed = 64U }) { PatternType = S.PatternValues.Solid }),
+                new S.Fill(new S.PatternFill(new S.ForegroundColor { Rgb = "FFE2E8F0" },
                     new S.BackgroundColor { Indexed = 64U }) { PatternType = S.PatternValues.Solid })),
-            new S.Borders(new S.Border()),
+            new S.Borders(new S.Border(), new S.Border(
+                new S.LeftBorder(new S.Color { Rgb = "FFD1D5DB" }) { Style = S.BorderStyleValues.Thin },
+                new S.RightBorder(new S.Color { Rgb = "FFD1D5DB" }) { Style = S.BorderStyleValues.Thin },
+                new S.TopBorder(new S.Color { Rgb = "FFD1D5DB" }) { Style = S.BorderStyleValues.Thin },
+                new S.BottomBorder(new S.Color { Rgb = "FFD1D5DB" }) { Style = S.BorderStyleValues.Thin },
+                new S.DiagonalBorder())),
             new S.CellStyleFormats(new S.CellFormat()),
             new S.CellFormats(
                 new S.CellFormat { FontId = 0U, FillId = 0U, BorderId = 0U },
-                new S.CellFormat { FontId = 1U, FillId = 0U, BorderId = 0U, ApplyFont = true },
-                new S.CellFormat { FontId = 2U, FillId = 2U, BorderId = 0U,
-                    ApplyFont = true, ApplyFill = true }));
+                TableFormat(1U, 3U),
+                new S.CellFormat { FontId = 2U, FillId = 2U, BorderId = 0U, ApplyFont = true, ApplyFill = true },
+                TableFormat(0U, 0U), TableFormat(0U, 0U, 164U), TableFormat(0U, 0U)));
     }
 
     private static (int Width, int Height) GetImageDimensions(byte[] bytes, string mime)

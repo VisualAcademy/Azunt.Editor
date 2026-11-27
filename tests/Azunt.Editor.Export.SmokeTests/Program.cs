@@ -4,6 +4,7 @@ using Azunt.Editor.Export.Services;
 using Microsoft.Extensions.DependencyInjection;
 using System.IO.Compression;
 using System.Text;
+using System.Xml.Linq;
 
 using var provider = new ServiceCollection()
     .AddAzuntEditorExport(options =>
@@ -130,6 +131,52 @@ using (var zip = new ZipArchive(new MemoryStream(advancedXlsx.Content), ZipArchi
     Require(xml.Contains("mergeCell") && xml.Contains("A1:B1"), "Excel preserves horizontal cell merge");
     Require(zip.Entries.Any(e => e.FullName.StartsWith("xl/media/", StringComparison.Ordinal)),
         "Excel embeds signature PNG");
+}
+
+// AE02-03: Analytics-like edited data, typed columns opt-in, and stable row positions.
+var reportTable = "<table><thead><tr><th>#</th><th>Open</th><th>Qty</th><th>Notes</th></tr></thead><tbody>" +
+    "<tr><td>000123</td><td>11/18/2026 2:20:00 PM</td><td>12.5</td><td>Line one<br>Line two</td></tr>" +
+    "<tr><td>123456789012345678</td><td>-</td><td>001</td><td>=SUM(1,2)</td></tr>" +
+    "<tr><td colspan='2'>Merged</td><td>2</td><td><table><tr><td>Nested</td></tr></table></td></tr></tbody></table>";
+var reportExcel = await exporter.ExportAsync(reportTable, EditorExportFormat.Xlsx, new EditorExportOptions
+{
+    SpreadsheetDateColumns = new[] { "Open" }, SpreadsheetNumberColumns = new[] { "Qty" }, SpreadsheetCulture = "en-US"
+});
+using (var zip = new ZipArchive(new MemoryStream(reportExcel.Content), ZipArchiveMode.Read))
+{
+    XNamespace ns = "http://schemas.openxmlformats.org/spreadsheetml/2006/main";
+    var sheet = XDocument.Parse(Read(zip, "xl/worksheets/sheet1.xml"));
+    XElement Cell(string reference) => sheet.Descendants(ns + "c").Single(c => (string?)c.Attribute("r") == reference);
+    string? Type(string reference) => (string?)Cell(reference).Attribute("t");
+    Require(Type("A2") == "inlineStr" && Cell("A2").Value == "000123", "Excel preserves leading-zero identifiers");
+    Require(Type("A3") == "inlineStr" && Cell("A3").Value == "123456789012345678", "Excel preserves long IDs");
+    Require(Type("B2") == "n" && (string?)Cell("B2").Attribute("s") == "4" &&
+        Math.Abs(double.Parse(Cell("B2").Value, System.Globalization.CultureInfo.InvariantCulture) -
+            new DateTime(2026, 11, 18, 14, 20, 0).ToOADate()) < 0.000001, "Excel date is a native serial with a date style");
+    Require(Type("C2") == "n" && Cell("C2").Value == "12.5", "Excel quantity is numeric");
+    Require(Type("C3") == "inlineStr" && Cell("C3").Value == "001", "Excel keeps ambiguous numeric IDs as text");
+    Require(Type("B3") == "inlineStr" && Cell("B3").Value == "-", "Excel preserves missing dates");
+    Require(Cell("D2").Value == "Line one\nLine two", "Excel preserves explicit line breaks");
+    Require(Type("D3") == "inlineStr" && !sheet.Descendants(ns + "f").Any(), "Excel never emits formulas from HTML");
+    Require(sheet.Descendants(ns + "mergeCell").Any(c => (string?)c.Attribute("ref") == "A4:B4"), "Excel preserves horizontal merge");
+    Require(Cell("D4").Value.Trim() == "Nested" && sheet.Descendants(ns + "row").Count() == 5,
+        "Nested table is not duplicated as extra data rows");
+    Require(Read(zip, "xl/styles.xml").Contains("yyyy-mm-dd hh:mm:ss"), "Excel has a date format");
+}
+var defaultReportExcel = await exporter.ExportAsync(reportTable, EditorExportFormat.Xlsx);
+using (var zip = new ZipArchive(new MemoryStream(defaultReportExcel.Content), ZipArchiveMode.Read))
+{
+    XNamespace ns = "http://schemas.openxmlformats.org/spreadsheetml/2006/main";
+    var sheet = XDocument.Parse(Read(zip, "xl/worksheets/sheet1.xml"));
+    Require(sheet.Descendants(ns + "c").Where(c => (string?)c.Attribute("r") is "B2" or "C2")
+        .All(c => (string?)c.Attribute("t") == "inlineStr"), "Default exports retain literal values without opt-in");
+}
+var tableImageExcel = await exporter.ExportAsync($"<table><tr><td><img src='data:image/png;base64,{samplePng}' width='80'></td></tr><tr><td>Next row</td></tr></table>", EditorExportFormat.Xlsx);
+using (var zip = new ZipArchive(new MemoryStream(tableImageExcel.Content), ZipArchiveMode.Read))
+{
+    XNamespace ns = "http://schemas.openxmlformats.org/spreadsheetml/2006/main";
+    var sheet = XDocument.Parse(Read(zip, "xl/worksheets/sheet1.xml"));
+    Require(sheet.Descendants(ns + "c").Single(c => (string?)c.Attribute("r") == "A2").Value == "Next row", "Table image does not insert extra rows");
 }
 
 // 0.8.0: code keeps line boundaries, tabs, and literal text in Word and Excel.

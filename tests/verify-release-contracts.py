@@ -3,13 +3,16 @@ from pathlib import Path
 from xml.etree import ElementTree
 
 root = Path(__file__).resolve().parents[1]
-version = '0.8.2'
+version = '0.8.3'
 for item in ['src/Azunt.Editor/Azunt.Editor.csproj', 'src/Azunt.Editor.Export/Azunt.Editor.Export.csproj',
              'samples/Azunt.Web/Azunt.Web.csproj']:
     doc = ElementTree.parse(root / item)
-    found = [el.text for el in doc.iter() if el.tag in ('Version', 'PackageReference') and el.text]
-    text = (root / item).read_text()
-    assert version in text, f'Missing consistent version in {item}'
+    if item.startswith('src/'):
+        assert doc.findtext('.//Version') == version, f'Incorrect package version in {item}'
+    else:
+        refs = {node.get('Include'): node.get('Version') for node in doc.findall('.//PackageReference')}
+        for package in ('Azunt.Editor', 'Azunt.Editor.Export'):
+            assert refs.get(package) == version, f'Incorrect {package} version in {item}'
 
 markup = (root / 'src/Azunt.Editor/Rendering/EditorMarkup.cs').read_text()
 assert 'data-group-label' in markup and 'static string? Icon' in markup
@@ -58,4 +61,4 @@ for token in ['function unregisterCommand(', 'Duplicate custom command id:', 'pr
 assert 'data-azunt-mount=' in (root / 'src/Azunt.Editor/Rendering/EditorMarkup.cs').read_text()
 assert 'RenderForBlazor(' in component
 assert ':not([data-azunt-mount="manual"])' in editor_js
-print('PASS: Azunt.Editor 0.8.2 release contracts, sources are application-agnostic')
+print('PASS: Azunt.Editor 0.8.3 release contracts, sources are application-agnostic')

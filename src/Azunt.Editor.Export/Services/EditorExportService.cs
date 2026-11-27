@@ -45,7 +45,7 @@ internal sealed class EditorExportService(PdfDocumentExporter pdf, IEnumerable<I
                 "application/pdf", ".pdf"),
             EditorExportFormat.Docx => (DocxDocumentExporter.Export(document, options),
                 "application/vnd.openxmlformats-officedocument.wordprocessingml.document", ".docx"),
-            EditorExportFormat.Xlsx => (XlsxDocumentExporter.Export(document),
+            EditorExportFormat.Xlsx => (XlsxDocumentExporter.Export(document, options),
                 "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", ".xlsx"),
             _ => throw new ArgumentOutOfRangeException(nameof(format))
         };

@@ -17,6 +17,12 @@ public sealed class EditorExportOptions
     public string Margin { get; set; } = "normal";
     /// <summary>When true, PDF exports include current/total page counts in the footer.</summary>
     public bool ShowPageNumbers { get; set; } = false;
+    /// <summary>Opt-in exact header names for native Excel date cells. Only the first all-th row defines columns.</summary>
+    public IReadOnlyList<string> SpreadsheetDateColumns { get; set; } = Array.Empty<string>();
+    /// <summary>Opt-in exact header names for native Excel numeric cells. Other values remain literal text.</summary>
+    public IReadOnlyList<string> SpreadsheetNumberColumns { get; set; } = Array.Empty<string>();
+    /// <summary>ISO date formats are supported by default; en-US additionally accepts month/day/year and AM/PM.</summary>
+    public string SpreadsheetCulture { get; set; } = "";
 }
 
 public sealed record EditorExportResult(string FileName, string ContentType, byte[] Content);

@@ -500,6 +500,54 @@ foreach (var placeholderLayout in Enum.GetValues<EditorWordLayout>())
     var placeholderErrors = new DocumentFormat.OpenXml.Validation.OpenXmlValidator().Validate(placeholderPackage).ToList();
     Require(placeholderErrors.Count == 0, "Placeholder DOCX schema validation: " + string.Join("; ", placeholderErrors.Select(e => e.Description)));
 }
+// 0.8.13: match-document profiles are optional and independent of legacy export defaults.
+var matchedHtml = "<h2>Heading</h2><p>Body</p><table style='width:65%;table-layout:fixed'>" +
+    "<tr><th style='width:70%'>Number</th><th style='width:30%'>Status</th></tr>" +
+    "<tr style='height:40px'><td><br></td><td><span style='font-size:20px'>Explicit</span></td></tr></table>";
+foreach (var presetId in new[] { "Standard", "BrowserDefault", "CompactReport", "BusinessDocument", "Minimal", "custom" })
+{
+    var matchedStyle = presetId == "custom" ? new EditorExportDocumentStyle
+        { FontFamily = "Arial", FontSize = 12, TableFontSize = 11, CellPaddingVertical = 2, CellPaddingHorizontal = 4 } :
+        EditorExportDocumentStyle.FromPreset(presetId);
+    var matchedResult = await exporter.ExportAsync(matchedHtml, EditorExportFormat.Docx,
+        new EditorExportOptions { DocumentStyle = matchedStyle, PaperSize = "Letter" });
+    using var matchedZip = new ZipArchive(new MemoryStream(matchedResult.Content), ZipArchiveMode.Read);
+    XNamespace w = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
+    var matchedDocument = XDocument.Parse(Read(matchedZip, "word/document.xml"));
+    var matchedStyles = XDocument.Parse(Read(matchedZip, "word/styles.xml"));
+    var matchedTable = matchedDocument.Descendants(w + "tbl").Single();
+    Require((int)matchedTable.Descendants(w + "tblW").Single().Attribute(w + "w")! == 3250, "Matched Word table width 65 percent");
+    var matchedGrid = matchedTable.Descendants(w + "gridCol").Select(c => (int)c.Attribute(w + "w")!).ToArray();
+    Require(matchedGrid.Sum() == (int)Math.Round((12240 - 1814) * .65) &&
+        Math.Abs((double)matchedGrid[0] / matchedGrid.Sum() - .7) < .001, "Matched table grid preserves 70:30 proportions");
+    var matchedHeight = matchedTable.Descendants(w + "trHeight").Single();
+    Require((int)matchedHeight.Attribute(w + "val")! == 600 && (string?)matchedHeight.Attribute(w + "hRule") == "atLeast", "Row height is a minimum, not clipping text");
+    var margins = matchedTable.Descendants(w + "tblCellMar").Single();
+    Require((int)margins.Element(w + "top")!.Attribute(w + "w")! == matchedStyle.CellPaddingVertical * 15 &&
+        (int)margins.Element(w + "left")!.Attribute(w + "w")! == matchedStyle.CellPaddingHorizontal * 15, "Separate vertical and horizontal cell padding");
+    var emptyCell = matchedTable.Descendants(w + "tc").ElementAt(2);
+    var expectedHalfPoints = (int)Math.Round(matchedStyle.TableFontSize * 1.5, MidpointRounding.AwayFromZero);
+    Require(!emptyCell.Descendants(w + "br").Any() && (int)emptyCell.Descendants(w + "sz").Single().Attribute(w + "val")! == expectedHalfPoints, "Empty cell retains one paragraph at matched font size");
+    var explicitMatchedRun = matchedDocument.Descendants(w + "r").Single(r => r.Element(w + "t")?.Value == "Explicit");
+    Require((int)explicitMatchedRun.Descendants(w + "sz").Single().Attribute(w + "val")! == 30, "Inline font size wins over matched profile");
+    Require((int)matchedStyles.Descendants(w + "sz").Single().Attribute(w + "val")! == (int)Math.Round(matchedStyle.FontSize * 1.5, MidpointRounding.AwayFromZero), "Matched body half-points");
+    using var matchedPackage = DocumentFormat.OpenXml.Packaging.WordprocessingDocument.Open(new MemoryStream(matchedResult.Content), false);
+    var matchedErrors = new DocumentFormat.OpenXml.Validation.OpenXmlValidator().Validate(matchedPackage).ToList();
+    Require(matchedErrors.Count == 0, "Matched DOCX schema validation: " + string.Join("; ", matchedErrors.Select(e => e.Description)));
+}
+foreach (var invalidStyle in new[] { new EditorExportDocumentStyle { FontFamily = "Arial;url(evil)" },
+    new EditorExportDocumentStyle { BorderColor = "red; }" }, new EditorExportDocumentStyle { LineHeight = double.NaN } })
+{
+    foreach (var styleFormat in new[] { EditorExportFormat.Pdf, EditorExportFormat.Docx })
+    {
+        var styleRejected = false;
+        try { await exporter.ExportAsync(matchedHtml, styleFormat, new EditorExportOptions { DocumentStyle = invalidStyle }); }
+        catch (ArgumentException) { styleRejected = true; }
+        Require(styleRejected, "Invalid matched document style rejected");
+    }
+    var isolatedExcel = await exporter.ExportAsync(matchedHtml, EditorExportFormat.Xlsx, new EditorExportOptions { DocumentStyle = invalidStyle });
+    Require(isolatedExcel.Content.Length > 0, "Excel ignores matched document style");
+}
 var wordOverride = await exporter.ExportAsync("<table><tr><td style='font-size:14pt'>Explicit point size</td><td>Default</td></tr></table>",
     EditorExportFormat.Docx, new EditorExportOptions { WordFontSize = 11, WordTableFontSize = 8, WordTableCellPadding = 0 });
 using (var archive = new ZipArchive(new MemoryStream(wordOverride.Content), ZipArchiveMode.Read))
@@ -557,6 +605,17 @@ if (Environment.GetEnvironmentVariable("AZUNT_TEST_PDF") == "1")
         string.Concat(Enumerable.Range(1, 80).Select(i => $"<tr><td>R-{i:D6}</td><td>Accounting</td></tr>")) +
         "</tbody></table><p>Document end</p>";
     var outputDirectory = Environment.GetEnvironmentVariable("AZUNT_TEST_PDF_OUTPUT");
+    foreach (var matchedPdfId in new[] { "Standard", "BrowserDefault", "CompactReport", "BusinessDocument", "Minimal" })
+    {
+        var matchedPdf = await exporter.ExportAsync(report, EditorExportFormat.Pdf, new EditorExportOptions
+        { DocumentStyle = EditorExportDocumentStyle.FromPreset(matchedPdfId), PromotePdfTableHeaders = true });
+        Require(Encoding.ASCII.GetString(matchedPdf.Content, 0, 5) == "%PDF-", "Matched document PDF header");
+        if (!string.IsNullOrWhiteSpace(outputDirectory))
+        {
+            Directory.CreateDirectory(outputDirectory);
+            await File.WriteAllBytesAsync(Path.Combine(outputDirectory, $"Matched-{matchedPdfId}.pdf"), matchedPdf.Content);
+        }
+    }
     foreach (var layout in Enum.GetValues<EditorPdfLayout>())
     {
         var result = await exporter.ExportAsync(report, EditorExportFormat.Pdf, new EditorExportOptions

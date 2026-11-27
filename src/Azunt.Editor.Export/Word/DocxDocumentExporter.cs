@@ -16,7 +16,7 @@ namespace Azunt.Editor.Export.Word;
 internal static class DocxDocumentExporter
 {
     private readonly record struct Format(bool Bold = false, bool Italic = false, bool Underline = false,
-        bool Strike = false, string? Script = null, string? Font = null, int? Size = null,
+        bool Strike = false, string? Script = null, string? Font = null, double? Size = null,
         string? Color = null, string? Highlight = null);
 
     public static byte[] Export(SafeEditorDocument document, EditorExportOptions settings)
@@ -38,13 +38,23 @@ internal static class DocxDocumentExporter
             var pageWidth = (int)(landscape ? size.Height : size.Width) - margin * 2;
             var pageHeight = (int)(landscape ? size.Width : size.Height) - margin * 2;
             var layout = WordLayoutSettings.Create(settings, pageWidth, pageHeight);
-            if (layout.BodySize is int bodySize)
+            if (layout.BodySize is double bodySize)
             {
                 var styles = main.AddNewPart<StyleDefinitionsPart>();
-                styles.Styles = new W.Styles(new W.DocDefaults(
-                    new W.RunPropertiesDefault(new W.RunPropertiesBaseStyle(
-                        new W.FontSize { Val = (bodySize * 2).ToString(CultureInfo.InvariantCulture) },
-                        new W.FontSizeComplexScript { Val = (bodySize * 2).ToString(CultureInfo.InvariantCulture) }))));
+                var runDefaults = new W.RunPropertiesBaseStyle(
+                    new W.FontSize { Val = WordLayoutSettings.HalfPoints(bodySize) },
+                    new W.FontSizeComplexScript { Val = WordLayoutSettings.HalfPoints(bodySize) });
+                var docDefaults = new W.DocDefaults(new W.RunPropertiesDefault(runDefaults));
+                if (layout.DocumentStyle is { } style)
+                {
+                    runDefaults.AddChild(new W.RunFonts { Ascii = style.WordFont, HighAnsi = style.WordFont, EastAsia = style.WordFont });
+                    runDefaults.AddChild(new W.Color { Val = style.TextColor[1..] });
+                    // Body spacing approximates collapsed HTML paragraph margins in Word.
+                    docDefaults.Append(new W.ParagraphPropertiesDefault(new W.ParagraphPropertiesBaseStyle(
+                        new W.SpacingBetweenLines { Before = "0", After = ((int)Math.Round(bodySize * 20 * style.ParagraphMarginEm)).ToString(CultureInfo.InvariantCulture),
+                            Line = ((int)Math.Round(style.LineHeight * 240)).ToString(CultureInfo.InvariantCulture), LineRule = W.LineSpacingRuleValues.Auto })));
+                }
+                styles.Styles = new W.Styles(docDefaults);
                 styles.Styles.Save();
             }
             uint drawingId = 1;
@@ -104,6 +114,8 @@ internal static class DocxDocumentExporter
                 "h4" => new Format(Bold: true, Size: 14),
                 _ => new Format()
             };
+            if (layout.DocumentStyle is not null && layout.BodySize is double baseSize && node.Name is ("h1" or "h2" or "h3" or "h4"))
+                format = format with { Size = baseSize * (node.Name switch { "h1" => 2, "h2" => 1.5, "h3" => 1.17, _ => 1 }) };
             if (node.Name == "pre")
             {
                 // Code is stored as plain text; do not generate syntax-markup in the file.
@@ -187,48 +199,59 @@ internal static class DocxDocumentExporter
     private static W.Table BuildTable(SafeEditorDocument.Node node, MainDocumentPart part, WordLayoutSettings layout, ref uint drawingId)
     {
         var color = node.Style("border-color").TrimStart('#');
-        if (color.Length != 6 || !color.All(Uri.IsHexDigit)) color = "AEB8C6";
+        var explicitBorder = (color.Length == 6 && color.All(Uri.IsHexDigit)) || node.Style("border-width") is ("1px" or "2px" or "3px" or "4px");
+        if (color.Length != 6 || !color.All(Uri.IsHexDigit)) color = layout.DocumentStyle?.BorderColor[1..] ?? "AEB8C6";
+        var borderValue = layout.DocumentStyle?.BrowserDefaults == true && !explicitBorder ? W.BorderValues.Nil : W.BorderValues.Single;
         var pixels = node.Style("border-width") switch { "2px" => 2, "3px" => 3, "4px" => 4, _ => 1 };
         var thickness = (uint)(pixels * 6);
         var borders = new W.TableBorders(
-            new W.TopBorder { Val = W.BorderValues.Single, Size = thickness, Color = color },
-            new W.LeftBorder { Val = W.BorderValues.Single, Size = thickness, Color = color },
-            new W.BottomBorder { Val = W.BorderValues.Single, Size = thickness, Color = color },
-            new W.RightBorder { Val = W.BorderValues.Single, Size = thickness, Color = color },
-            new W.InsideHorizontalBorder { Val = W.BorderValues.Single, Size = thickness, Color = color },
-            new W.InsideVerticalBorder { Val = W.BorderValues.Single, Size = thickness, Color = color });
+            new W.TopBorder { Val = borderValue, Size = thickness, Color = color },
+            new W.LeftBorder { Val = borderValue, Size = thickness, Color = color },
+            new W.BottomBorder { Val = borderValue, Size = thickness, Color = color },
+            new W.RightBorder { Val = borderValue, Size = thickness, Color = color },
+            new W.InsideHorizontalBorder { Val = borderValue, Size = thickness, Color = color },
+            new W.InsideVerticalBorder { Val = borderValue, Size = thickness, Color = color });
+        var tablePercent = 100.0;
+        if (layout.DocumentStyle is not null && TryPercentWidth(node, out var requestedWidth)) tablePercent = requestedWidth;
         var tableProperties = new W.TableProperties(
-            new W.TableWidth { Width = "5000", Type = W.TableWidthUnitValues.Pct }, borders);
+            new W.TableWidth { Width = ((int)Math.Round(tablePercent * 50)).ToString(CultureInfo.InvariantCulture), Type = W.TableWidthUnitValues.Pct }, borders);
         if (node.Style("table-layout") == "fixed")
-            tableProperties.Append(new W.TableLayout { Type = W.TableLayoutValues.Fixed });
-        if (layout.CellPadding is int padding)
+            tableProperties.AddChild(new W.TableLayout { Type = W.TableLayoutValues.Fixed });
+        if (layout.VerticalPadding is int vertical && layout.HorizontalPadding is int horizontal)
         {
             // Use the Office 2007-compatible left/right margin elements.
-            var twips = padding * 15;
-            var value = twips.ToString(CultureInfo.InvariantCulture);
-            tableProperties.Append(new W.TableCellMarginDefault(
+            var v = (vertical * 15).ToString(CultureInfo.InvariantCulture);
+            var h = (horizontal * 15).ToString(CultureInfo.InvariantCulture);
+            tableProperties.AddChild(new W.TableCellMarginDefault(
                 $"<w:tblCellMar xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\">" +
-                $"<w:top w:w=\"{value}\" w:type=\"dxa\"/><w:left w:w=\"{value}\" w:type=\"dxa\"/>" +
-                $"<w:bottom w:w=\"{value}\" w:type=\"dxa\"/><w:right w:w=\"{value}\" w:type=\"dxa\"/></w:tblCellMar>"));
+                $"<w:top w:w=\"{v}\" w:type=\"dxa\"/><w:left w:w=\"{h}\" w:type=\"dxa\"/>" +
+                $"<w:bottom w:w=\"{v}\" w:type=\"dxa\"/><w:right w:w=\"{h}\" w:type=\"dxa\"/></w:tblCellMar>"));
         }
-        var rows = TableRows(node).Select(row => row.Children.Where(c => c.Name is "td" or "th").ToList())
-            .Where(cells => cells.Count > 0).ToList();
+        var rowNodes = TableRows(node).Where(row => row.Children.Any(c => c.Name is "td" or "th")).ToList();
+        var rows = rowNodes.Select(row => row.Children.Where(c => c.Name is "td" or "th").ToList()).ToList();
         if (rows.Count == 0) rows.Add(new List<SafeEditorDocument.Node> { new("td") });
         var columnCount = rows.Max(cells => cells.Sum(CellSpan));
-        var widths = ColumnWidths(rows, columnCount, layout.PageWidth);
+        var widths = ColumnWidths(rows, columnCount, (int)Math.Round(layout.PageWidth * tablePercent / 100));
         var grid = new W.TableGrid();
         foreach (var width in widths)
             grid.Append(new W.GridColumn { Width = width.ToString(CultureInfo.InvariantCulture) });
         var table = new W.Table(tableProperties, grid);
         var initialHeader = true;
-        foreach (var cells in rows)
+        for (var rowIndex = 0; rowIndex < rows.Count; rowIndex++)
         {
+            var cells = rows[rowIndex];
             var row = new W.TableRow();
             // Only contiguous initial header rows can be repeated by Word.
             var rowProperties = new W.TableRowProperties();
             var missing = columnCount - cells.Sum(CellSpan);
             if (missing > 0) rowProperties.Append(new W.GridAfter { Val = missing });
             rowProperties.Append(new W.CantSplit());
+            if (layout.DocumentStyle is not null && rowIndex < rowNodes.Count)
+            {
+                var height = rowNodes[rowIndex].Style("height");
+                if (height.EndsWith("px", StringComparison.Ordinal) && int.TryParse(height[..^2], NumberStyles.None, CultureInfo.InvariantCulture, out var heightPx) && heightPx is >= 1 and <= 1000)
+                    rowProperties.AddChild(new W.TableRowHeight { Val = (uint)(heightPx * 15), HeightType = W.HeightRuleValues.AtLeast });
+            }
             initialHeader = initialHeader && cells.All(c => c.Name == "th");
             if (initialHeader) rowProperties.Append(new W.TableHeader());
             row.Append(rowProperties);
@@ -241,7 +264,7 @@ internal static class DocxDocumentExporter
                 column += span;
                 var cell = new W.TableCell();
                 var cellProperties = new W.TableCellProperties();
-                if (TryPercentWidth(cellNode, out var percentage))
+                if (layout.DocumentStyle is null && TryPercentWidth(cellNode, out var percentage))
                     cellProperties.Append(new W.TableCellWidth
                     {
                         Type = W.TableWidthUnitValues.Pct,
@@ -253,10 +276,17 @@ internal static class DocxDocumentExporter
                     Width = width.ToString(CultureInfo.InvariantCulture)
                 });
                 if (span > 1) cellProperties.Append(new W.GridSpan { Val = span });
+                if (layout.DocumentStyle is { } documentStyle)
+                {
+                    var fill = cellNode.Style("background-color");
+                    if (!Regex.IsMatch(fill, @"\A#[0-9a-fA-F]{6}\z"))
+                        fill = cellNode.Name == "th" && !documentStyle.BrowserDefaults ? documentStyle.HeaderColor : "";
+                    if (fill.Length > 0) cellProperties.AddChild(new W.Shading { Val = W.ShadingPatternValues.Clear, Fill = fill[1..] });
+                }
                 cell.Append(cellProperties);
                 // The grid and cell padding determine the available image width,
                 // including horizontally merged cells. Leave a small border allowance.
-                var imageWidth = Math.Clamp((width - (layout.CellPadding ?? 7) * 30 - 30) / 15, 1, 480);
+                var imageWidth = Math.Clamp((width - (layout.HorizontalPadding ?? 7) * 30 - 30) / 15, 1, 480);
                 var format = new Format(Bold: cellNode.Name == "th", Size: layout.TableSize);
                 AppendCellContent(cellNode, cell, part, layout, format, imageWidth, ref drawingId);
                 row.Append(cell);
@@ -366,12 +396,12 @@ internal static class DocxDocumentExporter
         if (properties is null) return;
         if (layout.CompactSpacing)
             properties.AddChild(new W.SpacingBetweenLines
-            { Before = "0", After = "0", Line = "240", LineRule = W.LineSpacingRuleValues.Auto });
+            { Before = "0", After = "0", Line = ((int)Math.Round((layout.DocumentStyle?.LineHeight ?? 1) * 240)).ToString(CultureInfo.InvariantCulture), LineRule = W.LineSpacingRuleValues.Auto });
         // An empty cell has no text run. Its paragraph mark must use the table
         // font size too, or Word may use the larger body font for the entire row.
-        if (layout.TableSize.HasValue && format.Size is int size)
+        if (layout.TableSize.HasValue && format.Size is double size)
         {
-            var halfPoints = (size * 2).ToString(CultureInfo.InvariantCulture);
+            var halfPoints = WordLayoutSettings.HalfPoints(size);
             properties.AddChild(new W.ParagraphMarkRunProperties(
                 new W.FontSize { Val = halfPoints },
                 new W.FontSizeComplexScript { Val = halfPoints }));
@@ -471,7 +501,7 @@ internal static class DocxDocumentExporter
         { Ascii = format.Font, HighAnsi = format.Font, EastAsia = format.Font });
         if (format.Size is > 0)
         {
-            var size = (format.Size.Value * 2).ToString(CultureInfo.InvariantCulture);
+            var size = WordLayoutSettings.HalfPoints(format.Size.Value);
             properties.AddChild(new W.FontSize { Val = size });
             properties.AddChild(new W.FontSizeComplexScript { Val = size });
         }

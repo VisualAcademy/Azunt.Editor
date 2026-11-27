@@ -26,6 +26,10 @@ public enum EditorWordLayout
 /// <summary>Formatting and output-file preferences for an export request.</summary>
 public sealed class EditorExportOptions
 {
+    /// <summary>Optional editor document style for PDF and Word. Explicit format-specific numeric
+    /// overrides and supported inline HTML styles take precedence. Null preserves legacy output.
+    /// Excel ignores this setting.</summary>
+    public EditorExportDocumentStyle? DocumentStyle { get; set; }
     public string FileName { get; set; } = "Azunt-Document";
     public string Title { get; set; } = "Document";
     public string PaperSize { get; set; } = "A4";

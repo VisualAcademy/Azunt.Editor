@@ -271,3 +271,33 @@ JavaScript: `AzuntEditor.setViewOptions(id, "Fixed", 600, 100)`;
 `AzuntEditor.getViewOptions(id)` returns `{heightMode, height, zoomPercent}`.
 Interactive menu selection emits `azunt:view-options-changed`. View options do
 not modify the saved HTML, undo history or print zoom.
+
+## Match document export styles (0.8.13)
+
+`EditorExportOptions.DocumentStyle` is optional, and accepted only by PDF and
+DOCX. `EditorExportDocumentStyle.FromPreset(id)` accepts the exact built-in
+IDs `Standard`, `BrowserDefault`, `CompactReport`, `BusinessDocument`, `Minimal`.
+For a custom style, resolve the current `custom:` ID against the host's trusted
+registry, then copy `FontFamily`, `FontSize`, `TableFontSize`, `LineHeight`,
+`CellPaddingVertical`, `CellPaddingHorizontal`, `BorderColor`, `HeaderColor`,
+and `TextColor` into a new `EditorExportDocumentStyle`. Font families use the
+same allowlist as the editor; sizes and colors are validated. Do not accept
+arbitrary CSS. `ParagraphMarginEm` defaults to .45; optional `FullWidthTables`
+and `BrowserDefaults` provide the built-in layout behavior. Font sizes are CSS
+pixels, unlike the legacy integer point overrides in `EditorExportOptions`.
+
+When non-null, this preset replaces legacy density defaults. Explicit
+format-specific numeric overrides take priority; supported inline formatting
+is preserved. Page size, orientation and margin remain separate export options.
+Editor zoom, viewport height and toolbar layout do not affect exports.
+Word maps CSS pixels to half-points and twips, preserves explicit table percentage
+width and column hints, and translates explicit row heights to minimum heights
+rather than clipping content. Tables without a width still use the printable
+page width in Word. Existing table limitations (nested tables flattened to text,
+unsupported CSS and merged-row behavior) remain. Font fallback, wrapping and
+pagination depend on the output renderer. PDF uses a safe print CSS template,
+not arbitrary external host styles. The editor's canvas padding is not added
+to the configured page margins. The Blazor demo defaults to match-document for
+both PDF and Word; its legacy Word profiles and PDF default remain selectable.
+Existing callers do not opt in automatically; MVC/Razor hosts can pass the same
+options to their export service when they resolve the current style ID.

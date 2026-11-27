@@ -49,8 +49,9 @@
 <AzuntEditor @key="UseStoredImages" @ref="_editor" Id="azunt-blazor-demo" Name="BlazorHtml" @bind-Value="_html" Height="340" @bind-HeightMode="_heightMode" @bind-ZoomPercent="_zoomPercent" ShowViewOptions="true" UploadUrl="@(UseStoredImages ? "/editor/demo-images" : null)"
     Mode="@_demoMode" ContentRendering="EditorContentRendering.CompactReport" CustomDocumentStyles="DemoStyles" @bind-DocumentStyleId="_documentStyleId" ShowDocumentStyleSelector="true" ToolbarMode="@(UseClassic ? "Classic" : "Compact")" ShowMenuBar="@_showMenuBar" ShowToolbarGroupLabels="@_showToolbarGroupLabels" CustomCommands="EditorCommands" CustomCommandInvoked="HandleEditorCommand" />
 
-<p class="document-meta"><label>Word output layout:
+<p class="document-meta"><label><input type="checkbox" @bind="_matchPdfStyle" /> Match document style for PDF</label> · <label>Word output layout:
     <select @bind="_wordLayout">
+        <option value="MatchDocument">Match document</option>
         <option value="Compact">Compact</option>
         <option value="Standard">Standard</option>
         <option value="Comfortable">Comfortable</option>
@@ -95,7 +96,8 @@
     private EditorHeightMode _heightMode = EditorHeightMode.Fixed;
     private int _zoomPercent = 100;
     private string _documentStyleId = "CompactReport";
-    private EditorWordLayout _wordLayout = EditorWordLayout.Compact;
+    private string _wordLayout = "MatchDocument";
+    private bool _matchPdfStyle = true;
     private static readonly IReadOnlyList<EditorDocumentStyle> DemoStyles = new[]
     {
         new EditorDocumentStyle { Id = "office-report", Name = "Office Report (Custom)", FontFamily = "Arial",
@@ -163,6 +165,20 @@
         }
     }
 
+    private static EditorExportDocumentStyle ResolveExportStyle(string id)
+    {
+        if (!id.StartsWith("custom:", StringComparison.Ordinal))
+            return EditorExportDocumentStyle.FromPreset(id);
+        var style = DemoStyles.Single(s => "custom:" + s.Id == id);
+        return new EditorExportDocumentStyle
+        {
+            FontFamily = style.FontFamily, FontSize = style.FontSize, TableFontSize = style.TableFontSize,
+            LineHeight = style.LineHeight, CellPaddingVertical = style.CellPaddingVertical,
+            CellPaddingHorizontal = style.CellPaddingHorizontal, BorderColor = style.BorderColor,
+            HeaderColor = style.HeaderColor, TextColor = style.TextColor
+        };
+    }
+
     private async Task ExportAsync(EditorExportFormat format)
     {
         if (_editor is null) { _notice = "Editor component reference is unavailable."; return; }
@@ -170,11 +186,15 @@
         {
             var html = await _editor.GetHtmlAsync(); // Always current DOM, not stale bind state.
             var page = await _editor.GetPageSettingsAsync();
+            var matchStyle = (format == EditorExportFormat.Pdf && _matchPdfStyle) ||
+                (format == EditorExportFormat.Docx && _wordLayout == "MatchDocument");
+            var documentStyle = matchStyle ? ResolveExportStyle(await _editor.GetDocumentStyleIdAsync()) : null;
             var result = await ExportService.ExportAsync(html, format, new EditorExportOptions
             {
                 FileName = "Azunt-Blazor-Report", Title = "Blazor editor report",
                 PaperSize = page.PaperSize, Orientation = page.Orientation, Margin = page.Margin,
-                WordLayout = _wordLayout
+                DocumentStyle = documentStyle,
+                WordLayout = Enum.TryParse<EditorWordLayout>(_wordLayout, out var wordLayout) ? wordLayout : EditorWordLayout.Standard
             });
             using var stream = new MemoryStream(result.Content, writable: false);
             using var reference = new DotNetStreamReference(stream);

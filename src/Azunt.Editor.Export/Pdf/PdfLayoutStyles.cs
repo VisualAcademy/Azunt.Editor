@@ -28,6 +28,30 @@ internal static class PdfLayoutStyles
             EditorPdfLayout.Comfortable => Comfortable,
             _ => throw new ArgumentOutOfRangeException(nameof(options.PdfLayout))
         };
+        if (options.DocumentStyle is { } style)
+        {
+            style.Validate();
+            // Opt-in document rendering overrides the legacy density profile, not inline HTML.
+            var line = style.BrowserDefaults ? "normal" : style.LineHeight.ToString(CultureInfo.InvariantCulture);
+            var width = style.FullWidthTables ? "100%" : "auto";
+            var border = style.BrowserDefaults ? "none" : "1px solid " + style.BorderColor;
+            var header = style.BrowserDefaults ? "transparent" : style.HeaderColor;
+            var collapse = style.BrowserDefaults ? "separate" : "collapse";
+            var margin = style.BrowserDefaults ? "0" : style.FullWidthTables ? "12px 0" : "8px 0";
+            var wrap = style.FullWidthTables ? "anywhere" : "normal";
+            css = FormattableString.Invariant($$"""
+                body{font-family:{{style.CssFont}};font-size:{{style.FontSize}}px;line-height:{{line}};color:{{style.TextColor}}}
+                p{margin:{{style.ParagraphMarginEm}}em 0}body>:first-child{margin-top:0}
+                p,li,td,th{overflow-wrap:{{wrap}}}
+                table{width:{{width}};max-width:100%;font-size:{{style.TableFontSize}}px;margin:{{margin}};border-collapse:{{collapse}}}
+                table[style*="table-layout:fixed"],table[style*="table-layout: fixed"]{width:100%}
+                td,th{font:inherit;color:inherit;padding:{{style.CellPaddingVertical}}px {{style.CellPaddingHorizontal}}px;border:{{border}};vertical-align:top}
+                th{font-weight:600;background:{{header}}}
+                """);
+            css += style.BrowserDefaults
+                ? "\ntable{border-spacing:2px}td,th{vertical-align:middle}th{font-weight:bold;text-align:center}body>:first-child{margin-top:revert}blockquote{border:0;padding:0;margin:1em 40px}a{color:revert}"
+                : "\nh2{font-size:1.5em;line-height:1.25;margin:.75em 0 .5em}th{text-align:center}img{vertical-align:middle}";
+        }
         // Avoid !important: explicitly supported inline styles remain authoritative.
         if (options.PdfFontSize is int body)
             css += FontRule("body", body, nameof(options.PdfFontSize));

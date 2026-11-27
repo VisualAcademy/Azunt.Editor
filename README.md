@@ -2,7 +2,7 @@
 
 A lightweight rich-text editor for ASP.NET Core MVC, Razor Pages, and Blazor Server.
 
-Version: **0.8.12** · .NET 10
+Version: **0.8.13** · .NET 10
 
 ## Projects
 - `src/Azunt.Editor` — shared editor components, JavaScript, and CSS
@@ -401,3 +401,22 @@ Default behavior remains AutoGrow at 100% zoom. Zoom and viewport height do not
 change stored HTML or printed dimensions. See [release notes](docs/release-0.8.12.md).
 Word export also treats a solitary caret-placeholder `br` as one empty paragraph
 rather than a Word line break. Intentional multiline text is retained.
+
+## Match document export styles (0.8.13)
+
+PDF and DOCX can opt into a document preset without changing the editor HTML:
+
+```csharp
+var options = new EditorExportOptions
+{
+    DocumentStyle = EditorExportDocumentStyle.FromPreset("CompactReport")
+};
+var result = await exporter.ExportAsync(html, EditorExportFormat.Docx, options);
+```
+
+Use `GetDocumentStyleIdAsync()` in Blazor or `AzuntEditor.getDocumentStyleId(id)`
+in JavaScript to retrieve the live selection. Map `custom:` IDs to trusted
+host-defined `EditorExportDocumentStyle` values. The export library does not
+reference the editor library. Null keeps existing PDF/Word profiles; explicit
+format-specific font/padding settings override preset defaults. Excel ignores
+this option. See [public API](docs/public-api.md) and [release notes](docs/release-0.8.13.md).

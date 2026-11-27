@@ -20,6 +20,8 @@ internal sealed class PdfDocumentExporter : IDisposable
 
     public async Task<byte[]> ExportAsync(SafeEditorDocument document, EditorExportOptions options, CancellationToken token)
     {
+        // Validate before consuming a render slot or launching a browser.
+        var layoutCss = PdfLayoutStyles.Build(options);
         await _slots.WaitAsync(token);
         try
         {
@@ -48,7 +50,11 @@ internal sealed class PdfDocumentExporter : IDisposable
             var page = await context.NewPageAsync();
             page.SetDefaultTimeout(_settings.RenderTimeoutMilliseconds);
             var title = HtmlEncoder.Default.Encode(options.Title);
+            // The document is parsed per request; never change the caller's HTML or shared sanitizer.
+            if (options.PromotePdfTableHeaders)
+                PdfTableHeaders.Promote(document);
             var safeHtml = PdfCodeFormatter.HighlightSafeHtml(document.ToSafeHtml());
+            var layoutStyle = PdfLayoutStyles.Wrap(layoutCss);
             var html = $$"""
                 <!doctype html><html lang="en"><head><meta charset="utf-8"><title>{{title}}</title>
                 <style>
@@ -69,7 +75,7 @@ internal sealed class PdfDocumentExporter : IDisposable
                   blockquote{border-left:3px solid #cbd5e1;padding-left:15px;margin-left:0}
                   a{color:#1d4ed8}hr{border:0;border-top:1px solid #cbd5e1}
                   hr[data-azunt-page-break="true"]{break-before:page;page-break-before:always;border:0;margin:0;height:0}
-                </style></head><body>{{safeHtml}}</body></html>
+                </style>{{layoutStyle}}</head><body>{{safeHtml}}</body></html>
                 """;
             await page.SetContentAsync(html, new PageSetContentOptions { WaitUntil = WaitUntilState.Load });
             token.ThrowIfCancellationRequested();

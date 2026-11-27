@@ -370,11 +370,58 @@ try
 catch (InvalidOperationException) { rejected = true; }
 Require(rejected, "Storage must return a validated root-relative URL");
 
+// PDF options must not alter the DOCX/XLSX path, even when PDF-specific values
+// would be invalid for a PDF render. Validation is intentionally PDF-only.
+var pdfOnlyOptions = new EditorExportOptions
+{
+    PdfLayout = EditorPdfLayout.Compact, PdfFontSize = 7, PdfTableFontSize = 37,
+    PromotePdfTableHeaders = true
+};
+foreach (var format in new[] { EditorExportFormat.Docx, EditorExportFormat.Xlsx })
+{
+    var unaffected = await exporter.ExportAsync(html, format, pdfOnlyOptions);
+    using var archive = new ZipArchive(new MemoryStream(unaffected.Content), ZipArchiveMode.Read);
+    Require(Read(archive, format == EditorExportFormat.Docx ? "word/document.xml" : "xl/worksheets/sheet1.xml")
+        .Contains("EGM-001"), $"{format} ignores PDF options");
+}
+foreach (var invalid in new[] {
+    new EditorExportOptions { PdfFontSize = 7 },
+    new EditorExportOptions { PdfTableFontSize = 37 },
+    new EditorExportOptions { PdfTableCellPadding = -1 },
+    new EditorExportOptions { PdfTableCellPadding = 25 },
+    new EditorExportOptions { PdfLayout = (EditorPdfLayout)99 } })
+{
+    var invalidRejected = false;
+    try { await exporter.ExportAsync(html, EditorExportFormat.Pdf, invalid); }
+    catch (ArgumentOutOfRangeException) { invalidRejected = true; }
+    Require(invalidRejected, "Invalid PDF settings rejected before browser launch");
+}
+Require(new EditorExportOptions().PdfLayout == EditorPdfLayout.Standard &&
+    new EditorExportOptions().PdfFontSize is null && !new EditorExportOptions().PromotePdfTableHeaders,
+    "PDF defaults remain backward compatible");
+
 if (Environment.GetEnvironmentVariable("AZUNT_TEST_PDF") == "1")
 {
     var pdf = await exporter.ExportAsync(html, EditorExportFormat.Pdf,
         new EditorExportOptions { ShowPageNumbers = true });
     Require(Encoding.ASCII.GetString(pdf.Content, 0, 5) == "%PDF-", "PDF header");
+    var report = "<h2>PDF density test</h2><table><tbody><tr><th>Report number</th><th>Department</th></tr>" +
+        string.Concat(Enumerable.Range(1, 80).Select(i => $"<tr><td>R-{i:D6}</td><td>Accounting</td></tr>")) +
+        "</tbody></table><p>Document end</p>";
+    var outputDirectory = Environment.GetEnvironmentVariable("AZUNT_TEST_PDF_OUTPUT");
+    foreach (var layout in Enum.GetValues<EditorPdfLayout>())
+    {
+        var result = await exporter.ExportAsync(report, EditorExportFormat.Pdf, new EditorExportOptions
+        {
+            PdfLayout = layout, PromotePdfTableHeaders = true, ShowPageNumbers = true, PaperSize = "Letter"
+        });
+        Require(Encoding.ASCII.GetString(result.Content, 0, 5) == "%PDF-", $"{layout} PDF header");
+        if (!string.IsNullOrWhiteSpace(outputDirectory))
+        {
+            Directory.CreateDirectory(outputDirectory);
+            await File.WriteAllBytesAsync(Path.Combine(outputDirectory, $"{layout}.pdf"), result.Content);
+        }
+    }
 }
 
 Console.WriteLine("Azunt.Editor.Export smoke tests passed (DOCX, XLSX; PDF is opt-in).");

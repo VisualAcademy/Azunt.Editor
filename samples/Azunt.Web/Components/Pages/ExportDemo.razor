@@ -1,0 +1,135 @@
+@page "/editor/export"
+@rendermode InteractiveServer
+@using Azunt.Editor.Components
+@using Azunt.Editor.Models
+@using Azunt.Editor.Export.Models
+@using Microsoft.JSInterop
+@inject IEditorExportService ExportService
+@inject IJSRuntime JS
+@inject ILogger<ExportDemo> Logger
+
+<h1>Azunt.Editor — Export Demo</h1>
+<p>Compare PDF print density and test Word and Excel with the same editable sample content. All data is fictional.</p>
+<div class="actions" role="group" aria-label="Load sample content">
+    <button type="button" disabled="@Unavailable" @onclick='() => LoadAsync("document")'>Sample Document</button>
+    <button type="button" disabled="@Unavailable" @onclick='() => LoadAsync("report")'>Sample Report</button>
+    <button type="button" disabled="@Unavailable" @onclick='() => LoadAsync("long")'>Multi-page Report</button>
+    <button type="button" disabled="@Unavailable" @onclick='() => LoadAsync("images")'>Images &amp; Signature</button>
+</div>
+<fieldset class="export-demo-settings" disabled="@_busy">
+    <legend>Export settings</legend>
+    <label>Paper size <select @bind="_paper"><option>A4</option><option>Letter</option><option>Legal</option></select></label>
+    <label>Orientation <select @bind="_orientation"><option value="portrait">Portrait</option><option value="landscape">Landscape</option></select></label>
+    <label>Margins <select @bind="_margin"><option value="normal">Normal</option><option value="narrow">Narrow</option><option value="wide">Wide</option></select></label>
+    <label>PDF profile <select @bind="_layout"><option value="Standard">Standard</option><option value="Compact">Compact</option><option value="Comfortable">Comfortable</option></select></label>
+    <label>PDF body size (pt) <input type="number" min="8" max="36" placeholder="Profile default" @bind="_bodySize" /></label>
+    <label>PDF table size (pt) <input type="number" min="8" max="36" placeholder="Profile default" @bind="_tableSize" /></label>
+    <label>PDF cell padding (px) <input type="number" min="0" max="24" placeholder="Profile default" @bind="_cellPadding" /></label>
+    <label><input type="checkbox" @bind="_pageNumbers" /> PDF page numbers</label>
+    <label><input type="checkbox" @bind="_repeatHeaders" /> Repeat initial header row in PDF</label>
+</fieldset>
+<p class="document-meta">These export settings override the editor's page settings for this demo only. PDF density does not change the editor, Word or Excel.</p>
+<div class="actions">
+    <button type="button" class="primary" disabled="@Unavailable" @onclick="() => ExportAsync(EditorExportFormat.Pdf)">Download PDF</button>
+    <button type="button" disabled="@Unavailable" @onclick="() => ExportAsync(EditorExportFormat.Docx)">Download Word</button>
+    <button type="button" disabled="@Unavailable" @onclick="() => ExportAsync(EditorExportFormat.Xlsx)">Download Excel</button>
+</div>
+@if (!string.IsNullOrEmpty(_notice))
+{
+    <p class="@(_failed ? "validation" : "notice")" role="status">@_notice</p>
+}
+<AzuntEditor @ref="_editor" Id="azunt-export-demo" Name="ExportHtml" @bind-Value="_html" Height="480"
+             CustomCommands="Commands" CustomCommandInvoked="HandleCommandAsync" />
+
+@code {
+    private AzuntEditor? _editor;
+    private bool _busy, _ready, _failed;
+    private bool Unavailable => !_ready || _busy;
+    private string _html = ExportDemoSamples.Report(12);
+    private string _paper = "Letter", _orientation = "portrait", _margin = "normal";
+    private EditorPdfLayout _layout = EditorPdfLayout.Compact;
+    private int? _bodySize, _tableSize, _cellPadding;
+    private bool _pageNumbers = true, _repeatHeaders = true;
+    private string? _notice;
+
+    private static readonly IReadOnlyList<EditorCustomCommand> Commands = new[] {
+        new EditorCustomCommand { Id = "downloadPdf", Label = "Download PDF", Group = "Export" },
+        new EditorCustomCommand { Id = "downloadWord", Label = "Download Word", Group = "Export" },
+        new EditorCustomCommand { Id = "downloadExcel", Label = "Download Excel", Group = "Export" }
+    };
+
+    protected override void OnAfterRender(bool firstRender)
+    {
+        if (firstRender) { _ready = true; StateHasChanged(); }
+    }
+
+    private Task HandleCommandAsync(string id) => id switch
+    {
+        "downloadPdf" => ExportAsync(EditorExportFormat.Pdf),
+        "downloadWord" => ExportAsync(EditorExportFormat.Docx),
+        "downloadExcel" => ExportAsync(EditorExportFormat.Xlsx),
+        _ => Task.CompletedTask
+    };
+
+    private async Task LoadAsync(string sample)
+    {
+        if (Unavailable || _editor is null) return;
+        _busy = true; _failed = false;
+        try
+        {
+            var html = sample switch
+            {
+                "document" => ExportDemoSamples.Document,
+                "long" => ExportDemoSamples.Report(80),
+                "images" => ExportDemoSamples.Images,
+                _ => ExportDemoSamples.Report(12)
+            };
+            await _editor.SetHtmlAsync(html);
+            _html = html;
+            _notice = "Sample loaded. Edit the content before exporting if desired.";
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Export demo sample load failed.");
+            _notice = "Sample load failed. Check the application logs."; _failed = true;
+        }
+        finally { _busy = false; }
+    }
+
+    private async Task ExportAsync(EditorExportFormat format)
+    {
+        if (Unavailable || _editor is null) return;
+        _busy = true; _failed = false;
+        _notice = $"Creating {format}…";
+        try
+        {
+            var options = new EditorExportOptions
+            {
+                FileName = $"Azunt-Sample-{(format == EditorExportFormat.Pdf ? _layout.ToString() : format.ToString())}",
+                Title = "Azunt Sample Report", PaperSize = _paper, Orientation = _orientation, Margin = _margin,
+                PdfLayout = _layout, PdfFontSize = _bodySize, PdfTableFontSize = _tableSize,
+                PdfTableCellPadding = _cellPadding,
+                ShowPageNumbers = _pageNumbers, PromotePdfTableHeaders = _repeatHeaders,
+                SpreadsheetDateColumns = new[] { "Date" }, SpreadsheetNumberColumns = new[] { "Quantity" },
+                SpreadsheetCulture = "en-US"
+            };
+            var html = await _editor.GetHtmlAsync();
+            var result = await ExportService.ExportAsync(html, format, options);
+            using var stream = new MemoryStream(result.Content, writable: false);
+            using var reference = new DotNetStreamReference(stream);
+            await JS.InvokeVoidAsync("AzuntEditorExport.download", result.FileName, reference);
+            _notice = $"Created {result.FileName} ({result.Content.Length:N0} bytes).";
+        }
+        catch (ArgumentOutOfRangeException ex) when (format == EditorExportFormat.Pdf &&
+            (ex.ParamName is nameof(EditorExportOptions.PdfFontSize) or nameof(EditorExportOptions.PdfTableFontSize) or nameof(EditorExportOptions.PdfTableCellPadding)))
+        {
+            _notice = "PDF font sizes must be 8–36 points and cell padding 0–24 pixels."; _failed = true;
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Export demo failed for {Format}.", format);
+            _notice = "Download failed. Check the application logs and PDF browser setup."; _failed = true;
+        }
+        finally { _busy = false; }
+    }
+}

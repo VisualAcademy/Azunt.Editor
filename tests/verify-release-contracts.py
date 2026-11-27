@@ -3,7 +3,7 @@ from pathlib import Path
 from xml.etree import ElementTree
 
 root = Path(__file__).resolve().parents[1]
-version = '0.8.3'
+version = '0.8.4'
 for item in ['src/Azunt.Editor/Azunt.Editor.csproj', 'src/Azunt.Editor.Export/Azunt.Editor.Export.csproj',
              'samples/Azunt.Web/Azunt.Web.csproj']:
     doc = ElementTree.parse(root / item)
@@ -61,4 +61,4 @@ for token in ['function unregisterCommand(', 'Duplicate custom command id:', 'pr
 assert 'data-azunt-mount=' in (root / 'src/Azunt.Editor/Rendering/EditorMarkup.cs').read_text()
 assert 'RenderForBlazor(' in component
 assert ':not([data-azunt-mount="manual"])' in editor_js
-print('PASS: Azunt.Editor 0.8.3 release contracts, sources are application-agnostic')
+print('PASS: Azunt.Editor 0.8.4 release contracts, sources are application-agnostic')

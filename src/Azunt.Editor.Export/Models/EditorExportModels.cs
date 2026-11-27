@@ -7,6 +7,14 @@ public enum EditorExportFormat
     Xlsx
 }
 
+/// <summary>PDF print density. Standard retains the existing print defaults.</summary>
+public enum EditorPdfLayout
+{
+    Standard = 0,
+    Compact = 1,
+    Comfortable = 2
+}
+
 /// <summary>Formatting and output-file preferences for an export request.</summary>
 public sealed class EditorExportOptions
 {
@@ -17,6 +25,17 @@ public sealed class EditorExportOptions
     public string Margin { get; set; } = "normal";
     /// <summary>When true, PDF exports include current/total page counts in the footer.</summary>
     public bool ShowPageNumbers { get; set; } = false;
+    /// <summary>PDF only. Standard preserves the existing print stylesheet.</summary>
+    public EditorPdfLayout PdfLayout { get; set; } = EditorPdfLayout.Standard;
+    /// <summary>Optional PDF default body font size in points (8–36). Safe explicit HTML styles take precedence.</summary>
+    public int? PdfFontSize { get; set; }
+    /// <summary>Optional PDF default table font size in points (8–36). Safe explicit HTML styles take precedence.</summary>
+    public int? PdfTableFontSize { get; set; }
+    /// <summary>Optional PDF table cell padding in CSS pixels (0–24).</summary>
+    public int? PdfTableCellPadding { get; set; }
+    /// <summary>PDF only. Promote an initial all-header-cell row to a repeating header when no thead exists.
+    /// Existing semantic thead sections repeat independently of this option.</summary>
+    public bool PromotePdfTableHeaders { get; set; }
     /// <summary>Opt-in exact header names for native Excel date cells. Only the first all-th row defines columns.</summary>
     public IReadOnlyList<string> SpreadsheetDateColumns { get; set; } = Array.Empty<string>();
     /// <summary>Opt-in exact header names for native Excel numeric cells. Other values remain literal text.</summary>

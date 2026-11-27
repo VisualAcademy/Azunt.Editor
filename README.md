@@ -2,7 +2,7 @@
 
 A lightweight rich-text editor for ASP.NET Core MVC, Razor Pages, and Blazor Server.
 
-Version: **0.8.2** · .NET 10
+Version: **0.8.4** · .NET 10
 
 ## Projects
 - `src/Azunt.Editor` — shared editor components, JavaScript, and CSS
@@ -16,6 +16,20 @@ dotnet restore Azunt.Editor.sln
 dotnet build Azunt.Editor.sln -c Release
 dotnet run --project samples/Azunt.Web
 ```
+
+## PDF export profiles (0.8.4)
+
+The optional Export package adds per-request PDF density presets: `Standard`
+(existing defaults), `Compact` (10pt body / 9pt tables) and `Comfortable`
+(14pt body / 12pt tables). Optional body/table font sizes and cell padding
+allow further tuning. Existing paper, orientation, margins and page numbering
+options remain available. Semantic table headers repeat; opt in to promoting an
+initial all-`th` row with `PromotePdfTableHeaders`. These are PDF-only settings:
+editor content and DOCX/XLSX output are unchanged.
+
+Try `/editor/export` in Azunt.Web for editable synthetic reports and image
+fixtures. See [0.8.4 release notes and PDF API](docs/release-0.8.4.md) for
+configuration, limits and validation instructions.
 
 ## Editor UX final refinement (0.8.2)
 

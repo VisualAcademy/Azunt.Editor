@@ -57,7 +57,7 @@ internal sealed class ViewerSafeEditorDocument
     { "link", "meta", "base" };
     private const int MaxElementDepth = 128;
     private static readonly HashSet<string> Fonts = new(StringComparer.OrdinalIgnoreCase)
-    { "Arial", "Georgia", "Times New Roman", "Verdana", "Segoe UI", "Noto Sans KR", "Malgun Gothic" };
+    { "Arial", "Georgia", "Times New Roman", "Verdana", "Segoe UI", "Segoe Script", "Lucida Handwriting", "Brush Script MT", "Apple Chancery", "Noto Sans KR", "Malgun Gothic" };
     private static readonly Regex AttrPattern = new(@"(?<key>[A-Za-z][A-Za-z0-9_-]*)(?:\s*=\s*(?:""(?<double>[^""]*)""|'(?<single>[^']*)'|(?<bare>[^\s>]+)))?", RegexOptions.Compiled | RegexOptions.CultureInvariant, TimeSpan.FromSeconds(1));
     private static readonly Regex HexColor = new(@"^#[0-9a-fA-F]{6}$", RegexOptions.Compiled);
     private static readonly Regex Pixel = new(@"^(?<value>\d{1,4})px$", RegexOptions.Compiled | RegexOptions.IgnoreCase);

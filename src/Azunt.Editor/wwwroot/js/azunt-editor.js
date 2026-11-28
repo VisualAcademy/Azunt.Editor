@@ -35,7 +35,7 @@
   // browser history instead of retaining 60 full copies of large documents.
   const maxHistoryBytes = 32 * 1024 * 1024;
   const maxHistoryEntries = 60;
-  const allowedFonts = new Set(["Arial", "Georgia", "Times New Roman", "Verdana", "Segoe UI", "Noto Sans KR", "Malgun Gothic"]);
+  const allowedFonts = new Set(["Arial", "Georgia", "Times New Roman", "Verdana", "Segoe UI", "Segoe Script", "Lucida Handwriting", "Brush Script MT", "Apple Chancery", "Noto Sans KR", "Malgun Gothic"]);
   const hexColor = /^#[0-9a-f]{6}$/i;
   const codeLanguages = Object.freeze(["csharp", "javascript", "sql", "html", "css"]);
   const maxCodeCharacters = 100000;
